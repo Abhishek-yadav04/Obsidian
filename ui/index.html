@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Coraza WAF Dashboard</title>
+  <style>
+    body { font-family: Arial; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 8px; }
+    th { background: #eee; }
+  </style>
+</head>
+<body>
+
+<h2>Coraza WAF – Attack Dashboard</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Rule ID</th>
+      <th>Severity</th>
+      <th>Message</th>
+    </tr>
+  </thead>
+  <tbody id="data"></tbody>
+</table>
+
+<script>
+fetch('/logs')
+  .then(res => res.json())
+  .then(logs => {
+    const tbody = document.getElementById('data');
+    logs.forEach(l => {
+      tbody.innerHTML += `
+        <tr>
+          <td>${l.time}</td>
+          <td>${l.rule_id}</td>
+          <td>${l.severity}</td>
+          <td>${l.message}</td>
+        </tr>
+      `;
+    });
+  });
+</script>
+
+</body>
+</html>

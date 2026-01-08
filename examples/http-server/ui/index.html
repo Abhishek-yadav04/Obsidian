@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Coraza WAF Security Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family: Arial, sans-serif; background: #1e1e2f; color: #fff; margin: 0; padding: 0;}
+header { padding: 20px; text-align: center; background: #282a36; }
+header h1 { margin: 0; font-size: 28px; }
+header p { margin: 5px 0; font-size: 14px; color: #ccc; }
+.cards { display: flex; justify-content: space-around; margin: 20px; }
+.card { background: #44475a; padding: 15px; border-radius: 8px; width: 30%; text-align: center; }
+.card h2 { margin: 10px 0; font-size: 24px; }
+.table-container { margin: 20px; max-height: 400px; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 10px; text-align: left; border-bottom: 1px solid #555; }
+.badge { padding: 4px 8px; border-radius: 4px; color: #fff; font-size: 12px; }
+.badge.CRITICAL { background: #ff5555; }
+.badge.HIGH { background: #ffb86c; }
+.badge.MEDIUM { background: #f1fa8c; color: #000; }
+.badge.LOW { background: #50fa7b; color: #000; }
+.chart-container { width: 40%; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Coraza WAF Security Dashboard</h1>
+  <p>Enterprise Web Application Firewall Monitoring</p>
+</header>
+
+<div class="cards">
+  <div class="card">
+    <h2 id="totalAttacks">0</h2>
+    Total Attacks
+  </div>
+  <div class="card">
+    <h2 id="wafStatus">ACTIVE</h2>
+    WAF Status
+  </div>
+  <div class="card">
+    <h2 id="lastUpdate">--:--:--</h2>
+    Last Update
+  </div>
+</div>
+
+<div class="chart-container">
+  <canvas id="attackChart"></canvas>
+</div>
+
+<div class="table-container">
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Rule ID</th>
+        <th>Severity</th>
+        <th>Type</th>
+        <th>Message</th>
+      </tr>
+    </thead>
+    <tbody id="logTable"></tbody>
+  </table>
+</div>
+
+<script>
+const totalEl = document.getElementById("totalAttacks");
+const lastEl = document.getElementById("lastUpdate");
+const logTable = document.getElementById("logTable");
+
+// Setup Chart.js
+const ctx = document.getElementById('attackChart').getContext('2d');
+const attackChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+        labels: ['SQL Injection', 'Body Attacks'],
+        datasets: [{
+            label: 'Attack Type',
+            data: [0, 0],
+            backgroundColor: ['#ff5555','#50fa7b']
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { color: '#fff' } } }
+    }
+});
+
+async function fetchStats() {
+    const res = await fetch('/stats');
+    const data = await res.json();
+    attackChart.data.datasets[0].data = [data.sqli, data.body];
+    attackChart.update();
+}
+
+async function fetchLogs() {
+    const res = await fetch('/logs');
+    const logs = await res.json();
+    logTable.innerHTML = '';
+    logs.slice().reverse().forEach(l => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${new Date(l.time).toLocaleTimeString()}</td>
+            <td>${l.rule_id}</td>
+            <td><span class="badge ${l.severity.toUpperCase()}">${l.severity}</span></td>
+            <td>${l.type}</td>
+            <td>${l.message}</td>
+        `;
+        logTable.appendChild(tr);
+    });
+    totalEl.textContent = logs.length;
+    lastEl.textContent = new Date().toLocaleTimeString();
+}
+
+// Auto-refresh every 3 seconds
+setInterval(() => {
+    fetchLogs();
+    fetchStats();
+}, 3000);
+
+// Initial fetch
+fetchLogs();
+fetchStats();
+</script>
+
+</body>
+</html>

@@ -28,6 +28,7 @@ import (
 
 	h "github.com/Abhishek-yadav04/Obsidian/internal/handler"
 )
+
 type Config struct {
 	Database struct {
 		Host     string `yaml:"host"`
@@ -53,12 +54,12 @@ type AttackLog = h.AttackLog
 
 // Global variables
 var (
-	attackLogs []AttackLog
-	clients    = make(map[*websocket.Conn]bool)
-	upgrader   = websocket.Upgrader{}
-	logger     *zap.Logger
-	db         *pgxpool.Pool
-	config     Config
+	attackLogs    []AttackLog
+	clients       = make(map[*websocket.Conn]bool)
+	upgrader      = websocket.Upgrader{}
+	logger        *zap.Logger
+	db            *pgxpool.Pool
+	config        Config
 	requestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "obsidian_requests_total",
@@ -97,11 +98,11 @@ func main() {
 
 	// Serve dashboard at root (public files, data protected by API auth)
 	http.Handle("/", http.FileServer(http.Dir("./ui")))
-	
+
 	/*
-	// Old auth wrapper for UI - removed to allow loading the dashboard shell
-	// Client-side JS will handle redirection if no token is present, 
-	// and API calls will fail without valid token.
+		// Old auth wrapper for UI - removed to allow loading the dashboard shell
+		// Client-side JS will handle redirection if no token is present,
+		// and API calls will fail without valid token.
 	*/
 
 	// Protected example app at /api/hello
@@ -290,7 +291,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		// Check header
 		tokenString := r.Header.Get("Authorization")
-		
+
 		// If header is missing, check query param (useful for WebSockets)
 		if tokenString == "" {
 			tokenString = r.URL.Query().Get("token")

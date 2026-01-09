@@ -96,7 +96,7 @@ func main() {
 		pdf := gofpdf.New("P", "mm", "A4", "")
 		pdf.AddPage()
 		pdf.SetFont("Arial", "B", 16)
-		pdf.Cell(40, 10, "Coraza WAF Attack Report")
+		pdf.Cell(40, 10, "Obsidian WAF Attack Report")
 		pdf.Ln(12)
 		pdf.SetFont("Arial", "", 12)
 		logMutex.Lock()

@@ -132,7 +132,7 @@ func (l *HybridAuditLogger) Write(log plugintypes.AuditLog) error {
 
 	entry := model.LogEntry{
 		ID:        tx.ID(),
-		Timestamp: time.Now(), 
+		Timestamp: time.Now(),
 		ClientIP:  tx.ClientIP(),
 		Method:    tx.Request().Method(),
 		URI:       tx.Request().URI(),

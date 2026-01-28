@@ -198,7 +198,7 @@
   <aside class="sidebar">
     <div class="brand">
       <img src="assets/logo.svg" alt="Obsidian">
-      Obsidian Sentinel
+      Sentinel
     </div>
     <ul class="nav-links">
       <li class="nav-item">
@@ -264,7 +264,6 @@
           <div class="stat-card">
             <div class="stat-title">Total Threats Blocked</div>
             <div class="stat-value" id="total-attacks">0</div>
-            <div class="stat-delta"><i class="fas fa-arrow-up"></i> +12% since yesterday</div>
           </div>
         </div>
         <div class="col-md-3">
@@ -282,7 +281,7 @@
         <div class="col-md-3">
           <div class="stat-card">
             <div class="stat-title">Active Rules</div>
-            <div class="stat-value text-primary">1,248</div>
+            <div class="stat-value text-primary" id="active-rules">0</div>
           </div>
         </div>
       </div>
@@ -579,6 +578,9 @@
         el2.innerText = stats.flagged_requests || 0; 
         if(el2.previousElementSibling) el2.previousElementSibling.innerText = "Flagged Req"; 
       }
+
+      const el3 = document.getElementById('active-rules');
+      if(el3) { el3.innerText = stats.active_rules_count || 0; }
       
       initChart(stats);
 

@@ -19,7 +19,6 @@ go 1.24.0
 require (
 	github.com/anuraaga/go-modsecurity v0.0.0-20220824035035-b9a4099778df
 	github.com/corazawaf/coraza-coreruleset v0.0.0-20240226094324-415b1017abdc
-	github.com/corazawaf/coraza/v3 v3.3.3
 	github.com/corazawaf/libinjection-go v0.2.2
 	github.com/foxcpp/go-mockdns v1.1.0
 	github.com/golang-jwt/jwt/v5 v5.3.0

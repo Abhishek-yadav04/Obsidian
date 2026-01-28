@@ -1,7 +1,30 @@
-<h1>
-	<img src="ui/assets/logo.png" align="left" height="64px" alt=""/>&nbsp;
-	<span>Obsidian - Web Application Firewall</span>
-</h1>
+# OBSIDIAN Sentinel WAF
+
+<img src="ui/assets/logo.svg" align="left" height="80px" alt="Obsidian Logo"/>
+
+**Obsidian** is an enterprise-grade Web Application Firewall (WAF) designed for high-performance security monitoring and blocking. It is built on top of the Coraza v3 engine.
+
+## 🚀 Quick Start (Standalone Application)
+
+We have refactored the project to run as a single-binary application with an embedded UI.
+
+### Build and Run
+```bash
+cd cmd/obsidian
+go mod tidy
+go build -o obsidian.exe
+./obsidian.exe -port 8080 -dev
+```
+Access the dashboard at: `http://localhost:8080`
+
+## 📱 Features
+*   **Real-time Protection:** Block XSS, SQLi, and RCE attacks.
+*   **Mobile Responsive UI:** Monitor your WAF from any device (`@media` queries implemented).
+*   **Zero-Dependency Deployment:** Single binary includes all assets (using `embed`).
+*   **Academic Ready:** Codebase annotated for Educational analysis.
+
+---
+
 
 [![Regression Tests](https://github.com/corazawaf/coraza/actions/workflows/regression.yml/badge.svg)](https://github.com/corazawaf/coraza/actions/workflows/regression.yml)
 [![Coreruleset Compatibility](https://img.shields.io/badge/Coreruleset%20Compatibility-100%25-brightgreen)](#)

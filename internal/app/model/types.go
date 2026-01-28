@@ -16,11 +16,11 @@ type LogEntry struct {
 
 // Stats represents aggregated traffic data
 type Stats struct {
-	TotalRequests     int64 `json:"total_requests"`
-	BlockedRequests   int64 `json:"blocked_requests"`
-	FlaggedRequests   int64 `json:"flagged_requests"`
-	SafeRequests      int64 `json:"safe_requests"`
-	ActiveRulesCount  int   `json:"active_rules_count"`
+	TotalRequests    int64 `json:"total_requests"`
+	BlockedRequests  int64 `json:"blocked_requests"`
+	FlaggedRequests  int64 `json:"flagged_requests"`
+	SafeRequests     int64 `json:"safe_requests"`
+	ActiveRulesCount int   `json:"active_rules_count"`
 }
 
 // Rule represents a WAF rule (simplified for UI)

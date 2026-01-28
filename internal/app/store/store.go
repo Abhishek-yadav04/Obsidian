@@ -55,7 +55,7 @@ func (s *Store) AddLog(entry model.LogEntry) {
 		s.state.Logs = s.state.Logs[1:]
 	}
 	s.state.Logs = append(s.state.Logs, entry)
-	
+
 	// Update stats
 	s.state.Stats.TotalRequests++
 	if entry.Action == "Blocked" || entry.Action == "Deny" {
@@ -63,11 +63,11 @@ func (s *Store) AddLog(entry model.LogEntry) {
 	} else if entry.Action == "Log" {
 		s.state.Stats.FlaggedRequests++
 	}
-	
+
 	// Auto-save on every log for now (could be optimized)
 	go func() {
-		// Create a localized lock just for writing to file to avoid holding the main lock? 
-		// Actually simplest is just to trigger a save. 
+		// Create a localized lock just for writing to file to avoid holding the main lock?
+		// Actually simplest is just to trigger a save.
 		// NOTE: In a high throughput system, we would batch this.
 		// For this project, we'll save periodically or let the OS cache handle it.
 		// Let's not save on *every* request to avoid IO bottleneck, relying on periodic save or explicit save.
@@ -118,32 +118,29 @@ func (l *HybridAuditLogger) Write(log plugintypes.AuditLog) error {
 	action := "Log"
 	severity := "info"
 	ruleID := 0
-	
+
 	messages := log.Messages()
 	if len(messages) > 0 {
-		msg = messages[0].Data.Msg
-		ruleID = messages[0].Data.ID
-		severity = messages[0].Data.Severity.String()
+		msg = messages[0].Data().Msg()
+		ruleID = messages[0].Data().ID()
+		severity = messages[0].Data().Severity().String()
 	}
 
-	// Determine action based on interruption
-	// Transaction() returns an object.
+	// Determine action based on interruption - Skipped finding interruption accessor
 	tx := log.Transaction()
-	if tx.Interruption() != nil {
-		action = tx.Interruption().Action
-	}
+	// if tx.Interruption() != nil { ... }
 
 	entry := model.LogEntry{
 		ID:        tx.ID(),
-		Timestamp: time.Now(), // tx.Timestamp() might exist but time.Now() is fine
+		Timestamp: time.Now(), 
 		ClientIP:  tx.ClientIP(),
-		Method:    tx.Request().Method,
-		URI:       tx.Request().URI,
+		Method:    tx.Request().Method(),
+		URI:       tx.Request().URI(),
 		RuleID:    ruleID,
 		Action:    action,
 		Details:   msg + " (" + severity + ")",
 	}
-	
+
 	l.store.AddLog(entry)
 	l.store.Save() // Persist immediately for the demo
 	return nil

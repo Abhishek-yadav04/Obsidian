@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/corazawaf/coraza/v3/experimental/plugins/plugintypes"
+	"github.com/corazawaf/coraza/v3"
 	"github.com/corazawaf/coraza/v3/internal/app/api"
 	"github.com/corazawaf/coraza/v3/internal/app/store"
 	"github.com/corazawaf/coraza/v3/internal/app/waf"
@@ -77,7 +77,7 @@ func main() {
 	}
 }
 
-func wafMiddleware(engine types.WAF, s *store.Store, next http.Handler) http.Handler {
+func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip WAF for static assets (css, js, images) to save perf
 		// Simple check for extension
@@ -86,11 +86,11 @@ func wafMiddleware(engine types.WAF, s *store.Store, next http.Handler) http.Han
 			next.ServeHTTP(w, r)
 			return
 		}
-		
+
 		tx := engine.NewTransaction()
 		// Capture ID for logging
 		// txID := tx.ID()
-		
+
 		// Ensure cleanup
 		defer func() {
 			tx.ProcessLogging()
@@ -113,7 +113,7 @@ func wafMiddleware(engine types.WAF, s *store.Store, next http.Handler) http.Han
 		// 2. Process Request Body (Simplified)
 		// For a real WAF we need to buffer body, write to tx, then new reader for next handler
 		// Skipping heavy body buffering for this demo for simplicity unless needed
-		if it := tx.ProcessRequestBody(); it != nil {
+		if it, _ := tx.ProcessRequestBody(); it != nil {
 			processInterruption(w, it, s, tx)
 			return
 		}
@@ -145,7 +145,7 @@ func wafMiddleware(engine types.WAF, s *store.Store, next http.Handler) http.Han
 func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store.Store, tx types.Transaction) {
 	w.WriteHeader(403)
 	w.Write([]byte("WAF Blocked: " + it.Action))
-	
+
 	// Ensure log is written (store uses a workaround via callback but let's be safe)
 	// Actually the audit logger hybrid handles this via ProcessLogging() in defer.
 }

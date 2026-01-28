@@ -1,17 +1,16 @@
 package waf
 
 import (
-	"fmt"
-
 	"github.com/corazawaf/coraza/v3"
 	"github.com/corazawaf/coraza/v3/experimental/plugins"
+	"github.com/corazawaf/coraza/v3/experimental/plugins/plugintypes"
 	"github.com/corazawaf/coraza/v3/internal/app/store"
 	"github.com/corazawaf/coraza/v3/types"
 )
 
 func NewWAF(s *store.Store) (coraza.WAF, error) {
 	// Register the custom logger
-	plugins.RegisterAuditLogWriter("hybrid", func() plugins.AuditLogWriter {
+	plugins.RegisterAuditLogWriter("hybrid", func() plugintypes.AuditLogWriter {
 		return store.NewHybridAuditLogger(s)
 	})
 
@@ -25,8 +24,8 @@ func NewWAF(s *store.Store) (coraza.WAF, error) {
 			
 			# Audit Log Setup
 			SecAuditEngine RelevantOnly
-			SecAuditLogConfigs "hybrid"
-			SecAuditLogRelevantStatus "^(?:(?!404)).*"
+			SecAuditLogType hybrid
+			SecAuditLogRelevantStatus "^[45].."
 
 			# XSS Protection
 			SecRule ARGS|REQUEST_HEADERS "@rx <script>" \
@@ -38,11 +37,11 @@ func NewWAF(s *store.Store) (coraza.WAF, error) {
 			
 			# Bad User Agent
 			SecRule REQUEST_HEADERS:User-Agent "@rx malicious" \
-				"id:913100,phase:1,deny,status:403,msg:'Malicious UA Detected',severity:LOW"
+				"id:913100,phase:1,deny,status:403,msg:'Malicious UA Detected',severity:NOTICE"
 
 			# Directory Traversal
 			SecRule REQUEST_URI "@rx \.\./" \
-				"id:930100,phase:1,deny,status:403,msg:'Path Traversal Attempt',severity:HIGH"
+				"id:930100,phase:1,deny,status:403,msg:'Path Traversal Attempt',severity:CRITICAL"
 		`).
 		WithErrorCallback(func(rule types.MatchedRule) {
 			// This callback runs on every match, we can use it for stats too

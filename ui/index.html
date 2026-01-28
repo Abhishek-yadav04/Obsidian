@@ -46,6 +46,9 @@
       align-items: center;
       gap: 10px;
     }
+    .brand img { height: 36px; margin-right: 10px; vertical-align: middle; display: inline-block; transition: transform 180ms ease; }
+    .brand img:hover { transform: scale(1.08); }
+    .brand .logo-wrap { background:#141619; padding:6px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; }
     .nav-links {
       flex: 1;
       padding: 1rem;
@@ -157,28 +160,29 @@
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="brand">
-      <i class="fas fa-shield-alt"></i> Obsidian Sentinel
+      <img src="/assets/logo.png" alt="Obsidian" onerror="(function(){this.onerror=null; this.src='/ui/assets/logo.png';})();">
+      Obsidian Sentinel
     </div>
     <ul class="nav-links">
       <li class="nav-item">
-        <a href="#" class="nav-link active" onclick="loadView('dashboard')">
+        <button type="button" class="nav-link active" data-view="dashboard" onclick="loadView('dashboard')">
           <i class="fas fa-chart-line"></i> Dashboard
-        </a>
+        </button>
       </li>
       <li class="nav-item">
-        <a href="#" class="nav-link" onclick="loadView('logs')">
+        <button type="button" class="nav-link" data-view="logs" onclick="loadView('logs')">
           <i class="fas fa-list"></i> Attack Logs
-        </a>
+        </button>
       </li>
       <li class="nav-item">
-        <a href="#" class="nav-link" onclick="loadView('rules')">
+        <button type="button" class="nav-link" data-view="rules" onclick="loadView('rules')">
           <i class="fas fa-gavel"></i> Rules Management
-        </a>
+        </button>
       </li>
       <li class="nav-item">
-        <a href="/api/export" class="nav-link text-success" id="downloadReport">
+        <button type="button" class="nav-link text-success" id="downloadReport">
           <i class="fas fa-file-pdf"></i> Download Report
-        </a>
+        </button>
       </li>
     </ul>
     <div class="user-profile">
@@ -289,39 +293,33 @@
   // Authentication Check
   const token = localStorage.getItem('obsidian_token');
   if (!token) {
-    window.location.href = '/login.html';
+    globalThis.location.href = '/login.html';
   }
 
-  // Logout
+  // Logout (single implementation)
   function logout() {
     localStorage.removeItem('obsidian_token');
-    window.location.href = '/login.html';
+    // login.html is served from the ui folder root
+    globalThis.location.href = '/login.html';
   }
 
   // Add token to PDF download link
   document.getElementById('downloadReport').addEventListener('click', (e) => {
     e.preventDefault();
-    fetch('/api/export', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    })
+    const headers = { 'Authorization': 'Bearer ' + (localStorage.getItem('obsidian_token') || '') };
+    fetch('/api/export', { headers })
     .then(resp => resp.blob())
     .then(blob => {
-      const url = window.URL.createObjectURL(blob);
+      const url = globalThis.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
       a.download = 'obsidian-report.pdf';
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
+      globalThis.URL.revokeObjectURL(url);
     });
   });
-
-  // Logout
-  function logout() {
-    localStorage.removeItem('obsidian_token');
-    window.location.href = '/ui/login.html';
-  }
 
   // Setup Charts
   let attackChartInstance;
@@ -399,10 +397,25 @@
     }
   }
 
+  // Simple client-side view switcher to avoid errors from missing functions
+  function loadView(view) {
+    // Clear active classes
+    document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+    // Highlight the clicked nav item by data-view attribute
+    const links = Array.from(document.querySelectorAll('.nav-link'));
+    for (const el of links) {
+      if (el.dataset && el.dataset.view === view) el.classList.add('active');
+    }
+    // Update page title
+    const titles = { dashboard: 'Security Dashboard', logs: 'Attack Logs', rules: 'Rules Management' };
+    document.getElementById('pageTitle').innerText = titles[view] || 'Security Dashboard';
+    // For now we keep the main dashboard content static and simply change the title
+  }
+
   // WebSocket for Real-time
   function connectWS() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws?token=${token}`);
+    const protocol = globalThis.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${globalThis.location.host}/ws?token=${token}`);
     
     ws.onmessage = (event) => {
       const log = JSON.parse(event.data);
@@ -416,10 +429,10 @@
   }
 
   // Init
-  window.onload = () => {
+  globalThis.addEventListener('load', () => {
     fetchData();
     connectWS();
-  };
+  });
 </script>
 </body>
 </html>

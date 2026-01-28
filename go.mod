@@ -1,4 +1,4 @@
-module github.com/Abhishek-yadav04/Obsidian
+module github.com/corazawaf/coraza/v3
 
 go 1.24.0
 

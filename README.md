@@ -1,6 +1,6 @@
 <h1>
-  <img src="https://coraza.io/images/logo_shield_only.png" align="left" height="46px" alt=""/>&nbsp;
-  <span>Obsidian - Web Application Firewall</span>
+	<img src="ui/assets/logo.png" align="left" height="64px" alt=""/>&nbsp;
+	<span>Obsidian - Web Application Firewall</span>
 </h1>
 
 [![Regression Tests](https://github.com/corazawaf/coraza/actions/workflows/regression.yml/badge.svg)](https://github.com/corazawaf/coraza/actions/workflows/regression.yml)
@@ -11,34 +11,33 @@
 [![OWASP Production Project](https://img.shields.io/badge/owasp-production%20project-brightgreen)](https://owasp.org/www-project-coraza-web-application-firewall)
 [![GoDoc](https://godoc.org/github.com/corazawaf/coraza?status.svg)](https://godoc.org/github.com/corazawaf/coraza/v3)
 
-Coraza is an open source, enterprise-grade, high performance Web Application Firewall (WAF) ready to protect your beloved applications. It is written in Go, supports ModSecurity SecLang rulesets and is 100% compatible with the OWASP Core Rule Set v4.
+Obsidian is an open source, enterprise-grade, high performance Web Application Firewall (WAF) ready to protect your beloved applications. It is written in Go, supports ModSecurity SecLang rulesets and is 100% compatible with the OWASP Core Rule Set v4.
 
-* Website: <https://coraza.io>
-* Forum: [Github Discussions](https://github.com/corazawaf/coraza/discussions)
-* OWASP Slack Community (#coraza): <https://owasp.org/slack/invite>
+* Website: <https://Obsidian.io>
+* Forum: [Github Discussions](https://github.com/Abhishek-yadav04/Obsidian/discussions)
 * Rule testing: [Coraza Playground](https://playground.coraza.io)
 
 <br/>
 
 Key Features:
 
-* ⇲ **Drop-in** - Coraza is an alternative engine that has partial compatibility with ~~Trustwave~~[OWASP ModSecurity Engine](https://github.com/owasp-modsecurity/modsecurity/) and supports industry-standard SecLang rule sets.
+* ⇲ **Drop-in** - Obsidian is an alternative engine that has partial compatibility with ~~Trustwave~~[OWASP ModSecurity Engine](https://github.com/owasp-modsecurity/modsecurity/) and supports industry-standard SecLang rule sets.
 
-* 🔥 **Security** -  Coraza runs the [OWASP CRS](https://coreruleset.org) **v4** (Formerly known as Core Rule Set) to protect your web applications from a wide range of attacks, including the OWASP Top Ten, with a minimum of false alerts. CRS protects from many common attack categories including: SQL Injection (SQLi), Cross Site Scripting (XSS), PHP & Java Code Injection, HTTPoxy, Shellshock, Scripting/Scanner/Bot Detection & Metadata & Error Leakages. Note that older versions of the CRS are not compatible.
+* 🔥 **Security** -  Obsidian runs the [OWASP CRS](https://coreruleset.org) **v4** (Formerly known as Core Rule Set) to protect your web applications from a wide range of attacks, including the OWASP Top Ten, with a minimum of false alerts. CRS protects from many common attack categories including: SQL Injection (SQLi), Cross Site Scripting (XSS), PHP & Java Code Injection, HTTPoxy, Shellshock, Scripting/Scanner/Bot Detection & Metadata & Error Leakages. Note that older versions of the CRS are not compatible.
 
-* 🔌 **Extensible** - Coraza is a library at its core, with many integrations to deploy on-premise Web Application Firewall instances. Audit Loggers, persistence engines, operators, actions, create your own functionalities to extend Coraza as much as you want.
+* 🔌 **Extensible** - Obsidian is a library at its core, with many integrations to deploy on-premise Web Application Firewall instances. Audit Loggers, persistence engines, operators, actions, create your own functionalities to extend Coraza as much as you want.
 
-* 🚀 **Performance** - From huge websites to small blogs, Coraza can handle the load with minimal performance impact. Check our [Benchmarks](https://coraza.io/docs/reference/benchmarks)
+* 🚀 **Performance** - From huge websites to small blogs, Obsidian can handle the load with minimal performance impact. Check our [Benchmarks](https://Obsidian.io/docs/reference/benchmarks)
 
 * ﹡ **Simplicity** - Anyone is able to understand and modify the Coraza source code. It is easy to extend Coraza with new functionality.
 
-* 💬 **Community** - Coraza is a community project, contributions are accepted and all ideas will be considered. Find contributor guidance in the [CONTRIBUTION](https://github.com/corazawaf/coraza/blob/main/CONTRIBUTING.md) document.
+* 💬 **Community** - Coraza is a community project, contributions are accepted and all ideas will be considered. Find contributor guidance in the [CONTRIBUTION](https://github.com/Abhishek-yadav04/Obsidian/blob/main/CONTRIBUTING.md) document.
 
 <br/>
 
 ## Integrations
 
-The Coraza Project maintains implementations and plugins for the following servers:
+The Obsidian Project maintains implementations and plugins for the following servers:
 
 * [Caddy Reverse Proxy and Webserver Plugin](https://github.com/corazawaf/coraza-caddy) - stable, needs a maintainer
 * [Proxy WASM extension](https://github.com/corazawaf/coraza-proxy-wasm) for proxies with proxy-wasm support (e.g. Envoy) - stable, still under development
@@ -53,7 +52,7 @@ The Coraza Project maintains implementations and plugins for the following serve
 
 ## Coraza Core Usage
 
-Coraza can be used as a library for your Go program to implement a security middleware or integrate it with existing application & webservers.
+Obsidian can be used as a library for your Go program to implement a security middleware or integrate it with existing application & webservers.
 
 ```go
 package main

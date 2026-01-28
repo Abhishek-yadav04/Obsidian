@@ -30,6 +30,15 @@
       text-align: center;
       margin-bottom: 2rem;
     }
+    .logo-wrap{ display:block; background:#2c3036; padding:10px; border-radius:8px; width:160px; margin:0 auto 8px;}
+    .logo-wrap img{ height:96px; transition: transform 220ms ease; }
+    .logo-wrap img:hover{ transform: scale(1.06); }
+    @keyframes pulseGlow {
+      0% { box-shadow: 0 0 0 0 rgba(220,53,69,0.0); }
+      50% { box-shadow: 0 0 20px 6px rgba(220,53,69,0.06); }
+      100% { box-shadow: 0 0 0 0 rgba(220,53,69,0.0); }
+    }
+    .logo-wrap img.pulse { animation: pulseGlow 2.8s infinite; border-radius:6px; }
     .form-control {
       background-color: #1a1d21;
       border-color: #3d424a;
@@ -56,14 +65,17 @@
 </head>
 <body>
   <div class="login-card">
-    <div class="brand">Obsidian Sentinel</div>
+    <div class="brand">
+      <span class="logo-wrap"><img class="pulse" src="/assets/logo.png" alt="Obsidian logo" style="display:block;" onerror="(function(){this.onerror=null; this.src='/ui/assets/logo.png';})();"></span>
+      Obsidian Sentinel
+    </div>
     <form id="loginForm">
       <div class="mb-3">
-        <label class="form-label">Username</label>
+        <label for="username" class="form-label">Username</label>
         <input type="text" class="form-control" id="username" value="admin" required>
       </div>
       <div class="mb-3">
-        <label class="form-label">Password</label>
+        <label for="password" class="form-label">Password</label>
         <input type="password" class="form-control" id="password" value="password" required>
       </div>
       <button type="submit" class="btn btn-primary">Sign In</button>
@@ -87,7 +99,7 @@
         if (res.ok) {
           const data = await res.json();
           localStorage.setItem('obsidian_token', data.token);
-          window.location.href = '/';
+          globalThis.location.href = '/';
         } else {
           document.getElementById('errorMsg').innerText = 'Invalid credentials';
           document.getElementById('errorMsg').style.display = 'block';

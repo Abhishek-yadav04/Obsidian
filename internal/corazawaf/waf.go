@@ -262,7 +262,27 @@ func resolveLogPath(path string) (io.Writer, error) {
 		return os.Stderr, nil
 	}
 
-	return os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	// Return a writer that opens/appends/closes on each Write to avoid holding
+	// a file descriptor open across test teardown on Windows (which prevents
+	// TempDir removal while the file is still open).
+	return &appendFileWriter{path: path, mode: 0666}, nil
+}
+
+// appendFileWriter opens the target file on each Write and closes it so that
+// the file is not held open by the process between writes. This avoids file
+// locking issues on Windows during test cleanup.
+type appendFileWriter struct{
+	path string
+	mode os.FileMode
+}
+
+func (a *appendFileWriter) Write(p []byte) (int, error) {
+	f, err := os.OpenFile(a.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, a.mode)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	return f.Write(p)
 }
 
 // SetDebugLogPath sets the path for the debug log

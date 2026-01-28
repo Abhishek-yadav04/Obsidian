@@ -8,13 +8,22 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
+
+	iio "github.com/corazawaf/coraza/v3/internal/io"
 )
 
 var errEmptyDirs = errors.New("empty dirs")
 
-func loadFromFile(filepath string, dirs []string, root fs.FS) ([]byte, error) {
-	if path.IsAbs(filepath) {
-		return fs.ReadFile(root, filepath)
+func loadFromFile(fname string, dirs []string, root fs.FS) ([]byte, error) {
+	// Detect absolute paths using OS-aware filepath package
+	if filepath.IsAbs(fname) {
+		// If root is the OSFS we can use the OS-style absolute path directly
+		if _, ok := root.(iio.OSFS); ok {
+			return fs.ReadFile(root, fname)
+		}
+		// For other fs.FS implementations (embed.FS) convert to posix-style
+		return fs.ReadFile(root, filepath.ToSlash(fname))
 	}
 
 	if len(dirs) == 0 {
@@ -30,7 +39,14 @@ func loadFromFile(filepath string, dirs []string, root fs.FS) ([]byte, error) {
 	)
 
 	for _, p := range dirs {
-		absFilepath := path.Join(p, filepath)
+		var absFilepath string
+		if _, ok := root.(iio.OSFS); ok {
+			absFilepath = filepath.Join(p, fname)
+		} else {
+			// non-OS FS (embed.FS) expects forward slashes
+			absFilepath = path.Join(p, fname)
+			absFilepath = filepath.ToSlash(absFilepath)
+		}
 		content, err = fs.ReadFile(root, absFilepath)
 		if err != nil {
 			if os.IsNotExist(err) {

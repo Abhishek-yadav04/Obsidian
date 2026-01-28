@@ -26,7 +26,7 @@ import (
 	txhttp "github.com/corazawaf/coraza/v3/http"
 	"github.com/corazawaf/coraza/v3/types"
 
-	h "github.com/Abhishek-yadav04/Obsidian/internal/handler"
+	h "github.com/corazawaf/coraza/v3/internal/handler"
 )
 
 type Config struct {
@@ -361,6 +361,12 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 func exportHandler(w http.ResponseWriter, r *http.Request) {
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPage()
+	// If logo exists, place it in the header
+	if _, err := os.Stat("ui/assets/logo.png"); err == nil {
+		// x=10,y=8 width=40
+		pdf.ImageOptions("ui/assets/logo.png", 10, 8, 40, 0, false, gofpdf.ImageOptions{ImageType: "PNG", ReadDpi: true}, 0, "")
+		pdf.Ln(18)
+	}
 	pdf.SetFont("Arial", "B", 16)
 	pdf.Cell(40, 10, "Obsidian WAF Attack Report")
 	pdf.Ln(12)

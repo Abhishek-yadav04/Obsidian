@@ -17,6 +17,13 @@ import (
 	"github.com/jung-kurt/gofpdf"
 )
 
+const (
+	headerContentType = "Content-Type"
+	mimeJSON = "application/json"
+	mimeText = "text/plain"
+	mimePDF = "application/pdf"
+)
+
 // =====================
 // Attack Log Structure
 // =====================
@@ -39,7 +46,7 @@ var (
 // Example Protected App
 // =====================
 func exampleHandler(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set(headerContentType, mimeText)
 	resBody := "Hello world, transaction not disrupted."
 
 	if body := os.Getenv("RESPONSE_BODY"); body != "" {
@@ -65,7 +72,7 @@ func main() {
 
 	// API to fetch logs
 	http.HandleFunc("/logs", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+			w.Header().Set(headerContentType, mimeJSON)
 		logMutex.Lock()
 		defer logMutex.Unlock()
 		if attackLogs == nil {
@@ -77,14 +84,16 @@ func main() {
 
 	// API to fetch stats for charts
 	http.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, mimeJSON)
 		sqli, body := 0, 0
 		logMutex.Lock()
 		for _, l := range attackLogs {
-			if l.Type == "SQLI" {
+			switch l.Type {
+			case "SQLI":
 				sqli++
-			} else if l.Type == "BODY" {
+			case "BODY":
 				body++
+			default:
 			}
 		}
 		logMutex.Unlock()
@@ -95,6 +104,11 @@ func main() {
 	http.HandleFunc("/export", func(w http.ResponseWriter, r *http.Request) {
 		pdf := gofpdf.New("P", "mm", "A4", "")
 		pdf.AddPage()
+		// If logo exists, include it in the PDF header
+		if _, err := os.Stat("ui/assets/logo.png"); err == nil {
+			pdf.ImageOptions("ui/assets/logo.png", 10, 8, 40, 0, false, gofpdf.ImageOptions{ImageType: "PNG", ReadDpi: true}, 0, "")
+			pdf.Ln(18)
+		}
 		pdf.SetFont("Arial", "B", 16)
 		pdf.Cell(40, 10, "Obsidian WAF Attack Report")
 		pdf.Ln(12)
@@ -105,7 +119,7 @@ func main() {
 			pdf.Ln(8)
 		}
 		logMutex.Unlock()
-		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set(headerContentType, mimePDF)
 		w.Header().Set("Content-Disposition", "attachment; filename=report.pdf")
 		err := pdf.Output(w)
 		if err != nil {

@@ -9,12 +9,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/corazawaf/coraza/v3/internal/corazawaf"
 	"github.com/corazawaf/coraza/v3/internal/environment"
-	"github.com/corazawaf/coraza/v3/internal/io"
+	iio "github.com/corazawaf/coraza/v3/internal/io"
 )
 
 // maxIncludeRecursion is used to avoid DDOS by including files that include
@@ -42,7 +43,9 @@ func (p *Parser) FromFile(profilePath string) error {
 	var files []string
 	if strings.Contains(profilePath, "*") {
 		var err error
-		files, err = fs.Glob(p.root, profilePath)
+		// fs.Glob expects posix-style paths (forward slashes)
+		pattern := filepath.ToSlash(profilePath)
+		files, err = fs.Glob(p.root, pattern)
 		if err != nil {
 			return fmt.Errorf("failed to glob: %s", err.Error())
 		}
@@ -56,12 +59,16 @@ func (p *Parser) FromFile(profilePath string) error {
 
 	for _, profilePath := range files {
 		profilePath = strings.TrimSpace(profilePath)
+		// Make paths posix-style for fs.ReadFile in case root is an embed.FS
 		if !strings.HasPrefix(profilePath, "/") {
 			profilePath = filepath.Join(p.currentDir, profilePath)
 		}
+		// normalize separators to forward slashes for fs.FS implementations that expect them
+		profilePath = filepath.ToSlash(profilePath)
 		p.currentFile = profilePath
 		lastDir := p.currentDir
-		p.currentDir = filepath.Dir(profilePath)
+		// use path.Dir which works with forward slashes
+		p.currentDir = path.Dir(profilePath)
 		file, err := fs.ReadFile(p.root, profilePath)
 		if err != nil {
 			// we don't use defer for this as tinygo does not seem to like it
@@ -222,7 +229,7 @@ func NewParser(waf *corazawaf.WAF) *Parser {
 			WAF:      waf,
 			Datasets: make(map[string][]string),
 		},
-		root: io.OSFS{},
+		root: iio.OSFS{},
 	}
 	return p
 }

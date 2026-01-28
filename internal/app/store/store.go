@@ -84,6 +84,8 @@ func (s *Store) IncrementSafeRequest() {
 func (s *Store) GetStats() model.Stats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	// Ensure active rules count is accurate
+	s.state.Stats.ActiveRulesCount = len(s.state.Rules)
 	return s.state.Stats
 }
 

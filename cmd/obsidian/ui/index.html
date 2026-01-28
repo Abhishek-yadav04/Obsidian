@@ -697,15 +697,19 @@
   // WebSocket for Real-time
   function connectWS() {
     const protocol = globalThis.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${globalThis.location.host}/ws?token=${token}`);
+    const ws = new WebSocket(`${protocol}//${globalThis.location.host}/api/ws?token=${token}`);
     
     ws.onmessage = (event) => {
-      const log = JSON.parse(event.data);
-      console.log("Real-time alert:", log);
-      // Trigger Notification
-      showToast('⚠️ Attack Blocked!', `${log.type} attempt from ${log.client_ip}`, true);
-      // Refresh Data
-      fetchData(); 
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'stats_update') {
+           // We could update charts directly or just trigger a fetch
+           fetchData();
+        } else if (msg.type === 'alert') {
+           showToast('⚠️ Attack Blocked!', msg.data.details || 'Security Event Detected', true);
+           fetchData();
+        }
+      } catch(e) { console.error(e); }
     };
     
     ws.onclose = () => {

@@ -2,11 +2,13 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/corazawaf/coraza/v3/experimental/plugins/plugintypes"
+	"github.com/corazawaf/coraza/v3/internal/app/auth"
 	"github.com/corazawaf/coraza/v3/internal/app/model"
 )
 
@@ -154,8 +156,113 @@ func defaultRules() []model.Rule {
 	return []model.Rule{
 		{ID: 941100, Description: "XSS Detection - Libinjection", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
 		{ID: 942100, Description: "SQL Injection - Logic", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
-		{ID: 933100, Description: "PHP Injection Attack", Severity: "HIGH", Enabled: true, Category: "RCE"},
+		{ID: 933100, Description: "PHP Injection Attack", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
 		{ID: 920350, Description: "Host Header Validation", Severity: "WARNING", Enabled: true, Category: "Protocol"},
-		{ID: 913100, Description: "Malicious User Agent", Severity: "LOW", Enabled: true, Category: "Reputation"},
+		{ID: 913100, Description: "Malicious User Agent", Severity: "NOTICE", Enabled: true, Category: "Reputation"},
 	}
+}
+
+// AuthenticateUser validates credentials and returns user if valid
+func (s *Store) AuthenticateUser(username, password string) (*model.User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// In-memory user storage for demo (will use DB in production)
+	// Default admin user - password is "password"
+	defaultAdmin := model.User{
+		ID:           1,
+		Username:     "admin",
+		PasswordHash: "", // Not used in demo mode
+		Email:        "admin@obsidian.local",
+		Role:         "Admin",
+		Enabled:      true,
+		CreatedAt:    time.Now(),
+	}
+
+	// Demo mode: Simple string comparison (use bcrypt in production)
+	if username != "admin" || password != "password" {
+		return nil, auth.ErrInvalidCredentials
+	}
+
+	if !defaultAdmin.Enabled {
+		return nil, fmt.Errorf("user account is disabled")
+	}
+
+	return &defaultAdmin, nil
+}
+
+// CreateSession stores a new session
+func (s *Store) CreateSession(session model.Session) error {
+	// Store in state (will use DB in production)
+	return nil
+}
+
+// AddAuditLog records an audit trail entry
+func (s *Store) AddAuditLog(log model.AuditLog) error {
+	// Will use DB in production
+	return nil
+}
+
+// CreateRule adds a new WAF rule
+func (s *Store) CreateRule(rule model.Rule) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check for duplicate ID
+	for _, r := range s.state.Rules {
+		if r.ID == rule.ID {
+			return fmt.Errorf("rule with ID %d already exists", rule.ID)
+		}
+	}
+
+	s.state.Rules = append(s.state.Rules, rule)
+	s.state.Stats.ActiveRulesCount = len(s.state.Rules)
+
+	// Persist to file
+	go s.saveNoLock()
+	return nil
+}
+
+// UpdateRule modifies an existing WAF rule
+func (s *Store) UpdateRule(rule model.Rule) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i, r := range s.state.Rules {
+		if r.ID == rule.ID {
+			s.state.Rules[i] = rule
+			go s.saveNoLock()
+			return nil
+		}
+	}
+
+	return fmt.Errorf("rule with ID %d not found", rule.ID)
+}
+
+// DeleteRule removes a WAF rule
+func (s *Store) DeleteRule(id int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i, r := range s.state.Rules {
+		if r.ID == id {
+			s.state.Rules = append(s.state.Rules[:i], s.state.Rules[i+1:]...)
+			s.state.Stats.ActiveRulesCount = len(s.state.Rules)
+			go s.saveNoLock()
+			return nil
+		}
+	}
+
+	return fmt.Errorf("rule with ID %d not found", id)
+}
+
+// saveNoLock saves state without acquiring lock (caller must hold lock)
+func (s *Store) saveNoLock() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	data, err := json.MarshalIndent(s.state, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.filePath, data, 0644)
 }

@@ -1,12 +1,18 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
+	"runtime"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/corazawaf/coraza/v3"
@@ -15,6 +21,25 @@ import (
 	"github.com/corazawaf/coraza/v3/internal/app/waf"
 	"github.com/corazawaf/coraza/v3/types"
 )
+
+// Metrics for observability
+var (
+	totalRequests   int64
+	blockedRequests int64
+	startTime       = time.Now()
+)
+
+// UserClaims for JWT authentication context
+type UserClaims struct {
+	UserID   int    `json:"user_id"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+	Exp      int64  `json:"exp"`
+}
+
+type contextKey string
+
+const userContextKey contextKey = "user"
 
 //go:embed ui/*
 var uiAssets embed.FS
@@ -42,20 +67,23 @@ func main() {
 	// Router
 	mux := http.NewServeMux()
 
-	// API Routes
+	// API Routes - Public (no auth required)
 	mux.HandleFunc("/api/login", apiHandler.HandleLogin)
-	mux.HandleFunc("/api/stats", apiHandler.HandleStats)
-	mux.HandleFunc("/api/logs", apiHandler.HandleLogs)
-	mux.HandleFunc("/api/rules", apiHandler.HandleRules)
+	mux.HandleFunc("/api/health", handleHealth)
+
+	// API Routes - Protected (auth required)
+	mux.HandleFunc("/api/stats", authMiddleware(apiHandler.HandleStats))
+	mux.HandleFunc("/api/logs", authMiddleware(apiHandler.HandleLogs))
+	mux.HandleFunc("/api/rules", authMiddleware(apiHandler.HandleRules))
+	mux.HandleFunc("/api/rules/create", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleCreateRule)))
+	mux.HandleFunc("/api/rules/update", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleUpdateRule)))
+	mux.HandleFunc("/api/rules/delete", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleDeleteRule)))
+	mux.HandleFunc("/api/rules/test", authMiddleware(apiHandler.HandleTestRule))
 	mux.HandleFunc("/api/ws", apiHandler.HandleWS)
-	mux.HandleFunc("/api/export", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/pdf")
-		w.Write([]byte("%PDF-1.4... (Mock PDF)"))
-	})
-	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
+	mux.HandleFunc("/api/export", authMiddleware(handleExport(s)))
+	mux.HandleFunc("/api/metrics", authMiddleware(handleMetrics))
+	mux.HandleFunc("/api/admin/users", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleUsers)))
+	mux.HandleFunc("/api/admin/audit", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleAuditLogs)))
 
 	// Static Files (UI)
 	// We need to strip "ui" prefix because embed root is "ui"
@@ -153,10 +181,164 @@ func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		atomic.AddInt64(&totalRequests, 1)
 		next.ServeHTTP(w, r)
 		// Access Log
 		fmt.Printf("[%s] %s %s %v\n", time.Now().Format(time.RFC3339), r.Method, r.URL.Path, time.Since(start))
 	})
+}
+
+// authMiddleware validates JWT tokens
+func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			authHeader = "Bearer " + r.URL.Query().Get("token")
+		}
+
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		claims, err := parseJWT(tokenString)
+		if err != nil {
+			http.Error(w, `{"error": "Invalid token"}`, http.StatusUnauthorized)
+			return
+		}
+
+		if claims.Exp < time.Now().Unix() {
+			http.Error(w, `{"error": "Token expired"}`, http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), userContextKey, claims)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
+// rbacMiddleware checks user role permissions
+func rbacMiddleware(requiredRole string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := r.Context().Value(userContextKey).(*UserClaims)
+		if !ok {
+			http.Error(w, `{"error": "Forbidden"}`, http.StatusForbidden)
+			return
+		}
+
+		// Role hierarchy: Admin > Analyst > Viewer
+		allowed := false
+		switch requiredRole {
+		case "Viewer":
+			allowed = true
+		case "Analyst":
+			allowed = claims.Role == "Admin" || claims.Role == "Analyst"
+		case "Admin":
+			allowed = claims.Role == "Admin"
+		}
+
+		if !allowed {
+			http.Error(w, `{"error": "Insufficient permissions"}`, http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	}
+}
+
+// parseJWT extracts claims from JWT token
+func parseJWT(tokenString string) (*UserClaims, error) {
+	parts := strings.Split(tokenString, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid token format")
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, err
+	}
+
+	var claims UserClaims
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, err
+	}
+
+	return &claims, nil
+}
+
+// handleHealth returns system health status
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "healthy",
+		"uptime":  time.Since(startTime).String(),
+		"version": "1.0.0",
+	})
+}
+
+// handleMetrics returns Prometheus-style metrics
+func handleMetrics(w http.ResponseWriter, r *http.Request) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"total_requests":   atomic.LoadInt64(&totalRequests),
+		"blocked_requests": atomic.LoadInt64(&blockedRequests),
+		"uptime_seconds":   int64(time.Since(startTime).Seconds()),
+		"memory_alloc_mb":  m.Alloc / 1024 / 1024,
+		"memory_sys_mb":    m.Sys / 1024 / 1024,
+		"goroutines":       runtime.NumGoroutine(),
+	})
+}
+
+// handleExport generates PDF report
+func handleExport(s *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		stats := s.GetStats()
+		logs := s.GetLogs()
+
+		// Generate simple text report (PDF library would be used in production)
+		report := fmt.Sprintf(`OBSIDIAN SENTINEL WAF - SECURITY REPORT
+========================================
+Generated: %s
+
+STATISTICS
+----------
+Total Requests: %d
+Blocked Requests: %d
+Flagged Requests: %d
+Safe Requests: %d
+Active Rules: %d
+
+RECENT SECURITY EVENTS
+----------------------
+`,
+			time.Now().Format(time.RFC3339),
+			stats.TotalRequests,
+			stats.BlockedRequests,
+			stats.FlaggedRequests,
+			stats.SafeRequests,
+			stats.ActiveRulesCount,
+		)
+
+		for i, log := range logs {
+			if i >= 20 {
+				break
+			}
+			report += fmt.Sprintf("[%s] Rule %d: %s - %s\n",
+				log.Timestamp.Format(time.RFC3339),
+				log.RuleID,
+				log.Action,
+				log.Details,
+			)
+		}
+
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Disposition", "attachment; filename=obsidian-report.txt")
+		w.Write([]byte(report))
+	}
 }
 
 // Helper for response interception (simplified)

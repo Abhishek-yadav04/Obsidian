@@ -216,6 +216,11 @@
           <i class="fas fa-gavel"></i> Rules Management
         </button>
       </li>
+      <li class="nav-item admin-only">
+        <button type="button" class="nav-link" data-view="admin" onclick="loadView('admin')">
+          <i class="fas fa-cog"></i> Admin Panel
+        </button>
+      </li>
       <li class="nav-item">
         <button type="button" class="nav-link text-success" id="downloadReport">
           <i class="fas fa-file-pdf"></i> Download Report
@@ -370,7 +375,7 @@
       <div class="card bg-dark border-secondary">
         <div class="card-header border-secondary bg-transparent d-flex justify-content-between">
           <h5 class="mb-0">Active WAF Rules</h5>
-          <button class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> Add Custom Rule</button>
+          <button class="btn btn-sm btn-primary" id="addRuleBtn" onclick="openRuleModal()"><i class="fas fa-plus"></i> Add Custom Rule</button>
         </div>
         <div class="card-body">
             <div class="alert alert-info border-secondary bg-dark text-muted">
@@ -381,20 +386,123 @@
                     <tr>
                         <th>ID</th>
                         <th>Description</th>
-                        <th>Phase</th>
+                        <th>Severity</th>
+                        <th>Category</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="rules-tbody">
-                    <!-- Populated via API -->
-                    <tr><td colspan="5" class="text-center text-muted">Loading rules...</td></tr>
+                    <tr><td colspan="6" class="text-center text-muted">Loading rules...</td></tr>
                 </tbody>
             </table>
         </div>
       </div>
     </div>
+
+    <!-- Admin Panel View -->
+    <div id="view-admin" class="view-section d-none">
+      <div class="row g-4">
+        <div class="col-md-6">
+          <div class="card bg-dark border-secondary">
+            <div class="card-header border-secondary bg-transparent">
+              <h5 class="mb-0"><i class="fas fa-users me-2"></i>User Management</h5>
+            </div>
+            <div class="card-body">
+              <table class="table table-dark table-sm">
+                <thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="users-tbody">
+                  <tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card bg-dark border-secondary">
+            <div class="card-header border-secondary bg-transparent">
+              <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>Audit Trail</h5>
+            </div>
+            <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+              <ul class="list-group list-group-flush bg-transparent" id="audit-list">
+                <li class="list-group-item bg-transparent text-muted">Loading...</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="row g-4 mt-2">
+        <div class="col-12">
+          <div class="card bg-dark border-secondary">
+            <div class="card-header border-secondary bg-transparent">
+              <h5 class="mb-0"><i class="fas fa-tachometer-alt me-2"></i>System Metrics</h5>
+            </div>
+            <div class="card-body">
+              <div class="row text-center" id="metrics-panel">
+                <div class="col-md-3"><div class="stat-card"><div class="stat-title">Memory Usage</div><div class="stat-value text-info" id="metric-memory">-</div></div></div>
+                <div class="col-md-3"><div class="stat-card"><div class="stat-title">Goroutines</div><div class="stat-value text-success" id="metric-goroutines">-</div></div></div>
+                <div class="col-md-3"><div class="stat-card"><div class="stat-title">Requests/sec</div><div class="stat-value text-warning" id="metric-rps">-</div></div></div>
+                <div class="col-md-3"><div class="stat-card"><div class="stat-title">Uptime</div><div class="stat-value text-primary" id="metric-uptime">-</div></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
+</div>
+
+<!-- Rule Modal -->
+<div class="modal fade" id="ruleModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content bg-dark text-light">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title" id="ruleModalTitle">Add New Rule</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="ruleForm">
+          <input type="hidden" id="ruleEditId">
+          <div class="mb-3">
+            <label class="form-label">Rule ID</label>
+            <input type="number" class="form-control bg-dark text-light border-secondary" id="ruleId" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <input type="text" class="form-control bg-dark text-light border-secondary" id="ruleDesc" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Category</label>
+            <select class="form-select bg-dark text-light border-secondary" id="ruleCategory">
+              <option value="XSS">XSS</option>
+              <option value="SQLi">SQL Injection</option>
+              <option value="RCE">Remote Code Execution</option>
+              <option value="LFI">Local File Inclusion</option>
+              <option value="Protocol">Protocol Violation</option>
+              <option value="Reputation">Reputation</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Severity</label>
+            <select class="form-select bg-dark text-light border-secondary" id="ruleSeverity">
+              <option value="CRITICAL">Critical</option>
+              <option value="HIGH">High</option>
+              <option value="WARNING">Warning</option>
+              <option value="NOTICE">Notice</option>
+            </select>
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="ruleEnabled" checked>
+            <label class="form-check-label" for="ruleEnabled">Enabled</label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveRule()">Save Rule</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -403,19 +511,24 @@
   // 1. Initial Setup
   const token = localStorage.getItem('obsidian_token');
   const userStr = localStorage.getItem('obsidian_user');
+  let currentUser = null;
   
   if (!token) {
     globalThis.location.href = '/login.html';
   }
   
   if (userStr) {
-      const user = JSON.parse(userStr);
-      // Wait for DOM to load if elements aren't found immediately
+      currentUser = JSON.parse(userStr);
       window.addEventListener('DOMContentLoaded', () => {
         const nameEl = document.getElementById('user-name');
         const roleEl = document.getElementById('user-role');
-        if(nameEl) nameEl.innerText = user.name || 'Admin';
-        if(roleEl) roleEl.innerText = 'Security Officer';
+        if(nameEl) nameEl.innerText = currentUser.name || 'Admin';
+        if(roleEl) roleEl.innerText = currentUser.role || 'Security Officer';
+        
+        // Show/hide admin features based on role
+        if (currentUser.role !== 'Admin') {
+          document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+        }
       });
   }
 
@@ -453,11 +566,113 @@
         </div>`;
       
       container.innerHTML += html;
-      // Auto remove after 3s
       setTimeout(() => {
           const el = document.getElementById(id);
           if(el) el.remove();
       }, 5000);
+  }
+
+  // 5. Rule CRUD Operations
+  let ruleModal;
+  document.addEventListener('DOMContentLoaded', () => {
+    ruleModal = new bootstrap.Modal(document.getElementById('ruleModal'));
+  });
+
+  function openRuleModal(ruleId = null) {
+    document.getElementById('ruleModalTitle').innerText = ruleId ? 'Edit Rule' : 'Add New Rule';
+    document.getElementById('ruleEditId').value = ruleId || '';
+    document.getElementById('ruleId').value = '';
+    document.getElementById('ruleDesc').value = '';
+    document.getElementById('ruleCategory').value = 'XSS';
+    document.getElementById('ruleSeverity').value = 'CRITICAL';
+    document.getElementById('ruleEnabled').checked = true;
+    
+    if (ruleId) {
+      document.getElementById('ruleId').disabled = true;
+      // Load existing rule data
+      loadRuleForEdit(ruleId);
+    } else {
+      document.getElementById('ruleId').disabled = false;
+    }
+    ruleModal.show();
+  }
+
+  async function loadRuleForEdit(ruleId) {
+    const headers = { 'Authorization': 'Bearer ' + token };
+    try {
+      const res = await fetch('/api/rules', { headers });
+      const rules = await res.json();
+      const rule = rules.find(r => r.id === ruleId);
+      if (rule) {
+        document.getElementById('ruleId').value = rule.id;
+        document.getElementById('ruleDesc').value = rule.description;
+        document.getElementById('ruleCategory').value = rule.category || 'XSS';
+        document.getElementById('ruleSeverity').value = rule.severity || 'CRITICAL';
+        document.getElementById('ruleEnabled').checked = rule.enabled !== false;
+      }
+    } catch(e) { console.error(e); }
+  }
+
+  async function saveRule() {
+    const editId = document.getElementById('ruleEditId').value;
+    const rule = {
+      id: parseInt(document.getElementById('ruleId').value),
+      description: document.getElementById('ruleDesc').value,
+      category: document.getElementById('ruleCategory').value,
+      severity: document.getElementById('ruleSeverity').value,
+      enabled: document.getElementById('ruleEnabled').checked
+    };
+
+    const headers = { 
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json'
+    };
+
+    try {
+      let res;
+      if (editId) {
+        res = await fetch('/api/rules/update', { method: 'PUT', headers, body: JSON.stringify(rule) });
+      } else {
+        res = await fetch('/api/rules/create', { method: 'POST', headers, body: JSON.stringify(rule) });
+      }
+      
+      const data = await res.json();
+      if (data.success) {
+        showToast('Success', editId ? 'Rule updated' : 'Rule created');
+        ruleModal.hide();
+        fetchRules();
+      } else {
+        showToast('Error', data.message || 'Failed to save rule', true);
+      }
+    } catch(e) {
+      showToast('Error', 'Network error', true);
+    }
+  }
+
+  async function deleteRule(ruleId) {
+    if (!confirm('Delete rule ' + ruleId + '?')) return;
+    
+    const headers = { 
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json'
+    };
+
+    try {
+      const res = await fetch('/api/rules/delete', { 
+        method: 'DELETE', 
+        headers, 
+        body: JSON.stringify({ id: ruleId }) 
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Success', 'Rule deleted');
+        fetchRules();
+      } else {
+        showToast('Error', data.message || 'Failed to delete', true);
+      }
+    } catch(e) {
+      showToast('Error', 'Network error', true);
+    }
   }
 
   async function fetchRules() {
@@ -469,17 +684,80 @@
         if (tbody) {
             tbody.innerHTML = '';
             rules.forEach(rule => {
+                const sevClass = rule.severity === 'CRITICAL' ? 'badge-sev-critical' : 
+                                 rule.severity === 'HIGH' ? 'badge-sev-high' : 'badge-sev-medium';
+                const statusBadge = rule.enabled !== false ? 
+                  '<span class="badge bg-success">Active</span>' : 
+                  '<span class="badge bg-secondary">Disabled</span>';
+                
                 tbody.innerHTML += `
                 <tr>
                     <td class="font-monospace">${rule.id}</td>
                     <td>${rule.description}</td>
-                    <td>${rule.phase}</td>
-                    <td><span class="badge bg-success">${rule.status}</span></td>
-                    <td><button class="btn btn-sm btn-outline-light" onclick="showToast('Info', 'Rule editing is read-only in Demo Mode')"><i class="fas fa-edit"></i></button></td>
+                    <td><span class="badge ${sevClass}">${rule.severity || 'NOTICE'}</span></td>
+                    <td>${rule.category || 'General'}</td>
+                    <td>${statusBadge}</td>
+                    <td>
+                      <button class="btn btn-sm btn-outline-info me-1" onclick="openRuleModal(${rule.id})"><i class="fas fa-edit"></i></button>
+                      <button class="btn btn-sm btn-outline-danger" onclick="deleteRule(${rule.id})"><i class="fas fa-trash"></i></button>
+                    </td>
                 </tr>`;
             });
         }
     } catch(e) { console.error("Rules fetch error", e); }
+  }
+
+  // 6. Admin Panel Functions
+  async function fetchAdminData() {
+    const headers = { 'Authorization': 'Bearer ' + token };
+    
+    // Fetch Users
+    try {
+      const res = await fetch('/api/admin/users', { headers });
+      if (res.ok) {
+        const users = await res.json();
+        const tbody = document.getElementById('users-tbody');
+        tbody.innerHTML = '';
+        users.forEach(u => {
+          tbody.innerHTML += `
+            <tr>
+              <td>${u.username}</td>
+              <td><span class="badge bg-info">${u.role}</span></td>
+              <td>${u.enabled ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-danger">Disabled</span>'}</td>
+              <td><button class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></button></td>
+            </tr>`;
+        });
+      }
+    } catch(e) { console.error(e); }
+
+    // Fetch Audit Logs
+    try {
+      const res = await fetch('/api/admin/audit', { headers });
+      if (res.ok) {
+        const logs = await res.json();
+        const list = document.getElementById('audit-list');
+        list.innerHTML = '';
+        logs.forEach(log => {
+          list.innerHTML += `
+            <li class="list-group-item bg-transparent border-secondary text-light">
+              <small class="text-muted">${log.timestamp}</small><br>
+              <strong>${log.action}</strong> on ${log.resource}
+            </li>`;
+        });
+      }
+    } catch(e) { console.error(e); }
+
+    // Fetch Metrics
+    try {
+      const res = await fetch('/api/metrics', { headers });
+      if (res.ok) {
+        const m = await res.json();
+        document.getElementById('metric-memory').innerText = m.memory_mb ? m.memory_mb.toFixed(1) + ' MB' : '-';
+        document.getElementById('metric-goroutines').innerText = m.goroutines || '-';
+        document.getElementById('metric-rps').innerText = m.requests_total || '0';
+        document.getElementById('metric-uptime').innerText = m.uptime || '-';
+      }
+    } catch(e) { console.error(e); }
   }
 
   // Health Check Polling
@@ -629,50 +907,32 @@
     }
 
     // 2. Update Page Title
-    const titles = { dashboard: 'Security Dashboard', logs: 'Attack Logs', rules: 'Rules Management' };
+    const titles = { 
+      dashboard: 'Security Dashboard', 
+      logs: 'Attack Logs', 
+      rules: 'Rules Management',
+      admin: 'Admin Panel' 
+    };
     document.getElementById('pageTitle').innerText = titles[view] || 'Security Dashboard';
 
     // 3. Toggle Visibility
-    // Hide all sections first
     document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none'));
-    // Show target section
     const target = document.getElementById('view-' + view);
     if (target) {
         target.classList.remove('d-none');
     }
     
-    // 4. Trigger specific data loads if needed
+    // 4. Trigger specific data loads
     if (view === 'logs') {
         fetchLogs();
     } else if (view === 'rules') {
         fetchRules();
+    } else if (view === 'admin') {
+        fetchAdminData();
     }
   }
 
-  async function fetchRules() {
-    const headers = { 'Authorization': 'Bearer ' + token };
-    try {
-        const res = await fetch('/api/rules', { headers });
-        const rules = await res.json();
-        const tbody = document.querySelector('#view-rules tbody');
-        if (tbody) {
-            tbody.innerHTML = '';
-            rules.forEach(rule => {
-                tbody.innerHTML += `
-                <tr>
-                    <td class="font-monospace">${rule.id}</td>
-                    <td>${rule.description}</td>
-                    <td>${rule.phase}</td>
-                    <td><span class="badge bg-success">${rule.status}</span></td>
-                    <td><button class="btn btn-sm btn-outline-light"><i class="fas fa-edit"></i></button></td>
-                </tr>`;
-            });
-        }
-    } catch(e) { console.error("Rules fetch error", e); }
-  }
-
   async function fetchLogs() {
-    // Fill the full logs table
     const headers = { 'Authorization': 'Bearer ' + token };
     try {
         const logsRes = await fetch('/api/logs', { headers });
@@ -683,13 +943,13 @@
             logs.forEach(log => {
                 logsTable.innerHTML += `
                 <tr>
-                    <td class="text-secondary font-monospace small">${new Date(log.time).toLocaleString()}</td>
+                    <td class="text-secondary font-monospace small">${new Date(log.timestamp).toLocaleString()}</td>
                     <td>${log.client_ip || '127.0.0.1'}</td>
-                    <td><span class="badge bg-secondary">${log.method}</span></td>
-                    <td class="font-monospace small text-muted">${log.path}</td>
+                    <td><span class="badge bg-secondary">${log.method || 'GET'}</span></td>
+                    <td class="font-monospace small text-muted">${log.uri || '/'}</td>
                     <td>${log.rule_id}</td>
-                    <td><span class="text-danger">${log.type || 'Generic'}</span></td>
-                    <td><span class="badge bg-danger">Blocked</span></td>
+                    <td><span class="text-danger">${log.details || 'Generic'}</span></td>
+                    <td><span class="badge bg-danger">${log.action}</span></td>
                 </tr>`;
             });
         }

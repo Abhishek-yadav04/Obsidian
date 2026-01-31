@@ -77,6 +77,7 @@
       <div class="mb-3">
         <label for="password" class="form-label">Password</label>
         <input type="password" class="form-control" id="password" value="password" required>
+        <small class="text-muted">Default: admin / password</small>
       </div>
       <button type="submit" class="btn btn-primary">Sign In</button>
       <div class="mt-3 text-center text-danger" id="errorMsg" style="display:none"></div>
@@ -86,6 +87,15 @@
   <script>
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      
+      const errorMsg = document.getElementById('errorMsg');
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      
+      // Show loading state
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Signing in...';
+      errorMsg.style.display = 'none';
+      
       const username = document.getElementById('username').value;
       const password = document.getElementById('password').value;
 
@@ -96,17 +106,35 @@
           body: JSON.stringify({ username, password })
         });
 
+        const data = await res.json();
+        
         if (res.ok) {
-          const data = await res.json();
+          // Store authentication data
           localStorage.setItem('obsidian_token', data.token);
-          localStorage.setItem('obsidian_user', JSON.stringify(data.user)); // Save User Info
-          globalThis.location.href = '/';
+          localStorage.setItem('obsidian_refresh_token', data.refresh_token);
+          localStorage.setItem('obsidian_user', JSON.stringify(data.user));
+          
+          // Success feedback
+          submitBtn.innerText = '✓ Success!';
+          submitBtn.classList.add('btn-success');
+          
+          // Redirect after brief delay
+          setTimeout(() => {
+            globalThis.location.href = '/';
+          }, 500);
         } else {
-          document.getElementById('errorMsg').innerText = 'Invalid credentials';
-          document.getElementById('errorMsg').style.display = 'block';
+          // Show error message
+          errorMsg.innerText = data.error || 'Invalid credentials. Try: admin / Admin@123';
+          errorMsg.style.display = 'block';
+          submitBtn.disabled = false;
+          submitBtn.innerText = 'Sign In';
         }
       } catch (err) {
-        console.error(err);
+        console.error('Login error:', err);
+        errorMsg.innerText = 'Network error. Please check the server is running.';
+        errorMsg.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Sign In';
       }
     });
   </script>

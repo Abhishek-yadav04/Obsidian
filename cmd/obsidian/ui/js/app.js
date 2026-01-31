@@ -170,28 +170,49 @@ const ObsidianApp = {
             this.renderRecentLogs(logs.slice(-10).reverse());
         } else {
             const tbody = document.getElementById('logs-table');
-            if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No security events recorded yet. Try triggering WAF rules.</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No requests logged yet. Navigate around to see logs.</td></tr>';
         }
     },
 
-    // Render recent logs
+    // Render recent logs with status classification
     renderRecentLogs(logs) {
         const tbody = document.getElementById('logs-table');
         if (!tbody) return;
 
         tbody.innerHTML = logs.map(log => {
             const date = new Date(log.timestamp).toLocaleTimeString();
-            let sevClass = 'badge-sev-medium';
-            if (log.details?.includes('CRITICAL')) sevClass = 'badge-sev-critical';
-            else if (log.details?.includes('HIGH')) sevClass = 'badge-sev-high';
+            
+            // Status badge based on log status
+            let statusBadge = '';
+            switch (log.status) {
+                case 'Blocked':
+                    statusBadge = '<span class="badge bg-danger">Blocked</span>';
+                    break;
+                case 'ThreatBlocked':
+                    statusBadge = '<span class="badge bg-danger"><i class="fas fa-skull-crossbones me-1"></i>Threat</span>';
+                    break;
+                case 'Flagged':
+                    statusBadge = '<span class="badge bg-warning text-dark">Flagged</span>';
+                    break;
+                case 'Safe':
+                default:
+                    statusBadge = '<span class="badge bg-success">Safe</span>';
+                    break;
+            }
+
+            // Action badge
+            const actionBadge = log.action === 'Pass' 
+                ? '<span class="badge bg-dark border border-success text-success">Pass</span>'
+                : `<span class="badge bg-dark border border-danger text-danger">${log.action || 'Unknown'}</span>`;
 
             return `
-                <tr>
+                <tr class="${log.status === 'Blocked' || log.status === 'ThreatBlocked' ? 'table-danger' : log.status === 'Flagged' ? 'table-warning' : ''}">
                     <td class="text-secondary font-monospace small">${date}</td>
-                    <td><span class="badge bg-dark border border-secondary text-info">${log.action || 'Log'}</span></td>
-                    <td>${log.rule_id || '-'}</td>
-                    <td><span class="badge ${sevClass}">Alert</span></td>
-                    <td class="text-white-50 small">${(log.details || '').substring(0, 50)}...</td>
+                    <td>${statusBadge}</td>
+                    <td>${actionBadge}</td>
+                    <td class="font-monospace small">${log.rule_id || '-'}</td>
+                    <td><code class="text-info">${log.method || 'GET'} ${(log.uri || '/').substring(0, 30)}${(log.uri || '').length > 30 ? '...' : ''}</code></td>
+                    <td class="text-white-50 small">${(log.details || '').substring(0, 40)}${(log.details || '').length > 40 ? '...' : ''}</td>
                 </tr>
             `;
         }).join('');
@@ -267,17 +288,71 @@ const ObsidianApp = {
         const tbody = document.getElementById('full-logs-table');
         if (!tbody || !logs) return;
 
-        tbody.innerHTML = logs.map(log => `
-            <tr>
-                <td class="text-secondary font-monospace small">${new Date(log.timestamp).toLocaleString()}</td>
-                <td>${log.client_ip || '127.0.0.1'}</td>
-                <td><span class="badge bg-secondary">${log.method || 'GET'}</span></td>
-                <td class="font-monospace small text-muted">${log.uri || '/'}</td>
-                <td>${log.rule_id || '-'}</td>
-                <td><span class="text-danger">${log.details || 'Generic'}</span></td>
-                <td><span class="badge bg-danger">${log.action || 'Blocked'}</span></td>
-            </tr>
-        `).join('');
+        if (logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No logs recorded yet. Navigate around to generate logs.</td></tr>';
+            return;
+        }
+
+        // Reverse to show newest first
+        const sortedLogs = [...logs].reverse();
+
+        tbody.innerHTML = sortedLogs.map(log => {
+            // Status badge
+            let statusBadge = '';
+            let rowClass = '';
+            switch (log.status) {
+                case 'Blocked':
+                    statusBadge = '<span class="badge bg-danger">Blocked</span>';
+                    rowClass = 'table-danger';
+                    break;
+                case 'ThreatBlocked':
+                    statusBadge = '<span class="badge bg-danger"><i class="fas fa-skull me-1"></i>Threat</span>';
+                    rowClass = 'table-danger';
+                    break;
+                case 'Flagged':
+                    statusBadge = '<span class="badge bg-warning text-dark">Flagged</span>';
+                    rowClass = 'table-warning';
+                    break;
+                case 'Safe':
+                default:
+                    statusBadge = '<span class="badge bg-success">Safe</span>';
+                    break;
+            }
+
+            // Action badge
+            const actionBadge = log.action === 'Pass' 
+                ? '<span class="badge bg-success">Pass</span>'
+                : `<span class="badge bg-danger">${log.action || 'Unknown'}</span>`;
+
+            // Method badge color
+            const methodColors = {
+                'GET': 'bg-info',
+                'POST': 'bg-warning text-dark',
+                'PUT': 'bg-primary',
+                'DELETE': 'bg-danger',
+                'PATCH': 'bg-secondary'
+            };
+            const methodClass = methodColors[log.method] || 'bg-secondary';
+
+            return `
+                <tr class="${rowClass}">
+                    <td class="text-secondary font-monospace small">${new Date(log.timestamp).toLocaleString()}</td>
+                    <td>${statusBadge}</td>
+                    <td>${log.client_ip || '127.0.0.1'}</td>
+                    <td><span class="badge ${methodClass}">${log.method || 'GET'}</span></td>
+                    <td class="font-monospace small"><code>${log.uri || '/'}</code></td>
+                    <td>${log.rule_id || '-'}</td>
+                    <td class="small text-muted">${(log.details || '').substring(0, 50)}${(log.details || '').length > 50 ? '...' : ''}</td>
+                    <td>${actionBadge}</td>
+                </tr>
+            `;
+        }).join('');
+
+        // Update pagination text
+        const paginationText = document.querySelector('.card-footer .text-muted');
+        if (paginationText) {
+            paginationText.textContent = `Showing ${Math.min(sortedLogs.length, 50)} of ${sortedLogs.length} entries`;
+        }
     },
 
     // Fetch rules
@@ -505,8 +580,28 @@ const ObsidianApp = {
         });
 
         // Mobile toggle
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.querySelector('.overlay');
+        
         document.querySelector('.mobile-toggle')?.addEventListener('click', () => {
-            document.getElementById('sidebar').classList.toggle('active');
+            sidebar?.classList.toggle('active');
+            overlay?.classList.toggle('active');
+        });
+
+        // Close sidebar when clicking overlay
+        overlay?.addEventListener('click', () => {
+            sidebar?.classList.remove('active');
+            overlay?.classList.remove('active');
+        });
+
+        // Close sidebar when clicking a nav link on mobile
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth <= 992) {
+                    sidebar?.classList.remove('active');
+                    overlay?.classList.remove('active');
+                }
+            });
         });
     },
 

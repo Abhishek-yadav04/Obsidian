@@ -197,10 +197,72 @@ body {
 .table-dark td {
     border-color: var(--border-color);
     vertical-align: middle;
+    color: var(--text-main);
 }
 
 .table-dark tbody tr:hover {
     background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Table row status colors - DARK THEME COMPATIBLE */
+.table-dark .table-danger,
+.table-dark tr.table-danger,
+.table-dark tr.table-danger td,
+.table-dark tr.table-danger td * {
+    background-color: rgba(220, 53, 69, 0.3) !important;
+    color: #ffb3b3 !important;
+    border-color: rgba(220, 53, 69, 0.5) !important;
+}
+
+.table-dark tr.table-danger td code {
+    color: #ffc9c9 !important;
+    background-color: rgba(0, 0, 0, 0.4) !important;
+}
+
+.table-dark tr.table-danger .badge {
+    color: inherit !important;
+}
+
+.table-dark .table-warning,
+.table-dark tr.table-warning,
+.table-dark tr.table-warning td,
+.table-dark tr.table-warning td * {
+    background-color: rgba(255, 193, 7, 0.25) !important;
+    color: #fff3cd !important;
+    border-color: rgba(255, 193, 7, 0.5) !important;
+}
+
+.table-dark tr.table-warning td code {
+    color: #ffe69c !important;
+    background-color: rgba(0, 0, 0, 0.4) !important;
+}
+
+.table-dark .table-success,
+.table-dark tr.table-success,
+.table-dark tr.table-success td {
+    background-color: rgba(16, 185, 129, 0.15) !important;
+    color: #6ee7b7 !important;
+    border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+/* Ensure all text in danger rows is visible */
+.table-danger .text-secondary,
+.table-danger .text-muted,
+.table-danger .font-monospace,
+.table-danger .small,
+tr.table-danger .text-secondary,
+tr.table-danger .text-muted,
+tr.table-danger .font-monospace,
+tr.table-danger .small {
+    color: #ffcccc !important;
+}
+
+/* Ensure code elements in tables are visible */
+.table-dark td code {
+    color: #7dd3fc !important;
+    background-color: rgba(0, 0, 0, 0.3) !important;
+    padding: 2px 6px;
+    border-radius: 3px;
 }
 
 /* ============================================
@@ -306,6 +368,7 @@ body {
     z-index: 999;
 }
 
+/* Tablet and below */
 @media (max-width: 992px) {
     .sidebar {
         transform: translateX(-100%);
@@ -318,16 +381,17 @@ body {
         transform: translateX(0);
     }
 
-    .main-content {
-        margin-left: 0;
-        width: 100%;
-    }
-
-    .mobile-toggle {
+    .overlay.active {
         display: block;
     }
 
-    .sidebar.active + .overlay {
+    .main-content {
+        margin-left: 0;
+        width: 100%;
+        padding: 15px;
+    }
+
+    .mobile-toggle {
         display: block;
     }
 
@@ -338,23 +402,114 @@ body {
     .header {
         flex-direction: column;
         align-items: flex-start;
+        padding-right: 50px; /* Space for mobile toggle */
+    }
+
+    /* Cards stack on mobile */
+    .row.g-4 > [class*="col-lg-"] {
+        margin-bottom: 1rem;
+    }
+
+    /* Chart containers */
+    .chart-container {
+        height: 200px;
     }
 }
 
+/* Mobile phones */
 @media (max-width: 576px) {
     .main-content {
-        padding: 15px;
+        padding: 10px;
+    }
+
+    .header {
+        padding: 10px 0;
+    }
+
+    .header h2 {
+        font-size: 1.25rem;
     }
 
     .stat-card {
-        padding: 1rem;
+        padding: 0.75rem;
     }
 
     .stat-value {
-        font-size: 1.5rem;
+        font-size: 1.25rem;
     }
 
+    .stat-title {
+        font-size: 0.75rem;
+    }
+
+    /* Table responsive improvements */
     .table-responsive {
+        font-size: 0.75rem;
+    }
+
+    .table-dark th,
+    .table-dark td {
+        padding: 0.5rem 0.25rem;
+        white-space: nowrap;
+    }
+
+    /* Hide less important columns on mobile */
+    .table-responsive .hide-mobile {
+        display: none;
+    }
+
+    /* Badges smaller on mobile */
+    .badge {
+        font-size: 0.65rem;
+        padding: 0.2em 0.4em;
+    }
+
+    /* Cards */
+    .card-header {
+        padding: 0.75rem;
+    }
+
+    .card-header h5 {
+        font-size: 1rem;
+    }
+
+    .card-body {
+        padding: 0.75rem;
+    }
+
+    /* Buttons */
+    .btn-sm {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+
+    /* User profile in sidebar */
+    .user-profile {
+        padding: 0.75rem;
+    }
+
+    /* Quick stats on dashboard */
+    .d-flex.justify-content-between {
+        font-size: 0.875rem;
+    }
+}
+
+/* Very small screens */
+@media (max-width: 400px) {
+    .stat-card {
+        padding: 0.5rem;
+    }
+
+    .stat-value {
+        font-size: 1rem;
+    }
+
+    .brand span {
+        font-size: 1rem;
+    }
+
+    .nav-link {
+        padding: 0.5rem 0.75rem;
         font-size: 0.875rem;
     }
 }
@@ -449,4 +604,304 @@ body {
 
 .border-accent {
     border-color: var(--accent-red) !important;
+}
+
+/* ============================================
+   DARK MODE TEXT FIXES - GLOBAL OVERRIDES
+   Ensures all text is visible on dark backgrounds
+   ============================================ */
+
+/* Force all text to be light on dark theme */
+body, html {
+    color: var(--text-main) !important;
+}
+
+/* Form controls - ensure visible text */
+.form-control,
+.form-select,
+input,
+textarea,
+select {
+    color: var(--text-main) !important;
+    background-color: var(--bg-dark) !important;
+    border-color: var(--border-color) !important;
+}
+
+.form-control::placeholder,
+input::placeholder,
+textarea::placeholder {
+    color: var(--text-muted) !important;
+    opacity: 1;
+}
+
+/* Labels and text */
+label,
+.form-label {
+    color: var(--text-main) !important;
+}
+
+/* Modal fixes */
+.modal-content {
+    background-color: var(--bg-card) !important;
+    color: var(--text-main) !important;
+    border-color: var(--border-color) !important;
+}
+
+.modal-header {
+    background-color: var(--bg-sidebar) !important;
+    border-bottom-color: var(--border-color) !important;
+    color: var(--text-main) !important;
+}
+
+.modal-header .modal-title {
+    color: var(--text-main) !important;
+}
+
+.modal-header .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+.modal-body {
+    background-color: var(--bg-card) !important;
+    color: var(--text-main) !important;
+}
+
+.modal-footer {
+    background-color: var(--bg-card) !important;
+    border-top-color: var(--border-color) !important;
+}
+
+/* Dropdown fixes */
+.dropdown-menu {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-color) !important;
+}
+
+.dropdown-item {
+    color: var(--text-main) !important;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background-color: var(--bg-dark) !important;
+    color: var(--accent-red) !important;
+}
+
+/* Card text visibility */
+.card,
+.card-body,
+.card-header,
+.card-footer,
+.card-title,
+.card-text {
+    color: var(--text-main) !important;
+}
+
+/* List group fixes */
+.list-group-item {
+    background-color: var(--bg-card) !important;
+    color: var(--text-main) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* Alert fixes */
+.alert {
+    color: var(--text-main) !important;
+}
+
+/* Table text visibility */
+.table,
+.table td,
+.table th,
+table td,
+table th {
+    color: var(--text-main) !important;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+    color: var(--text-main) !important;
+}
+
+/* Paragraphs and spans */
+p, span, div, a {
+    color: inherit;
+}
+
+/* Links */
+a:not(.btn):not(.nav-link):not(.badge) {
+    color: var(--accent-blue) !important;
+}
+
+a:not(.btn):not(.nav-link):not(.badge):hover {
+    color: var(--accent-red) !important;
+}
+
+/* Override Bootstrap text utilities for dark theme */
+.text-dark {
+    color: var(--text-main) !important;
+}
+
+.text-body {
+    color: var(--text-main) !important;
+}
+
+.text-black {
+    color: var(--text-main) !important;
+}
+
+/* Ensure muted text is still visible */
+.text-muted {
+    color: var(--text-muted) !important;
+}
+
+/* Button text fixes */
+.btn-outline-secondary {
+    color: var(--text-main) !important;
+    border-color: var(--border-color) !important;
+}
+
+.btn-outline-secondary:hover {
+    background-color: var(--border-color) !important;
+    color: var(--text-main) !important;
+}
+
+/* Nav tabs/pills */
+.nav-tabs .nav-link,
+.nav-pills .nav-link {
+    color: var(--text-muted) !important;
+}
+
+.nav-tabs .nav-link.active,
+.nav-pills .nav-link.active {
+    color: var(--text-main) !important;
+    background-color: var(--bg-card) !important;
+}
+
+/* Accordion fixes */
+.accordion-button {
+    background-color: var(--bg-card) !important;
+    color: var(--text-main) !important;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: var(--bg-dark) !important;
+    color: var(--accent-red) !important;
+}
+
+.accordion-body {
+    background-color: var(--bg-card) !important;
+    color: var(--text-main) !important;
+}
+
+/* Popover and tooltip fixes */
+.popover {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-color) !important;
+}
+
+.popover-body {
+    color: var(--text-main) !important;
+}
+
+.tooltip-inner {
+    background-color: var(--bg-sidebar) !important;
+    color: var(--text-main) !important;
+}
+
+/* Select2 or other select plugins */
+.select2-container--default .select2-selection--single {
+    background-color: var(--bg-dark) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-main) !important;
+}
+
+/* Progress bar text */
+.progress {
+    background-color: var(--bg-dark) !important;
+}
+
+/* Breadcrumb */
+.breadcrumb-item,
+.breadcrumb-item a {
+    color: var(--text-muted) !important;
+}
+
+.breadcrumb-item.active {
+    color: var(--text-main) !important;
+}
+
+/* Pagination */
+.page-link {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-main) !important;
+}
+
+.page-link:hover {
+    background-color: var(--bg-dark) !important;
+    color: var(--accent-red) !important;
+}
+
+.page-item.active .page-link {
+    background-color: var(--accent-red) !important;
+    border-color: var(--accent-red) !important;
+}
+
+/* Input group text */
+.input-group-text {
+    background-color: var(--bg-dark) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-muted) !important;
+}
+
+/* Badge overrides - ensure visibility */
+.badge.bg-dark {
+    background-color: var(--bg-sidebar) !important;
+    color: var(--text-main) !important;
+    border: 1px solid var(--border-color);
+}
+
+/* Code blocks */
+code, pre, kbd {
+    color: var(--accent-red) !important;
+    background-color: var(--bg-dark) !important;
+}
+
+/* Blockquote */
+blockquote {
+    color: var(--text-main) !important;
+    border-left-color: var(--accent-red) !important;
+}
+
+/* Figure caption */
+figcaption {
+    color: var(--text-muted) !important;
+}
+
+/* Definition lists */
+dt {
+    color: var(--text-main) !important;
+}
+
+dd {
+    color: var(--text-muted) !important;
+}
+
+/* Ensure Bootstrap .bg-dark cards have visible text */
+.bg-dark {
+    color: var(--text-main) !important;
+}
+
+.bg-dark *:not(.badge):not(.btn) {
+    color: inherit;
+}
+
+/* Fix any remaining black text issues */
+[class*="text-dark"],
+[style*="color: black"],
+[style*="color:#000"],
+[style*="color: #000"] {
+    color: var(--text-main) !important;
 }

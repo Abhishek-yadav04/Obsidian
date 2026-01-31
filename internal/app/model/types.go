@@ -37,16 +37,19 @@ type AuditLog struct {
 	Timestamp time.Time `json:"timestamp" db:"timestamp"`
 }
 
-// LogEntry represents a security event detected by the WAF
+// LogEntry represents a request processed by the WAF
 type LogEntry struct {
-	ID        string    `json:"id"`
-	Timestamp time.Time `json:"timestamp"`
-	ClientIP  string    `json:"client_ip"`
-	Method    string    `json:"method"`
-	URI       string    `json:"uri"`
-	RuleID    int       `json:"rule_id"`
-	Action    string    `json:"action"` // Blocked, Logged, etc.
-	Details   string    `json:"details"`
+	ID         string    `json:"id"`
+	Timestamp  time.Time `json:"timestamp"`
+	ClientIP   string    `json:"client_ip"`
+	Method     string    `json:"method"`
+	URI        string    `json:"uri"`
+	RuleID     int       `json:"rule_id"`
+	Action     string    `json:"action"` // Blocked, Logged, Pass, etc.
+	Status     string    `json:"status"` // Safe, Blocked, Flagged, ThreatBlocked
+	Details    string    `json:"details"`
+	StatusCode int       `json:"status_code"` // HTTP response code
+	UserAgent  string    `json:"user_agent"`
 }
 
 // Stats represents aggregated traffic data

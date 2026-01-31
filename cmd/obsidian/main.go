@@ -17,6 +17,7 @@ import (
 
 	"github.com/corazawaf/coraza/v3"
 	"github.com/corazawaf/coraza/v3/internal/app/api"
+	"github.com/corazawaf/coraza/v3/internal/app/model"
 	"github.com/corazawaf/coraza/v3/internal/app/ratelimit"
 	"github.com/corazawaf/coraza/v3/internal/app/report"
 	"github.com/corazawaf/coraza/v3/internal/app/store"
@@ -125,11 +126,38 @@ func main() {
 
 func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check threat intelligence first
+		// Panic recovery
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("WAF Panic recovered: %v", rec)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+		}()
+
+		requestStart := time.Now()
 		ip := extractClientIP(r)
+		userAgent := r.UserAgent()
+
+		// Check threat intelligence first
 		if entry, blocked := threatIntel.CheckIP(ip); blocked {
 			atomic.AddInt64(&blockedRequests, 1)
 			threatIntel.RecordHit(ip)
+
+			// Log threat-blocked request
+			s.AddLog(model.LogEntry{
+				ID:         fmt.Sprintf("threat-%d", time.Now().UnixNano()),
+				Timestamp:  requestStart,
+				ClientIP:   ip,
+				Method:     r.Method,
+				URI:        r.URL.Path,
+				RuleID:     0,
+				Action:     "Deny",
+				Status:     "ThreatBlocked",
+				Details:    fmt.Sprintf("IP blocked by threat intelligence: %s", entry.Category),
+				StatusCode: http.StatusForbidden,
+				UserAgent:  userAgent,
+			})
+
 			w.WriteHeader(http.StatusForbidden)
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"blocked": true,
@@ -138,17 +166,27 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 			return
 		}
 
-		// Skip WAF for static assets (css, js, images) to save perf
-		// Simple check for extension
+		// Skip WAF for static assets and websockets
 		path := r.URL.Path
-		if path == "/api/ws" { // Skip WAF for websockets for now
+		if path == "/api/ws" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
+		// Skip logging for static assets (css, js, images, fonts)
+		isStaticAsset := strings.HasPrefix(path, "/css/") ||
+			strings.HasPrefix(path, "/js/") ||
+			strings.HasPrefix(path, "/assets/") ||
+			strings.HasSuffix(path, ".css") ||
+			strings.HasSuffix(path, ".js") ||
+			strings.HasSuffix(path, ".png") ||
+			strings.HasSuffix(path, ".jpg") ||
+			strings.HasSuffix(path, ".svg") ||
+			strings.HasSuffix(path, ".ico") ||
+			strings.HasSuffix(path, ".woff") ||
+			strings.HasSuffix(path, ".woff2")
+
 		tx := engine.NewTransaction()
-		// Capture ID for logging
-		// txID := tx.ID()
 
 		// Ensure cleanup
 		defer func() {
@@ -165,20 +203,17 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 			}
 		}
 		if it := tx.ProcessRequestHeaders(); it != nil {
-			processInterruption(w, it, s, tx)
+			processInterruption(w, it, s, tx, r)
 			return
 		}
 
-		// 2. Process Request Body (Simplified)
-		// For a real WAF we need to buffer body, write to tx, then new reader for next handler
-		// Skipping heavy body buffering for this demo for simplicity unless needed
+		// 2. Process Request Body
 		if it, _ := tx.ProcessRequestBody(); it != nil {
-			processInterruption(w, it, s, tx)
+			processInterruption(w, it, s, tx, r)
 			return
 		}
 
 		// 3. Pass to application
-		// We intercept Response to run Response Rules (Phase 4)
 		rec := &responseRecorder{ResponseWriter: w, statusCode: 200}
 		next.ServeHTTP(rec, r)
 
@@ -189,24 +224,51 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 			}
 		}
 		if it := tx.ProcessResponseHeaders(rec.statusCode, "HTTP/1.1"); it != nil {
-			// Too late to intercept status code usually if already written, but we can try
-			// In standard Go http, once you write, it's gone.
-			// So we mainly log here for alerting.
+			// Response phase interruption - log it
 		}
 
-		// Update Safe Request Count if no interruption
-		if !tx.IsInterrupted() {
+		// Log safe request (skip static assets to reduce noise)
+		if !tx.IsInterrupted() && !isStaticAsset {
+			s.AddSafeLog(model.LogEntry{
+				ID:         fmt.Sprintf("req-%d", time.Now().UnixNano()),
+				Timestamp:  requestStart,
+				ClientIP:   ip,
+				Method:     r.Method,
+				URI:        r.URL.Path,
+				RuleID:     0,
+				Action:     "Pass",
+				Status:     "Safe",
+				Details:    fmt.Sprintf("Request processed successfully in %v", time.Since(requestStart)),
+				StatusCode: rec.statusCode,
+				UserAgent:  userAgent,
+			})
+		} else if !tx.IsInterrupted() && isStaticAsset {
+			// Just increment counter for static assets without logging
 			s.IncrementSafeRequest()
 		}
 	})
 }
 
-func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store.Store, tx types.Transaction) {
-	w.WriteHeader(403)
-	w.Write([]byte("WAF Blocked: " + it.Action))
+func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store.Store, tx types.Transaction, r *http.Request) {
+	atomic.AddInt64(&blockedRequests, 1)
 
-	// Ensure log is written (store uses a workaround via callback but let's be safe)
-	// Actually the audit logger hybrid handles this via ProcessLogging() in defer.
+	// Log blocked request
+	s.AddLog(model.LogEntry{
+		ID:         fmt.Sprintf("block-%d", time.Now().UnixNano()),
+		Timestamp:  time.Now(),
+		ClientIP:   extractClientIP(r),
+		Method:     r.Method,
+		URI:        r.URL.Path,
+		RuleID:     it.RuleID,
+		Action:     it.Action,
+		Status:     "Blocked",
+		Details:    fmt.Sprintf("WAF Rule %d triggered: %s", it.RuleID, it.Action),
+		StatusCode: http.StatusForbidden,
+		UserAgent:  r.UserAgent(),
+	})
+
+	w.WriteHeader(http.StatusForbidden)
+	w.Write([]byte("WAF Blocked: " + it.Action))
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {

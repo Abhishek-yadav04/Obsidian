@@ -56,29 +56,49 @@ func (s *Store) AddLog(entry model.LogEntry) {
 	if len(s.state.Logs) > 1000 {
 		s.state.Logs = s.state.Logs[1:]
 	}
-	s.state.Logs = append(s.state.Logs, entry)
 
-	// Update stats
-	s.state.Stats.TotalRequests++
-	if entry.Action == "Blocked" || entry.Action == "Deny" {
-		s.state.Stats.BlockedRequests++
-	} else if entry.Action == "Log" {
-		s.state.Stats.FlaggedRequests++
+	// Set status based on action if not already set
+	if entry.Status == "" {
+		if entry.Action == "Blocked" || entry.Action == "Deny" || entry.Action == "deny" {
+			entry.Status = "Blocked"
+		} else if entry.Action == "Log" || entry.Action == "log" {
+			entry.Status = "Flagged"
+		} else {
+			entry.Status = "Safe"
+		}
 	}
 
-	// Auto-save on every log for now (could be optimized)
-	go func() {
-		// Create a localized lock just for writing to file to avoid holding the main lock?
-		// Actually simplest is just to trigger a save.
-		// NOTE: In a high throughput system, we would batch this.
-		// For this project, we'll save periodically or let the OS cache handle it.
-		// Let's not save on *every* request to avoid IO bottleneck, relying on periodic save or explicit save.
-	}()
+	s.state.Logs = append(s.state.Logs, entry)
+
+	// Update stats based on status
+	s.state.Stats.TotalRequests++
+	if entry.Status == "Blocked" || entry.Status == "ThreatBlocked" {
+		s.state.Stats.BlockedRequests++
+	} else if entry.Status == "Flagged" {
+		s.state.Stats.FlaggedRequests++
+	} else {
+		s.state.Stats.SafeRequests++
+	}
 }
 
 func (s *Store) IncrementSafeRequest() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.state.Stats.TotalRequests++
+	s.state.Stats.SafeRequests++
+}
+
+// AddSafeLog logs a safe (non-blocked) request
+func (s *Store) AddSafeLog(entry model.LogEntry) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Keep last 1000 logs
+	if len(s.state.Logs) > 1000 {
+		s.state.Logs = s.state.Logs[1:]
+	}
+	entry.Status = "Safe"
+	entry.Action = "Pass"
+	s.state.Logs = append(s.state.Logs, entry)
 	s.state.Stats.TotalRequests++
 	s.state.Stats.SafeRequests++
 }
@@ -154,11 +174,34 @@ func (l *HybridAuditLogger) Close() error { return nil }
 
 func defaultRules() []model.Rule {
 	return []model.Rule{
-		{ID: 941100, Description: "XSS Detection - Libinjection", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
-		{ID: 942100, Description: "SQL Injection - Logic", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
-		{ID: 933100, Description: "PHP Injection Attack", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
-		{ID: 920350, Description: "Host Header Validation", Severity: "WARNING", Enabled: true, Category: "Protocol"},
-		{ID: 913100, Description: "Malicious User Agent", Severity: "NOTICE", Enabled: true, Category: "Reputation"},
+		// Test Rule
+		{ID: 900001, Description: "Test Attack Detection", Severity: "CRITICAL", Enabled: true, Category: "Test"},
+
+		// Scanner/Bot Detection
+		{ID: 913100, Description: "Security Scanner Detection (sqlmap, nikto, etc.)", Severity: "WARNING", Enabled: true, Category: "Reputation"},
+
+		// Path Traversal
+		{ID: 930100, Description: "Path Traversal Attack (../)", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
+		{ID: 930110, Description: "Sensitive File Access (/etc/passwd)", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
+
+		// Remote File Inclusion
+		{ID: 931100, Description: "Remote File Inclusion (http://)", Severity: "CRITICAL", Enabled: true, Category: "RFI"},
+
+		// Command Injection
+		{ID: 932100, Description: "OS Command Injection", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
+
+		// XSS Protection
+		{ID: 941100, Description: "XSS Attack: Script Tag", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
+		{ID: 941110, Description: "XSS Attack: JavaScript Protocol", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
+		{ID: 941120, Description: "XSS Attack: Event Handler", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
+		{ID: 941140, Description: "XSS Attack: Alert Function", Severity: "WARNING", Enabled: true, Category: "XSS"},
+
+		// SQL Injection
+		{ID: 942100, Description: "SQL Injection: Boolean Logic (1 or 1=1)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
+		{ID: 942110, Description: "SQL Injection: String Logic (' or ')", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
+		{ID: 942120, Description: "SQL Injection: UNION SELECT", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
+		{ID: 942130, Description: "SQL Injection: Comment Sequence ('--)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
+		{ID: 942140, Description: "SQL Injection: SQL Keyword", Severity: "WARNING", Enabled: true, Category: "SQLi"},
 	}
 }
 

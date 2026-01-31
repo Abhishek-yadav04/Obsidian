@@ -1,202 +1,465 @@
-# OBSIDIAN Sentinel WAF
+# 🛡️ OBSIDIAN Sentinel WAF v2.0.0
 
-<img src="ui/assets/logo.svg" align="left" height="80px" alt="Obsidian Logo"/>
+<p align="center">
+  <img src="cmd/obsidian/ui/assets/logo.svg" alt="Obsidian Sentinel WAF" width="200"/>
+</p>
 
-**Obsidian** is an enterprise-grade Web Application Firewall (WAF) designed for high-performance security monitoring and blocking. It is built on top of the Coraza v3 engine.
+<p align="center">
+  <strong>Enterprise-Grade Web Application Firewall</strong><br/>
+  Built on Coraza v3 Engine | Real-Time Protection | Zero-Trust Architecture
+</p>
 
-## 🚀 Quick Start (Standalone Application)
-
-We have refactored the project to run as a single-binary application with an embedded UI.
-
-### Build and Run
-```bash
-cd cmd/obsidian
-go mod tidy
-go build -o obsidian.exe
-./obsidian.exe -port 8080 -dev
-```
-Access the dashboard at: `http://localhost:8080`
-
-## 📱 Features
-*   **Real-time Protection:** Block XSS, SQLi, and RCE attacks.
-*   **Mobile Responsive UI:** Monitor your WAF from any device (`@media` queries implemented).
-*   **Zero-Dependency Deployment:** Single binary includes all assets (using `embed`).
-*   **Academic Ready:** Codebase annotated for Educational analysis.
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#api-reference">API</a> •
+  <a href="#deployment">Deployment</a> •
+  <a href="#security">Security</a>
+</p>
 
 ---
 
+## 📋 Overview
 
-[![Regression Tests](https://github.com/corazawaf/coraza/actions/workflows/regression.yml/badge.svg)](https://github.com/corazawaf/coraza/actions/workflows/regression.yml)
-[![Coreruleset Compatibility](https://img.shields.io/badge/Coreruleset%20Compatibility-100%25-brightgreen)](#)
-[![CodeQL](https://github.com/corazawaf/coraza/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/corazawaf/coraza/actions/workflows/codeql-analysis.yml)
-[![codecov](https://codecov.io/gh/corazawaf/coraza/branch/main/graph/badge.svg?token=6570804ZC7)](https://codecov.io/gh/corazawaf/coraza)
-[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
-[![OWASP Production Project](https://img.shields.io/badge/owasp-production%20project-brightgreen)](https://owasp.org/www-project-coraza-web-application-firewall)
-[![GoDoc](https://godoc.org/github.com/corazawaf/coraza?status.svg)](https://godoc.org/github.com/corazawaf/coraza/v3)
+**Obsidian Sentinel** is a production-ready Web Application Firewall that provides real-time protection against OWASP Top 10 threats. It combines the battle-tested Coraza WAF engine with enterprise features including threat intelligence, rate limiting, and comprehensive audit logging.
 
-Obsidian is an open source, enterprise-grade, high performance Web Application Firewall (WAF) ready to protect your beloved applications. It is written in Go, supports ModSecurity SecLang rulesets and is 100% compatible with the OWASP Core Rule Set v4.
+### Why Obsidian?
 
-* Website: <https://Obsidian.io>
-* Forum: [Github Discussions](https://github.com/Abhishek-yadav04/Obsidian/discussions)
-* Rule testing: [Coraza Playground](https://playground.coraza.io)
+- **🔒 Zero-Trust Security**: HMAC-SHA256 JWT authentication, CSRF protection, and cryptographic token validation
+- **⚡ High Performance**: Concurrent-safe design with minimal allocation on hot paths
+- **📊 Real-Time Monitoring**: WebSocket-based live dashboard with instant threat visibility
+- **🌐 Threat Intelligence**: Integrates with Spamhaus, Emerging Threats, and custom blocklists
+- **📱 Modern UI**: Responsive Bootstrap 5 dashboard with Chart.js visualizations
+- **📦 Single Binary**: All assets embedded - no external dependencies required
 
-<br/>
+---
 
-Key Features:
+## ✨ Features
 
-* ⇲ **Drop-in** - Obsidian is an alternative engine that has partial compatibility with ~~Trustwave~~[OWASP ModSecurity Engine](https://github.com/owasp-modsecurity/modsecurity/) and supports industry-standard SecLang rule sets.
+### Security Features
+| Feature | Description |
+|---------|-------------|
+| **55+ WAF Rules** | Protection against XSS, SQLi, RCE, LFI, RFI, SSRF, XXE, SSTI |
+| **JWT Authentication** | HMAC-SHA256 signed tokens with configurable expiration |
+| **RBAC** | Role-based access control (Admin, Analyst, Viewer) |
+| **Rate Limiting** | Sliding window algorithm with configurable thresholds |
+| **Threat Intelligence** | Real-time IP reputation checking from multiple feeds |
+| **CSRF Protection** | Token-based cross-site request forgery prevention |
+| **Security Headers** | CSP, X-Frame-Options, X-Content-Type-Options |
 
-* 🔥 **Security** -  Obsidian runs the [OWASP CRS](https://coreruleset.org) **v4** (Formerly known as Core Rule Set) to protect your web applications from a wide range of attacks, including the OWASP Top Ten, with a minimum of false alerts. CRS protects from many common attack categories including: SQL Injection (SQLi), Cross Site Scripting (XSS), PHP & Java Code Injection, HTTPoxy, Shellshock, Scripting/Scanner/Bot Detection & Metadata & Error Leakages. Note that older versions of the CRS are not compatible.
+### Enterprise Features
+| Feature | Description |
+|---------|-------------|
+| **PDF Reports** | Generate executive security reports |
+| **Audit Logging** | Complete audit trail of all security events |
+| **WebSocket Updates** | Real-time dashboard without polling |
+| **Multi-User Support** | Admin, Analyst, and Viewer roles |
+| **Graceful Shutdown** | Proper cleanup on SIGTERM/SIGINT |
+| **Health Endpoints** | Kubernetes-ready health checks |
 
-* 🔌 **Extensible** - Obsidian is a library at its core, with many integrations to deploy on-premise Web Application Firewall instances. Audit Loggers, persistence engines, operators, actions, create your own functionalities to extend Coraza as much as you want.
+### Attack Categories Protected
+- Cross-Site Scripting (XSS)
+- SQL Injection (SQLi)
+- Remote Code Execution (RCE)
+- Local File Inclusion (LFI)
+- Remote File Inclusion (RFI)
+- Server-Side Request Forgery (SSRF)
+- XML External Entity (XXE)
+- Template Injection (SSTI)
+- LDAP Injection
+- Session Fixation
+- Java/Deserialization Attacks
 
-* 🚀 **Performance** - From huge websites to small blogs, Obsidian can handle the load with minimal performance impact. Check our [Benchmarks](https://Obsidian.io/docs/reference/benchmarks)
+---
 
-* ﹡ **Simplicity** - Anyone is able to understand and modify the Coraza source code. It is easy to extend Coraza with new functionality.
+## 🚀 Quick Start
 
-* 💬 **Community** - Coraza is a community project, contributions are accepted and all ideas will be considered. Find contributor guidance in the [CONTRIBUTION](https://github.com/Abhishek-yadav04/Obsidian/blob/main/CONTRIBUTING.md) document.
+### Prerequisites
+- Go 1.22+ (or TinyGo for WASM builds)
+- Windows, Linux, or macOS
 
-<br/>
+### Build and Run
 
-## Integrations
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/obsidian.git
+cd obsidian
 
-The Obsidian Project maintains implementations and plugins for the following servers:
+# Build the application
+cd cmd/obsidian
+go build -o obsidian.exe .
 
-* [Caddy Reverse Proxy and Webserver Plugin](https://github.com/corazawaf/coraza-caddy) - stable, needs a maintainer
-* [Proxy WASM extension](https://github.com/corazawaf/coraza-proxy-wasm) for proxies with proxy-wasm support (e.g. Envoy) - stable, still under development
-* [HAProxy SPOE Plugin](https://github.com/corazawaf/coraza-spoa) - experimental
-* [Coraza C Library (For nginx, etc)](https://github.com/corazawaf/libcoraza) - experimental
-* [RuiQi WAF](https://github.com/HUAHUAI23/RuiQi) - Web management panel and enhanced traffic control for Coraza SPOA - experimental
+# Run with default settings
+./obsidian.exe -port 8082
 
-## Prerequisites
+# Run in development mode
+./obsidian.exe -port 8082 -dev
+```
 
-* Go v1.22+ or tinygo compiler
-* Linux distribution (Debian or Centos recommended), Windows or Mac.
+### Access the Dashboard
 
-## Coraza Core Usage
+Open your browser and navigate to: **http://localhost:8082**
 
-Obsidian can be used as a library for your Go program to implement a security middleware or integrate it with existing application & webservers.
+**Default Credentials:**
+- Username: `admin`
+- Password: `password`
 
-```go
-package main
+> ⚠️ **Important**: Change the default password in production!
 
-import (
-	"fmt"
+---
 
-	"github.com/corazawaf/coraza/v3"
-)
+## 🏗️ Architecture
 
-func main() {
-	// First we initialize our waf and our seclang parser
-	waf, err := coraza.NewWAF(coraza.NewWAFConfig().
-		WithDirectives(`SecRule REMOTE_ADDR "@rx .*" "id:1,phase:1,deny,status:403"`))
-	// Now we parse our rules
-	if err != nil {
-		fmt.Println(err)
-	}
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Client Request                            │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   Security Headers Middleware                    │
+│         (CSP, X-Frame-Options, X-Content-Type-Options)          │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     Rate Limiter Middleware                      │
+│              (Sliding Window, Per-IP Tracking)                   │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Threat Intelligence Check                     │
+│         (Spamhaus DROP, Emerging Threats, Custom Lists)         │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Coraza WAF Engine                           │
+│                  (55+ ModSecurity Rules)                         │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     Application Router                           │
+│               (API Handlers, Static Files)                       │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-	// Then we create a transaction and assign some variables
-	tx := waf.NewTransaction()
-	defer func() {
-		tx.ProcessLogging()
-		tx.Close()
-	}()
-	tx.ProcessConnection("127.0.0.1", 8080, "127.0.0.1", 12345)
+### Project Structure
 
-	// Finally we process the request headers phase, which may return an interruption
-	if it := tx.ProcessRequestHeaders(); it != nil {
-		fmt.Printf("Transaction was interrupted with status %d\n", it.Status)
-	}
+```
+obsidian/
+├── cmd/obsidian/           # Main application entry point
+│   ├── main.go             # Server initialization
+│   └── ui/                 # Embedded frontend assets
+│       ├── index.html      # Dashboard
+│       ├── login.html      # Authentication page
+│       ├── js/app.js       # Frontend logic
+│       └── css/styles.css  # Styling
+├── internal/app/           # Core application packages
+│   ├── api/                # REST API handlers
+│   ├── auth/               # JWT authentication
+│   ├── model/              # Data models
+│   ├── ratelimit/          # Rate limiting
+│   ├── report/             # PDF/text reports
+│   ├── store/              # Data persistence
+│   ├── threat/             # Threat intelligence
+│   └── waf/                # WAF rules engine
+└── configs/                # Configuration files
+```
+
+---
+
+## 🔧 Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OBSIDIAN_JWT_SECRET` | JWT signing secret (min 32 chars) | Random on startup |
+| `OBSIDIAN_ALLOWED_ORIGINS` | Comma-separated WebSocket origins | localhost:8082 |
+| `OBSIDIAN_DATA_PATH` | Path for persistent storage | `./data.json` |
+| `OBSIDIAN_THREAT_PATH` | Path for threat intelligence data | `./threats.json` |
+
+### Command Line Flags
+
+```bash
+./obsidian.exe [options]
+
+Options:
+  -port int     Port to run the server on (default 8082)
+  -dev          Run in development mode
+```
+
+### Production Configuration
+
+```bash
+# Set secure JWT secret
+export OBSIDIAN_JWT_SECRET="your-secure-random-secret-at-least-32-characters"
+
+# Set allowed origins for WebSocket
+export OBSIDIAN_ALLOWED_ORIGINS="https://your-domain.com,https://www.your-domain.com"
+
+# Run the application
+./obsidian.exe -port 8082
+```
+
+---
+
+## 📡 API Reference
+
+### Authentication
+
+#### POST /api/login
+Authenticate and receive JWT token.
+
+**Request:**
+```json
+{
+  "username": "admin",
+  "password": "password"
 }
-
 ```
 
-[Examples/http-server](./examples/http-server/) provides an example to practice with Coraza.
-
-### Build tags
-
-Go build tags can tweak certain functionality at compile-time. These are for advanced use cases only and do not
-have compatibility guarantees across minor versions - use with care.
-
-* `coraza.disabled_operators.*` - excludes the specified operator from compilation. Particularly useful if overriding
-the operator with `plugins.RegisterOperator` to reduce binary size / startup overhead.
-* `coraza.rule.multiphase_evaluation` - enables evaluation of rule variables in the phases that they are ready, not
-only the phase the rule is defined for.
-* `memoize_builders` - enables memoization of builders for regex and aho-corasick
-dictionaries to reduce memory consumption in deployments that launch several coraza
-instances. For more context check [this issue](https://github.com/corazawaf/coraza-caddy/issues/76)
-* `no_fs_access` - indicates that the target environment has no access to FS in order to not leverage OS' filesystem related functionality e.g. file body buffers.
-* `coraza.rule.case_sensitive_args_keys` - enables case-sensitive matching for ARGS keys, aligning Coraza behavior with RFC 3986 specification. It will be enabled by default in the next major version.
-* `coraza.rule.no_regex_multiline` - disables enabling by default regexes multiline modifiers in `@rx` operator. It aligns with CRS expected behavior, reduces false positives and might improve performances. No multiline regexes by default will be enabled in the next major version. For more context check [this PR](https://github.com/corazawaf/coraza/pull/876)
-* `coraza.rule.mandatory_rule_id_check` - enables strict rule id check where `id` action is required for all SecRule/SecAction.
-
-## E2E Testing
-
-[`http/e2e/`](./http/e2e) provides an utility to run e2e tests.
-It can be used standalone against your own waf deployment:
-
-```shell
-go run github.com/corazawaf/coraza/v3/http/e2e/cmd/httpe2e@main --proxy-hostport localhost:8080 --httpbin-hostport localhost:8081
+**Response:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "...",
+  "user": {
+    "id": 1,
+    "username": "admin",
+    "role": "Admin"
+  },
+  "expires_in": 900
+}
 ```
 
-or as a library by importing:
+### Protected Endpoints (Require Bearer Token)
 
-```go
-"github.com/corazawaf/coraza/v3/http/e2e"
+| Endpoint | Method | Description | Required Role |
+|----------|--------|-------------|---------------|
+| `/api/stats` | GET | Dashboard statistics | Viewer |
+| `/api/logs` | GET | Security event logs | Viewer |
+| `/api/rules` | GET | WAF rules list | Viewer |
+| `/api/rules/create` | POST | Create new rule | Admin |
+| `/api/rules/update` | PUT | Update rule | Admin |
+| `/api/rules/delete` | POST | Delete rule | Admin |
+| `/api/threats` | GET | Threat intelligence data | Viewer |
+| `/api/threats/block` | POST | Block IP address | Admin |
+| `/api/metrics` | GET | System metrics | Viewer |
+| `/api/export` | GET | Export report | Viewer |
+| `/api/admin/users` | GET | User management | Admin |
+| `/api/admin/audit` | GET | Audit logs | Admin |
+
+### Health Check
+
+#### GET /api/health
+Returns system health status.
+
+```json
+{
+  "status": "healthy",
+  "uptime": "2h30m15s",
+  "version": "2.0.0",
+  "name": "Obsidian Sentinel WAF"
+}
 ```
 
-As a reference for library usage, see [`testing/e2e/e2e_test.go`](./testing/e2e/e2e_test.go).
-Expected directives that have to be loaded and available flags can be found in [`http/e2e/cmd/httpe2e/main.go`](./http/e2e/cmd/httpe2e/main.go).
+---
 
-## Tools
+## 🔐 Security
 
-* [Go FTW](https://github.com/coreruleset/go-ftw): Rule testing engine
-* [Coraza Playground](https://playground.coraza.io/): Sandbox rule testing web interface
-* [OWASP Core Ruleset](https://github.com/coreruleset/coreruleset/): Awesome rule set, compatible with Coraza
+### JWT Token Security
+- Tokens signed with HMAC-SHA256
+- Configurable expiration (default: 15 minutes)
+- Secrets stored in environment variables
+- Constant-time signature comparison
 
-## Development
+### Rate Limiting
+- Sliding window algorithm
+- Per-IP tracking
+- Configurable limits:
+  - 100 requests/minute general
+  - 5 login attempts/minute
 
-Coraza only requires Go for development. You can run `mage.go` to issue development commands.
+### Threat Intelligence Sources
+- Spamhaus DROP/EDROP
+- Emerging Threats
+- Firehol Level 1
+- Custom blocklists
 
-See the list of commands
-
+### Security Headers
 ```
-$ go run mage.go -l
-Targets:
-  check        runs lint and tests.
-  coverage     runs tests with coverage and race detector enabled.
-  doc          runs godoc, access at http://localhost:6060
-  format       formats code in this repository.
-  fuzz         runs fuzz tests
-  lint         verifies code quality.
-  precommit    installs a git hook to run check when committing
-  test         runs all tests.
-```
-
-For example, to format your code before submission, run
-
-```shell
-go run mage.go format
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+X-XSS-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+Content-Security-Policy: default-src 'self'; ...
 ```
 
-## Contribute
+---
 
-Contributions are welcome! Please refer to [CONTRIBUTING.md](./CONTRIBUTING.md) for guidance.
+## 📦 Deployment
 
-## Security
+### Docker (Recommended)
 
-To report a security issue, please follow [this link](https://github.com/corazawaf/coraza/security/advisories/new) and add a description of the issue, the steps you took to create the issue, affected versions, and, if known, mitigations for the issue.
+```dockerfile
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+COPY . .
+RUN cd cmd/obsidian && go build -o obsidian .
 
-Our vulnerability management team will respond within 3 working days of your report. If the issue is confirmed as a vulnerability, we will open a Security Advisory. This project follows a 90 day disclosure timeline.
+FROM alpine:latest
+WORKDIR /app
+COPY --from=builder /app/cmd/obsidian/obsidian .
+EXPOSE 8082
+CMD ["./obsidian", "-port", "8082"]
+```
 
-## Thanks
+### Kubernetes
 
-* OWASP Coreruleset team for the CRS and their help
-* Ivan Ristić for creating ModSecurity
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: obsidian-waf
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: obsidian-waf
+  template:
+    metadata:
+      labels:
+        app: obsidian-waf
+    spec:
+      containers:
+      - name: obsidian
+        image: obsidian:2.0.0
+        ports:
+        - containerPort: 8082
+        env:
+        - name: OBSIDIAN_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: obsidian-secrets
+              key: jwt-secret
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8082
+          initialDelaySeconds: 5
+          periodSeconds: 10
+```
 
-### Coraza on X/Twitter
+### Systemd Service
 
-* [@corazaio](https://twitter.com/corazaio)
+```ini
+[Unit]
+Description=Obsidian Sentinel WAF
+After=network.target
+
+[Service]
+Type=simple
+User=obsidian
+WorkingDirectory=/opt/obsidian
+Environment=OBSIDIAN_JWT_SECRET=your-secret-here
+ExecStart=/opt/obsidian/obsidian -port 8082
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+---
+
+## 🧪 Testing
+
+### Run Tests
+```bash
+go test ./... -v
+```
+
+### Run with Coverage
+```bash
+go test ./... -cover -coverprofile=coverage.out
+go tool cover -html=coverage.out
+```
+
+### Test WAF Rules
+```bash
+# Test XSS blocking
+curl -X GET "http://localhost:8082/api/test?input=<script>alert(1)</script>"
+
+# Test SQL injection blocking
+curl -X GET "http://localhost:8082/api/test?id=1' OR '1'='1"
+```
+
+---
+
+## 📊 Monitoring
+
+### Metrics Endpoint
+
+`GET /api/metrics` returns:
+```json
+{
+  "total_requests": 15432,
+  "blocked_requests": 127,
+  "uptime_seconds": 86400,
+  "memory_alloc_mb": 45,
+  "memory_sys_mb": 72,
+  "goroutines": 15
+}
+```
+
+### WebSocket Real-Time Updates
+
+Connect to `ws://localhost:8082/api/ws?token=<jwt>` for live stats updates.
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+---
+
+## 📜 License
+
+This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- [Coraza WAF](https://coraza.io) - The core WAF engine
+- [OWASP CRS](https://coreruleset.org) - Core Rule Set inspiration
+- [ModSecurity](https://modsecurity.org) - SecLang rule language
+
+---
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/yourusername/obsidian/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/obsidian/discussions)
+- **Security**: See [SECURITY.md](SECURITY.md) for reporting vulnerabilities
+
+---
+
+<p align="center">
+  Made with ❤️ for the cybersecurity community
+</p>
 
 ## Donations
 

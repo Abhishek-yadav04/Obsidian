@@ -1,10 +1,14 @@
 package threat
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -13,9 +17,12 @@ import (
 type ThreatIntel struct {
 	mu           sync.RWMutex
 	blockedIPs   map[string]*ThreatEntry
+	cidrBlocks   []*net.IPNet
 	feeds        []ThreatFeed
 	lastUpdate   time.Time
 	updateTicker *time.Ticker
+	persistPath  string
+	httpClient   *http.Client
 }
 
 // ThreatEntry represents a known malicious IP
@@ -36,76 +43,265 @@ type ThreatFeed struct {
 	Enabled    bool      `json:"enabled"`
 	LastUpdate time.Time `json:"last_update"`
 	EntryCount int       `json:"entry_count"`
+	Type       string    `json:"type"` // "ip_list", "cidr_list", "json"
+}
+
+// Option is a functional option for ThreatIntel configuration
+type Option func(*ThreatIntel)
+
+// WithPersistPath sets the file path for persistent storage
+func WithPersistPath(path string) Option {
+	return func(ti *ThreatIntel) {
+		ti.persistPath = path
+	}
+}
+
+// WithHTTPClient sets a custom HTTP client for feed fetching
+func WithHTTPClient(client *http.Client) Option {
+	return func(ti *ThreatIntel) {
+		ti.httpClient = client
+	}
 }
 
 // NewThreatIntel creates a new threat intelligence manager
-func NewThreatIntel() *ThreatIntel {
+func NewThreatIntel(opts ...Option) *ThreatIntel {
 	ti := &ThreatIntel{
 		blockedIPs: make(map[string]*ThreatEntry),
+		cidrBlocks: make([]*net.IPNet, 0),
 		feeds: []ThreatFeed{
-			{Name: "AbuseIPDB", URL: "https://api.abuseipdb.com/api/v2/blacklist", Enabled: true},
-			{Name: "Spamhaus DROP", URL: "https://www.spamhaus.org/drop/drop.txt", Enabled: true},
-			{Name: "Emerging Threats", URL: "https://rules.emergingthreats.net/blockrules/compromised-ips.txt", Enabled: true},
-			{Name: "Firehol Level 1", URL: "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset", Enabled: true},
-			{Name: "Custom Blocklist", URL: "", Enabled: true},
+			{Name: "Spamhaus DROP", URL: "https://www.spamhaus.org/drop/drop.txt", Enabled: true, Type: "cidr_list"},
+			{Name: "Spamhaus EDROP", URL: "https://www.spamhaus.org/drop/edrop.txt", Enabled: true, Type: "cidr_list"},
+			{Name: "Emerging Threats", URL: "https://rules.emergingthreats.net/blockrules/compromised-ips.txt", Enabled: true, Type: "ip_list"},
+			{Name: "Firehol Level 1", URL: "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset", Enabled: false, Type: "cidr_list"},
+			{Name: "Custom Blocklist", URL: "", Enabled: true, Type: "ip_list"},
+		},
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
 		},
 	}
 
-	// Initialize with some known bad actors for demo
-	ti.seedDemoData()
+	// Apply functional options
+	for _, opt := range opts {
+		opt(ti)
+	}
 
-	// Start background update (would fetch real feeds in production)
+	// Load persisted data if available
+	if ti.persistPath != "" {
+		ti.loadFromDisk()
+	}
+
+	// Start background update for threat feeds
 	ti.startBackgroundUpdates()
 
 	return ti
 }
 
-// seedDemoData populates initial threat data for demonstration
-func (ti *ThreatIntel) seedDemoData() {
+// loadFromDisk loads threat data from persistent storage
+func (ti *ThreatIntel) loadFromDisk() error {
+	data, err := os.ReadFile(ti.persistPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // No persisted data yet
+		}
+		return fmt.Errorf("failed to read threat data: %w", err)
+	}
+
+	var state struct {
+		BlockedIPs map[string]*ThreatEntry `json:"blocked_ips"`
+		LastUpdate time.Time               `json:"last_update"`
+	}
+
+	if err := json.Unmarshal(data, &state); err != nil {
+		return fmt.Errorf("failed to parse threat data: %w", err)
+	}
+
 	ti.mu.Lock()
-	defer ti.mu.Unlock()
+	ti.blockedIPs = state.BlockedIPs
+	ti.lastUpdate = state.LastUpdate
+	ti.mu.Unlock()
 
-	demoThreats := []ThreatEntry{
-		{IP: "185.220.101.34", RiskLevel: "HIGH", Category: "Tor Exit Node", Source: "Spamhaus DROP"},
-		{IP: "45.155.205.233", RiskLevel: "HIGH", Category: "Scanner", Source: "AbuseIPDB"},
-		{IP: "192.241.xxx.xxx", RiskLevel: "MEDIUM", Category: "Botnet C2", Source: "Emerging Threats"},
-		{IP: "103.224.182.250", RiskLevel: "HIGH", Category: "Brute Force", Source: "AbuseIPDB"},
-		{IP: "91.240.118.172", RiskLevel: "MEDIUM", Category: "Web Spam", Source: "Firehol Level 1"},
-		{IP: "178.128.xxx.xxx", RiskLevel: "LOW", Category: "Proxy", Source: "Custom Blocklist"},
-		{IP: "167.99.xxx.xxx", RiskLevel: "MEDIUM", Category: "Port Scanner", Source: "AbuseIPDB"},
-		{IP: "64.225.xxx.xxx", RiskLevel: "HIGH", Category: "SQL Injection", Source: "Custom Blocklist"},
+	return nil
+}
+
+// saveToDisk persists threat data
+func (ti *ThreatIntel) saveToDisk() error {
+	if ti.persistPath == "" {
+		return nil
 	}
 
-	now := time.Now()
-	for _, t := range demoThreats {
-		t.FirstSeen = now.Add(-24 * time.Hour * time.Duration(1+len(t.IP)%7))
-		t.LastSeen = now.Add(-time.Duration(len(t.IP)%60) * time.Minute)
-		t.HitCount = len(t.IP) % 50
-		ti.blockedIPs[t.IP] = &t
+	ti.mu.RLock()
+	state := struct {
+		BlockedIPs map[string]*ThreatEntry `json:"blocked_ips"`
+		LastUpdate time.Time               `json:"last_update"`
+	}{
+		BlockedIPs: ti.blockedIPs,
+		LastUpdate: ti.lastUpdate,
 	}
+	ti.mu.RUnlock()
+
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal threat data: %w", err)
+	}
+
+	tmpPath := ti.persistPath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write threat data: %w", err)
+	}
+
+	return os.Rename(tmpPath, ti.persistPath)
 }
 
 // startBackgroundUpdates periodically refreshes threat feeds
 func (ti *ThreatIntel) startBackgroundUpdates() {
 	ti.updateTicker = time.NewTicker(1 * time.Hour)
 	go func() {
+		// Initial refresh on startup (non-blocking)
+		go ti.RefreshFeeds()
+
 		for range ti.updateTicker.C {
-			ti.refreshFeeds()
+			ti.RefreshFeeds()
 		}
 	}()
 }
 
-// refreshFeeds updates threat intelligence from all enabled feeds
-func (ti *ThreatIntel) refreshFeeds() {
-	// In production, this would fetch from actual threat feeds
-	// For demo, we just update the lastUpdate time
+// Stop gracefully shuts down the threat intelligence manager
+func (ti *ThreatIntel) Stop() {
+	if ti.updateTicker != nil {
+		ti.updateTicker.Stop()
+	}
+	_ = ti.saveToDisk()
+}
+
+// RefreshFeeds updates threat intelligence from all enabled feeds
+func (ti *ThreatIntel) RefreshFeeds() {
+	for i := range ti.feeds {
+		if !ti.feeds[i].Enabled || ti.feeds[i].URL == "" {
+			continue
+		}
+
+		count, err := ti.fetchFeed(&ti.feeds[i])
+		if err != nil {
+			// Log error but continue with other feeds
+			continue
+		}
+
+		ti.mu.Lock()
+		ti.feeds[i].LastUpdate = time.Now()
+		ti.feeds[i].EntryCount = count
+		ti.mu.Unlock()
+	}
+
 	ti.mu.Lock()
 	ti.lastUpdate = time.Now()
-	for i := range ti.feeds {
-		ti.feeds[i].LastUpdate = time.Now()
-		ti.feeds[i].EntryCount = len(ti.blockedIPs) / len(ti.feeds)
-	}
 	ti.mu.Unlock()
+
+	// Persist updated data
+	_ = ti.saveToDisk()
+}
+
+// fetchFeed downloads and parses a single threat feed
+func (ti *ThreatIntel) fetchFeed(feed *ThreatFeed) (int, error) {
+	resp, err := ti.httpClient.Get(feed.URL)
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch feed %s: %w", feed.Name, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("feed %s returned status %d", feed.Name, resp.StatusCode)
+	}
+
+	// Limit response size to prevent memory exhaustion
+	limitedReader := io.LimitReader(resp.Body, 10*1024*1024) // 10MB max
+
+	return ti.parseFeed(limitedReader, feed)
+}
+
+// parseFeed parses threat entries from a feed response
+func (ti *ThreatIntel) parseFeed(reader io.Reader, feed *ThreatFeed) (int, error) {
+	scanner := bufio.NewScanner(reader)
+	count := 0
+	now := time.Now()
+
+	ti.mu.Lock()
+	defer ti.mu.Unlock()
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip comments and empty lines
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+
+		// Extract IP or CIDR from line
+		entry := ti.parseEntry(line, feed.Name, feed.Type)
+		if entry == nil {
+			continue
+		}
+
+		// Update existing or add new
+		if existing, ok := ti.blockedIPs[entry.IP]; ok {
+			existing.LastSeen = now
+			existing.HitCount++
+		} else {
+			entry.FirstSeen = now
+			entry.LastSeen = now
+			ti.blockedIPs[entry.IP] = entry
+		}
+		count++
+	}
+
+	return count, scanner.Err()
+}
+
+// parseEntry parses a single line from a threat feed
+func (ti *ThreatIntel) parseEntry(line, source, feedType string) *ThreatEntry {
+	// Handle CIDR notation
+	if strings.Contains(line, "/") && feedType == "cidr_list" {
+		// Extract CIDR, handle trailing comments
+		parts := strings.Fields(line)
+		if len(parts) == 0 {
+			return nil
+		}
+		cidr := parts[0]
+
+		_, ipnet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil
+		}
+
+		// Store CIDR blocks for range checking
+		ti.cidrBlocks = append(ti.cidrBlocks, ipnet)
+
+		// Also store the network address as a representative entry
+		return &ThreatEntry{
+			IP:        cidr,
+			RiskLevel: "HIGH",
+			Category:  "Malicious Network",
+			Source:    source,
+		}
+	}
+
+	// Handle plain IP
+	parts := strings.Fields(line)
+	if len(parts) == 0 {
+		return nil
+	}
+	ip := parts[0]
+
+	// Validate IP
+	if net.ParseIP(ip) == nil {
+		return nil
+	}
+
+	return &ThreatEntry{
+		IP:        ip,
+		RiskLevel: "HIGH",
+		Category:  "Threat Feed",
+		Source:    source,
+	}
 }
 
 // CheckIP returns threat information for an IP address
@@ -118,13 +314,23 @@ func (ti *ThreatIntel) CheckIP(ip string) (*ThreatEntry, bool) {
 		return entry, true
 	}
 
-	// Check CIDR ranges (simplified)
+	// Check CIDR ranges
 	parsedIP := net.ParseIP(ip)
 	if parsedIP == nil {
 		return nil, false
 	}
 
-	// Would check against CIDR blocks in production
+	for _, cidr := range ti.cidrBlocks {
+		if cidr.Contains(parsedIP) {
+			return &ThreatEntry{
+				IP:        ip,
+				RiskLevel: "HIGH",
+				Category:  "Malicious Network Range",
+				Source:    "CIDR Block",
+			}, true
+		}
+	}
+
 	return nil, false
 }
 

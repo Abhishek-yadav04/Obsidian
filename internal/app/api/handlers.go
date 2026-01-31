@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/corazawaf/coraza/v3/internal/app/auth"
@@ -12,6 +14,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// AllowedOrigins contains the list of allowed WebSocket origins
+var AllowedOrigins = []string{
+	"http://localhost:8082",
+	"http://127.0.0.1:8082",
+	"https://localhost:8082",
+}
+
 type API struct {
 	Store *store.Store
 	// Upgrader for websockets
@@ -19,36 +28,67 @@ type API struct {
 }
 
 func NewAPI(s *store.Store) *API {
+	// Add environment-configured origins
+	if envOrigins := os.Getenv("OBSIDIAN_ALLOWED_ORIGINS"); envOrigins != "" {
+		for _, origin := range strings.Split(envOrigins, ",") {
+			AllowedOrigins = append(AllowedOrigins, strings.TrimSpace(origin))
+		}
+	}
+
 	return &API{
 		Store: s,
 		Upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 			CheckOrigin: func(r *http.Request) bool {
-				return true // Allow all for dev
+				origin := r.Header.Get("Origin")
+				if origin == "" {
+					return true // Same-origin request
+				}
+				for _, allowed := range AllowedOrigins {
+					if origin == allowed {
+						return true
+					}
+				}
+				return false
 			},
 		},
 	}
 }
 
 func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	var req model.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
+	// Validate input
+	if req.Username == "" || req.Password == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Username and password required"})
+		return
+	}
+
 	// Authenticate user
 	user, err := a.Store.AuthenticateUser(req.Username, req.Password)
 	if err != nil {
+		// Add slight delay to prevent timing attacks
+		time.Sleep(100 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid credentials"})
 		return
 	}
 
-	// Generate JWT token (15 minutes)
-	token, err := auth.GenerateJWT(user.ID, user.Username, user.Role, "obsidian-secret-key-change-in-prod", 15*time.Minute)
+	// Generate JWT token (15 minutes) - uses environment variable secret
+	token, err := auth.GenerateJWT(user.ID, user.Username, user.Role, 15*time.Minute)
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 		return
@@ -69,7 +109,7 @@ func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
 		CreatedAt:    time.Now(),
 		LastActivity: time.Now(),
-		IPAddress:    r.RemoteAddr,
+		IPAddress:    extractClientIP(r),
 		UserAgent:    r.UserAgent(),
 	}
 	a.Store.CreateSession(session)
@@ -80,19 +120,44 @@ func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		Action:    "LOGIN",
 		Resource:  "/api/login",
 		Details:   fmt.Sprintf("User %s logged in", user.Username),
-		IPAddress: r.RemoteAddr,
+		IPAddress: extractClientIP(r),
 		Timestamp: time.Now(),
 	})
 
-	// Return response
+	// Return response (don't include password hash)
+	safeUser := model.User{
+		ID:        user.ID,
+		Username:  user.Username,
+		Email:     user.Email,
+		Role:      user.Role,
+		Enabled:   user.Enabled,
+		CreatedAt: user.CreatedAt,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(model.LoginResponse{
 		Token:        token,
 		RefreshToken: refreshToken,
-		User:         *user,
+		User:         safeUser,
 		ExpiresIn:    900, // 15 minutes in seconds
 	})
+}
+
+// extractClientIP extracts the client IP from the request
+func extractClientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+	ip := r.RemoteAddr
+	if idx := strings.LastIndex(ip, ":"); idx != -1 {
+		ip = ip[:idx]
+	}
+	return strings.Trim(ip, "[]")
 }
 
 func (a *API) HandleStats(w http.ResponseWriter, r *http.Request) {

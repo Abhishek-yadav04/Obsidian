@@ -3,20 +3,23 @@ package main
 import (
 	"context"
 	"embed"
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"runtime"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/corazawaf/coraza/v3"
 	"github.com/corazawaf/coraza/v3/internal/app/api"
+	"github.com/corazawaf/coraza/v3/internal/app/auth"
 	"github.com/corazawaf/coraza/v3/internal/app/model"
 	"github.com/corazawaf/coraza/v3/internal/app/ratelimit"
 	"github.com/corazawaf/coraza/v3/internal/app/report"
@@ -24,6 +27,12 @@ import (
 	"github.com/corazawaf/coraza/v3/internal/app/threat"
 	"github.com/corazawaf/coraza/v3/internal/app/waf"
 	"github.com/corazawaf/coraza/v3/types"
+)
+
+// Application version
+const (
+	AppName    = "Obsidian Sentinel WAF"
+	AppVersion = "2.0.0"
 )
 
 // Metrics for observability
@@ -60,6 +69,11 @@ func main() {
 	dev := flag.Bool("dev", false, "Run in dev mode")
 	flag.Parse()
 
+	// Validate required environment variables
+	if os.Getenv("OBSIDIAN_JWT_SECRET") == "" {
+		log.Println("WARNING: OBSIDIAN_JWT_SECRET not set. Using default (insecure for production)")
+	}
+
 	// Initialize Store
 	s := store.NewStore("data.json")
 	if *dev {
@@ -67,7 +81,9 @@ func main() {
 	}
 
 	// Initialize Enterprise Features
-	threatIntel = threat.NewThreatIntel()
+	threatIntel = threat.NewThreatIntel(
+		threat.WithPersistPath("threats.json"),
+	)
 	rateLimiter = ratelimit.NewRateLimiter(ratelimit.DefaultConfig())
 	reportGen = report.NewGenerator()
 
@@ -114,14 +130,55 @@ func main() {
 	fileServer := http.FileServer(http.FS(uiFS))
 	mux.Handle("/", fileServer)
 
-	// Middleware Stack: Rate Limit -> Logging -> WAF -> Router
-	finalHandler := rateLimiter.Middleware(loggingMiddleware(wafMiddleware(wafEngine, s, mux)))
+	// Middleware Stack: Security Headers -> Rate Limit -> Logging -> WAF -> Router
+	finalHandler := securityHeadersMiddleware(rateLimiter.Middleware(loggingMiddleware(wafMiddleware(wafEngine, s, mux))))
 
-	fmt.Printf("Obsidian Sentinel WAF is running on http://localhost:%d\n", *port)
+	// Create server with timeouts
+	server := &http.Server{
+		Addr:         fmt.Sprintf(":%d", *port),
+		Handler:      finalHandler,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Graceful shutdown
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		<-sigChan
+
+		log.Println("Shutting down gracefully...")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		threatIntel.Stop()
+		_ = s.Save()
+
+		if err := server.Shutdown(ctx); err != nil {
+			log.Printf("Shutdown error: %v", err)
+		}
+	}()
+
+	fmt.Printf("%s v%s is running on http://localhost:%d\n", AppName, AppVersion, *port)
 	fmt.Println("Enterprise Features: Rate Limiting ✓ | Threat Intel ✓ | PDF Reports ✓")
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), finalHandler); err != nil {
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+// securityHeadersMiddleware adds security headers to all responses
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Security headers
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; font-src 'self' https://cdn.jsdelivr.net; connect-src 'self' ws: wss:")
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Handler {
@@ -281,7 +338,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// authMiddleware validates JWT tokens
+// authMiddleware validates JWT tokens using cryptographic verification
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
@@ -295,18 +352,28 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		claims, err := parseJWT(tokenString)
+
+		// Use proper JWT verification from auth package
+		claims, err := auth.VerifyJWT(tokenString)
 		if err != nil {
 			http.Error(w, `{"error": "Invalid token"}`, http.StatusUnauthorized)
 			return
 		}
 
-		if claims.Exp < time.Now().Unix() {
+		// Convert auth.Claims to local UserClaims
+		userClaims := &UserClaims{
+			UserID:   claims.UserID,
+			Username: claims.Username,
+			Role:     claims.Role,
+			Exp:      claims.Exp,
+		}
+
+		if userClaims.Exp < time.Now().Unix() {
 			http.Error(w, `{"error": "Token expired"}`, http.StatusUnauthorized)
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userContextKey, claims)
+		ctx := context.WithValue(r.Context(), userContextKey, userClaims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }
@@ -340,33 +407,15 @@ func rbacMiddleware(requiredRole string, next http.HandlerFunc) http.HandlerFunc
 	}
 }
 
-// parseJWT extracts claims from JWT token
-func parseJWT(tokenString string) (*UserClaims, error) {
-	parts := strings.Split(tokenString, ".")
-	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid token format")
-	}
-
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return nil, err
-	}
-
-	var claims UserClaims
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil, err
-	}
-
-	return &claims, nil
-}
-
 // handleHealth returns system health status
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "healthy",
-		"uptime":  time.Since(startTime).String(),
-		"version": "1.0.0",
+		"status":    "healthy",
+		"uptime":    time.Since(startTime).String(),
+		"version":   AppVersion,
+		"name":      AppName,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
 }
 

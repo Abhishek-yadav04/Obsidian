@@ -280,7 +280,7 @@ func (s *Store) AuthenticateUser(username, password string) (*model.User, error)
 	// Hash of "password": $2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.V4Z6P8Z9Z8P8Z8
 	// For demo: admin/password (in production, use database)
 	adminPasswordHash := "$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.V4Z6P8Z9Z8P8Z8"
-	
+
 	users := map[string]model.User{
 		"admin": {
 			ID:           1,
@@ -359,9 +359,8 @@ func (s *Store) CreateRule(rule model.Rule) error {
 	s.state.Rules = append(s.state.Rules, rule)
 	s.state.Stats.ActiveRulesCount = len(s.state.Rules)
 
-	// Persist to file
-	go s.saveNoLock()
-	return nil
+	// Persist to file synchronously (data already copied under lock)
+	return s.persistState()
 }
 
 // UpdateRule modifies an existing WAF rule
@@ -372,8 +371,7 @@ func (s *Store) UpdateRule(rule model.Rule) error {
 	for i, r := range s.state.Rules {
 		if r.ID == rule.ID {
 			s.state.Rules[i] = rule
-			go s.saveNoLock()
-			return nil
+			return s.persistState()
 		}
 	}
 
@@ -389,21 +387,32 @@ func (s *Store) DeleteRule(id int) error {
 		if r.ID == id {
 			s.state.Rules = append(s.state.Rules[:i], s.state.Rules[i+1:]...)
 			s.state.Stats.ActiveRulesCount = len(s.state.Rules)
-			go s.saveNoLock()
-			return nil
+			return s.persistState()
 		}
 	}
 
 	return fmt.Errorf("rule with ID %d not found", id)
 }
 
-// saveNoLock saves state without acquiring lock (caller must hold lock)
-func (s *Store) saveNoLock() error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// persistState saves state to file - MUST be called while holding the lock
+// This copies the data while under lock to avoid race conditions
+func (s *Store) persistState() error {
+	// Copy state data while still holding the lock
 	data, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal state: %w", err)
 	}
-	return os.WriteFile(s.filePath, data, 0644)
+
+	// Write to temporary file first, then rename (atomic write)
+	tmpPath := s.filePath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, s.filePath); err != nil {
+		// Fallback: direct write if rename fails
+		return os.WriteFile(s.filePath, data, 0600)
+	}
+
+	return nil
 }

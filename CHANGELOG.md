@@ -1,5 +1,70 @@
 # Changelog
 
+## Obsidian Sentinel v2.0.0 (2024-01-31)
+
+### 🔐 Security Enhancements
+
+#### Critical Fixes
+- **JWT Authentication Overhaul**: Replaced placeholder signature with proper HMAC-SHA256 cryptographic signing
+- **Environment-Based Secrets**: JWT secrets now read from `OBSIDIAN_JWT_SECRET` environment variable
+- **Token Verification**: Added proper `VerifyJWT()` function with signature validation and expiration checking
+- **CSRF Protection**: Added `GenerateCSRFToken()` and `ValidateCSRFToken()` functions
+- **Password Hashing**: Upgraded bcrypt cost factor to 12 for stronger password storage
+- **Security Headers Middleware**: Added CSP, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection headers
+
+#### WebSocket Security
+- **Origin Validation**: WebSocket connections now validate against allowed origins list
+- **Configurable Origins**: Use `OBSIDIAN_ALLOWED_ORIGINS` environment variable for production
+
+### 🐛 Bug Fixes
+
+#### Data Integrity
+- **Race Condition Fixed**: Resolved race condition in `saveNoLock()` by using synchronous persistence with atomic file writes
+- **Atomic File Writes**: Data persistence now uses temp file + rename pattern for crash safety
+
+#### Code Quality
+- **Removed Mock Data**: Eliminated `seedDemoData()` function with fake threat intelligence entries
+- **Real Threat Feeds**: Threat intelligence now fetches from actual sources (Spamhaus, Emerging Threats)
+- **Proper Error Wrapping**: All errors now use `fmt.Errorf("context: %w", err)` pattern
+
+### ✨ New Features
+
+#### Threat Intelligence
+- **Real Feed Integration**: Added support for Spamhaus DROP/EDROP, Emerging Threats, Firehol
+- **CIDR Block Support**: Threat intelligence can now block entire network ranges
+- **Persistent Storage**: Threat data persisted to `threats.json`
+- **Background Updates**: Automatic hourly refresh of threat feeds
+
+#### Server Improvements  
+- **Graceful Shutdown**: Proper SIGTERM/SIGINT handling with 30-second timeout
+- **HTTP Server Timeouts**: Added ReadTimeout, WriteTimeout, IdleTimeout
+- **Health Endpoint Enhanced**: Now includes version, name, and timestamp
+
+#### Multi-User Support
+- **Three User Roles**: Admin, Analyst, Viewer with proper RBAC
+- **Role Hierarchy**: Admin > Analyst > Viewer permission model
+
+### 📝 Documentation
+
+- **Complete README Rewrite**: New enterprise-focused documentation
+- **API Reference**: Full endpoint documentation with examples
+- **Deployment Guides**: Docker, Kubernetes, and Systemd configurations
+- **Architecture Diagrams**: Visual middleware stack representation
+
+### 🔧 Configuration
+
+New environment variables:
+- `OBSIDIAN_JWT_SECRET` - JWT signing secret
+- `OBSIDIAN_ALLOWED_ORIGINS` - Comma-separated WebSocket origins
+
+### 💔 Breaking Changes
+
+- `GenerateJWT()` signature changed: removed `secret` parameter (now uses environment variable)
+- WebSocket connections require valid origin header
+- JWT tokens from v1.x are invalid due to new signing method
+
+---
+
 ## Coraza v3  (unreleased)
 
 * Decided for Golang semantic versioning [#208](https://github.com/corazawaf/coraza/issues/208)

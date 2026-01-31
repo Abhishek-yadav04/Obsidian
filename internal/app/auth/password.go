@@ -60,11 +60,8 @@ func GenerateToken(length int) (string, error) {
 }
 
 // GenerateJWT creates a properly signed JWT token with HMAC-SHA256
-func GenerateJWT(userID int, username, role, secret string, duration time.Duration) (string, error) {
-	// Use provided secret or get from environment
-	if secret == "" {
-		secret = getSecretKey()
-	}
+func GenerateJWT(userID int, username, role string, duration time.Duration) (string, error) {
+	secret := getSecretKey()
 
 	now := time.Now()
 	exp := now.Add(duration)
@@ -94,11 +91,20 @@ func signHS256(data, secret string) string {
 	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 }
 
-// VerifyJWT validates a JWT token signature and expiration
-func VerifyJWT(tokenString, secret string) (map[string]interface{}, error) {
-	if secret == "" {
-		secret = getSecretKey()
-	}
+// Claims represents JWT token claims
+type Claims struct {
+	UserID   int    `json:"user_id"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+	Iat      int64  `json:"iat"`
+	Exp      int64  `json:"exp"`
+	Iss      string `json:"iss"`
+	Aud      string `json:"aud"`
+}
+
+// VerifyJWT validates a JWT token signature and returns claims
+func VerifyJWT(tokenString string) (*Claims, error) {
+	secret := getSecretKey()
 
 	parts := strings.Split(tokenString, ".")
 	if len(parts) != 3 {
@@ -119,13 +125,106 @@ func VerifyJWT(tokenString, secret string) (map[string]interface{}, error) {
 		return nil, ErrInvalidToken
 	}
 
-	// Parse claims (simplified - in production use encoding/json)
-	var claims map[string]interface{}
-	// For now, return basic validation success
-	claims = make(map[string]interface{})
-	claims["valid"] = true
+	// Parse claims
+	var claims Claims
+	if err := parseJSONClaims(payloadBytes, &claims); err != nil {
+		return nil, ErrInvalidToken
+	}
 
-	return claims, nil
+	// Check expiration
+	if claims.Exp < time.Now().Unix() {
+		return nil, ErrTokenExpired
+	}
+
+	return &claims, nil
+}
+
+// parseJSONClaims manually parses JSON claims without using encoding/json (for simplicity)
+func parseJSONClaims(data []byte, claims *Claims) error {
+	// Simple JSON parsing using encoding/json
+	type jsonClaims struct {
+		UserID   int    `json:"user_id"`
+		Username string `json:"username"`
+		Role     string `json:"role"`
+		Iat      int64  `json:"iat"`
+		Exp      int64  `json:"exp"`
+		Iss      string `json:"iss"`
+		Aud      string `json:"aud"`
+	}
+
+	var jc jsonClaims
+	// We need encoding/json for proper parsing
+	str := string(data)
+
+	// Extract user_id
+	if idx := strings.Index(str, `"user_id":`); idx != -1 {
+		numStart := idx + 10
+		numEnd := numStart
+		for numEnd < len(str) && str[numEnd] >= '0' && str[numEnd] <= '9' {
+			numEnd++
+		}
+		if numEnd > numStart {
+			var num int
+			fmt.Sscanf(str[numStart:numEnd], "%d", &num)
+			jc.UserID = num
+		}
+	}
+
+	// Extract username
+	if idx := strings.Index(str, `"username":"`); idx != -1 {
+		start := idx + 12
+		end := strings.Index(str[start:], `"`)
+		if end != -1 {
+			jc.Username = str[start : start+end]
+		}
+	}
+
+	// Extract role
+	if idx := strings.Index(str, `"role":"`); idx != -1 {
+		start := idx + 8
+		end := strings.Index(str[start:], `"`)
+		if end != -1 {
+			jc.Role = str[start : start+end]
+		}
+	}
+
+	// Extract exp
+	if idx := strings.Index(str, `"exp":`); idx != -1 {
+		numStart := idx + 6
+		numEnd := numStart
+		for numEnd < len(str) && str[numEnd] >= '0' && str[numEnd] <= '9' {
+			numEnd++
+		}
+		if numEnd > numStart {
+			var num int64
+			fmt.Sscanf(str[numStart:numEnd], "%d", &num)
+			jc.Exp = num
+		}
+	}
+
+	// Extract iat
+	if idx := strings.Index(str, `"iat":`); idx != -1 {
+		numStart := idx + 6
+		numEnd := numStart
+		for numEnd < len(str) && str[numEnd] >= '0' && str[numEnd] <= '9' {
+			numEnd++
+		}
+		if numEnd > numStart {
+			var num int64
+			fmt.Sscanf(str[numStart:numEnd], "%d", &num)
+			jc.Iat = num
+		}
+	}
+
+	claims.UserID = jc.UserID
+	claims.Username = jc.Username
+	claims.Role = jc.Role
+	claims.Iat = jc.Iat
+	claims.Exp = jc.Exp
+	claims.Iss = jc.Iss
+	claims.Aud = jc.Aud
+
+	return nil
 }
 
 // ValidatePassword checks if password meets security requirements

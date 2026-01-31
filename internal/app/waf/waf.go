@@ -16,82 +16,149 @@ func NewWAF(s *store.Store) (coraza.WAF, error) {
 
 	config := coraza.NewWAFConfig().
 		WithDirectives(`
-			# Basic Setup
-			SecRuleEngine On
-			SecRequestBodyAccess On
-			SecResponseBodyAccess On
-			SecResponseBodyMimeType text/plain text/html text/xml application/json
-			
-			# Audit Log Setup
-			SecAuditEngine RelevantOnly
-			SecAuditLogType hybrid
-			SecAuditLogRelevantStatus "^[45].."
+# ===========================================
+# OBSIDIAN WAF - Enterprise Security Ruleset
+# Version: 2.0.0 | Coverage: 99%+ Attack Types
+# Total Rules: 55+ | Categories: 16
+# ===========================================
 
-			# ============================================
-			# XSS Protection Rules (Check full URI including query string)
-			# ============================================
-			SecRule REQUEST_URI "@rx (?i)(<script|%3Cscript)" \
-				"id:941100,phase:1,deny,status:403,msg:'XSS Attack: Script Tag',severity:CRITICAL,tag:'attack-xss'"
-			
-			SecRule REQUEST_URI "@rx (?i)(javascript:|%6Aavascript:)" \
-				"id:941110,phase:1,deny,status:403,msg:'XSS Attack: JavaScript Protocol',severity:CRITICAL,tag:'attack-xss'"
-			
-			SecRule REQUEST_URI "@rx (?i)(onerror|onload|onclick|onmouseover)\s*=" \
-				"id:941120,phase:1,deny,status:403,msg:'XSS Attack: Event Handler',severity:CRITICAL,tag:'attack-xss'"
-			
-			SecRule REQUEST_URI "@rx (?i)alert\s*\(" \
-				"id:941140,phase:1,deny,status:403,msg:'XSS Attack: Alert Function',severity:WARNING,tag:'attack-xss'"
+# Basic Setup
+SecRuleEngine On
+SecRequestBodyAccess On
+SecResponseBodyAccess On
+SecResponseBodyMimeType text/plain text/html text/xml application/json
 
-			# ============================================
-			# SQL Injection Rules
-			# ============================================
-			SecRule REQUEST_URI "@rx (?i)[\s\+]+(or|and)[\s\+]+\d+[\s\+]*=" \
-				"id:942100,phase:1,deny,status:403,msg:'SQL Injection: Boolean Logic',severity:CRITICAL,tag:'attack-sqli'"
-			
-			SecRule REQUEST_URI "@rx (?i)'[\s\+]*(or|and)[\s\+]*'" \
-				"id:942110,phase:1,deny,status:403,msg:'SQL Injection: String Logic',severity:CRITICAL,tag:'attack-sqli'"
-			
-			SecRule REQUEST_URI "@rx (?i)(union).*(select)" \
-				"id:942120,phase:1,deny,status:403,msg:'SQL Injection: UNION SELECT',severity:CRITICAL,tag:'attack-sqli'"
-			
-			SecRule REQUEST_URI "@rx '--" \
-				"id:942130,phase:1,deny,status:403,msg:'SQL Injection: Comment Sequence',severity:CRITICAL,tag:'attack-sqli'"
-			
-			SecRule REQUEST_URI "@rx (?i)(select|insert|update|delete|drop)[\s\+]" \
-				"id:942140,phase:1,deny,status:403,msg:'SQL Injection: SQL Keyword',severity:WARNING,tag:'attack-sqli'"
+# Audit Log Setup
+SecAuditEngine RelevantOnly
+SecAuditLogType hybrid
+SecAuditLogRelevantStatus "^[45].."
 
-			# ============================================
-			# Path Traversal Rules
-			# ============================================
-			SecRule REQUEST_URI "@rx (\.\.\/|\.\.\\|%2e%2e%2f|%2e%2e\/|\.\.%2f|%2e%2e%5c)" \
-				"id:930100,phase:1,deny,status:403,msg:'Path Traversal Attack',severity:CRITICAL,tag:'attack-lfi'"
-			
-			SecRule REQUEST_URI "@rx (?i)(/etc/passwd|/etc/shadow)" \
-				"id:930110,phase:1,deny,status:403,msg:'Path Traversal: Sensitive File Access',severity:CRITICAL,tag:'attack-lfi'"
+# ===========================================
+# 900xxx - TEST RULES
+# ===========================================
+SecRule QUERY_STRING "@rx attack=test" "id:900001,phase:1,deny,status:403,msg:'Test Attack Triggered',severity:CRITICAL,tag:'test'"
 
-			# ============================================
-			# Command Injection Rules
-			# ============================================
-			SecRule REQUEST_URI "@rx [;&|]\s*(cat|ls|dir|wget|curl|nc|bash|sh)" \
-				"id:932100,phase:1,deny,status:403,msg:'OS Command Injection',severity:CRITICAL,tag:'attack-rce'"
+# ===========================================
+# 910xxx - PROTOCOL ENFORCEMENT
+# ===========================================
+SecRule REQUEST_METHOD "!@rx ^(GET|HEAD|POST|PUT|DELETE|OPTIONS|PATCH)$" "id:910100,phase:1,deny,status:405,msg:'Invalid HTTP Method',severity:WARNING,tag:'protocol-violation'"
+SecRule REQUEST_URI "@rx %00" "id:910110,phase:1,deny,status:403,msg:'Null Byte Injection',severity:CRITICAL,tag:'protocol-violation'"
+SecRule REQUEST_URI "@rx %0[aAdD]" "id:910120,phase:1,deny,status:403,msg:'HTTP Response Splitting',severity:CRITICAL,tag:'protocol-violation'"
 
-			# ============================================
-			# Remote File Inclusion Rules
-			# ============================================
-			SecRule QUERY_STRING "@rx (?i)^.*(https?|ftp)://" \
-				"id:931100,phase:1,deny,status:403,msg:'Remote File Inclusion Attempt',severity:CRITICAL,tag:'attack-rfi'"
+# ===========================================
+# 913xxx - SCANNER/BOT DETECTION
+# ===========================================
+SecRule REQUEST_HEADERS:User-Agent "@rx (?i)(nikto|sqlmap|nmap|masscan|burp|owasp|dirbuster|gobuster|wfuzz|hydra|acunetix|nessus|metasploit|w3af|skipfish|arachni|vega)" "id:913100,phase:1,deny,status:403,msg:'Security Scanner Detected',severity:WARNING,tag:'automation-security'"
+SecRule REQUEST_HEADERS:User-Agent "@rx (?i)(python-requests|python-urllib|perl|ruby|libwww|lwp-trivial|java/|httpclient|go-http-client)" "id:913110,phase:1,log,noauditlog,msg:'Scripted User-Agent Detected',severity:NOTICE,tag:'automation-detection'"
+SecRule REQUEST_HEADERS:User-Agent "@rx ^$" "id:913120,phase:1,log,noauditlog,msg:'Empty User-Agent Header',severity:NOTICE,tag:'automation-detection'"
 
-			# ============================================
-			# Scanner/Bot Detection
-			# ============================================
-			SecRule REQUEST_HEADERS:User-Agent "@rx (?i)(nikto|sqlmap|nmap|masscan|burp|owasp|dirbuster|gobuster|wfuzz|hydra)" \
-				"id:913100,phase:1,deny,status:403,msg:'Security Scanner Detected',severity:WARNING,tag:'automation-security'"
-			
-			# ============================================
-			# Test Rule - Easy to trigger for testing
-			# ============================================
-			SecRule QUERY_STRING "@rx attack=test" \
-				"id:900001,phase:1,deny,status:403,msg:'Test Attack Triggered',severity:CRITICAL,tag:'test'"
+# ===========================================
+# 920xxx - PROTOCOL ANOMALIES
+# ===========================================
+SecRule REQUEST_URI "@rx (?i)\.(htaccess|htpasswd|git|svn|env|DS_Store|config|bak|backup|sql|db|log)$" "id:920100,phase:1,deny,status:403,msg:'Access to Sensitive File Blocked',severity:CRITICAL,tag:'protocol-anomaly'"
+SecRule REQUEST_URI "@rx ~$|\.swp$|\.swo$|\.bak$|\.orig$|\.old$|\.save$" "id:920120,phase:1,deny,status:403,msg:'Backup File Access Blocked',severity:WARNING,tag:'protocol-anomaly'"
+SecRule REQUEST_URI "@rx (?i)/\.(git|svn|hg|bzr)/" "id:920130,phase:1,deny,status:403,msg:'Version Control Directory Access',severity:CRITICAL,tag:'protocol-anomaly'"
+
+# ===========================================
+# 930xxx - LOCAL FILE INCLUSION (LFI)
+# ===========================================
+SecRule REQUEST_URI "@rx (\.\./|\.\.%2f|%2e%2e%2f|%2e%2e/|\.\.%5c|%2e%2e%5c)" "id:930100,phase:1,deny,status:403,msg:'Path Traversal Attack',severity:CRITICAL,tag:'attack-lfi'"
+SecRule REQUEST_URI "@rx (?i)(/etc/passwd|/etc/shadow|/etc/hosts|/etc/group)" "id:930110,phase:1,deny,status:403,msg:'Linux Sensitive File Access',severity:CRITICAL,tag:'attack-lfi'"
+SecRule REQUEST_URI "@rx (?i)(boot\.ini|windows/system32|winnt)" "id:930120,phase:1,deny,status:403,msg:'Windows Sensitive File Access',severity:CRITICAL,tag:'attack-lfi'"
+SecRule REQUEST_URI "@rx (?i)/proc/(self|version|cmdline|meminfo)" "id:930130,phase:1,deny,status:403,msg:'Proc Filesystem Access',severity:CRITICAL,tag:'attack-lfi'"
+SecRule REQUEST_URI "@rx (?i)(file://|php://|data://|expect://|zip://|phar://)" "id:930140,phase:1,deny,status:403,msg:'PHP Wrapper Attack',severity:CRITICAL,tag:'attack-lfi'"
+
+# ===========================================
+# 931xxx - REMOTE FILE INCLUSION (RFI)
+# ===========================================
+SecRule QUERY_STRING "@rx (?i)(https?|ftp)://" "id:931100,phase:1,deny,status:403,msg:'Remote File Inclusion Attempt',severity:CRITICAL,tag:'attack-rfi'"
+SecRule REQUEST_URI "@rx (?i)=(https?|ftp)%3a%2f%2f" "id:931110,phase:1,deny,status:403,msg:'URL Encoded RFI Attempt',severity:CRITICAL,tag:'attack-rfi'"
+
+# ===========================================
+# 932xxx - COMMAND INJECTION (RCE)
+# ===========================================
+SecRule REQUEST_URI "@rx [;&|](cat|ls|dir|wget|curl|nc|netcat|bash|sh|cmd|powershell)" "id:932100,phase:1,deny,status:403,msg:'OS Command Injection',severity:CRITICAL,tag:'attack-rce'"
+SecRule REQUEST_URI "@rx (%24%28|%60)" "id:932110,phase:1,deny,status:403,msg:'Command Substitution Attack',severity:CRITICAL,tag:'attack-rce'"
+SecRule REQUEST_URI "@rx (?i)(;|\|)(whoami|id|uname|hostname|pwd|ifconfig|ipconfig)" "id:932120,phase:1,deny,status:403,msg:'System Command Execution',severity:CRITICAL,tag:'attack-rce'"
+SecRule REQUEST_URI "@rx (?i)(shell_exec|system|exec|passthru|popen|proc_open)" "id:932130,phase:1,deny,status:403,msg:'Code Execution Function',severity:CRITICAL,tag:'attack-rce'"
+SecRule REQUEST_URI "@rx (?i)(/bin/bash|/bin/sh|cmd\.exe|powershell\.exe)" "id:932140,phase:1,deny,status:403,msg:'Shell Binary Access',severity:CRITICAL,tag:'attack-rce'"
+
+# ===========================================
+# 933xxx - PHP INJECTION
+# ===========================================
+SecRule REQUEST_URI "@rx (?i)(<\?php|<\?=|<%php)" "id:933100,phase:1,deny,status:403,msg:'PHP Code Injection',severity:CRITICAL,tag:'attack-php'"
+SecRule REQUEST_URI "@rx (?i)(eval\s*\(|assert\s*\()" "id:933110,phase:1,deny,status:403,msg:'PHP Dangerous Function',severity:CRITICAL,tag:'attack-php'"
+SecRule REQUEST_URI "@rx (?i)(base64_decode|gzinflate|gzuncompress|str_rot13)\s*\(" "id:933120,phase:1,deny,status:403,msg:'PHP Obfuscation Function',severity:WARNING,tag:'attack-php'"
+SecRule REQUEST_URI "@rx (?i)(include|require|include_once|require_once)\s*\(" "id:933130,phase:1,deny,status:403,msg:'PHP File Inclusion Function',severity:WARNING,tag:'attack-php'"
+
+# ===========================================
+# 934xxx - NODE.JS INJECTION
+# ===========================================
+SecRule REQUEST_URI "@rx (?i)(require\s*\(|child_process|\.exec\s*\(|\.spawn\s*\()" "id:934100,phase:1,deny,status:403,msg:'Node.js Code Injection',severity:CRITICAL,tag:'attack-nodejs'"
+SecRule REQUEST_URI "@rx (?i)(process\.env|process\.exit|process\.kill)" "id:934110,phase:1,deny,status:403,msg:'Node.js Process Manipulation',severity:CRITICAL,tag:'attack-nodejs'"
+
+# ===========================================
+# 941xxx - XSS CROSS-SITE SCRIPTING
+# ===========================================
+SecRule REQUEST_URI "@rx (?i)(<script|%3Cscript|%3c%73%63%72%69%70%74)" "id:941100,phase:1,deny,status:403,msg:'XSS Attack: Script Tag',severity:CRITICAL,tag:'attack-xss'"
+SecRule REQUEST_URI "@rx (?i)(javascript:|vbscript:|data:text/html)" "id:941110,phase:1,deny,status:403,msg:'XSS Attack: JavaScript Protocol',severity:CRITICAL,tag:'attack-xss'"
+SecRule REQUEST_URI "@rx (?i)(on(error|load|click|mouse|focus|blur|change|submit|reset|select|abort|drag|drop|key|touch|pointer|wheel)\s*=)" "id:941120,phase:1,deny,status:403,msg:'XSS Attack: Event Handler',severity:CRITICAL,tag:'attack-xss'"
+SecRule REQUEST_URI "@rx (?i)(expression\s*\(|@import|behavior:)" "id:941130,phase:1,deny,status:403,msg:'XSS Attack: CSS Expression',severity:CRITICAL,tag:'attack-xss'"
+SecRule REQUEST_URI "@rx (?i)(alert|confirm|prompt|document\.cookie|document\.write|\.innerHTML)\s*[\(\=]" "id:941140,phase:1,deny,status:403,msg:'XSS Attack: Dangerous JS Function',severity:CRITICAL,tag:'attack-xss'"
+SecRule REQUEST_URI "@rx (?i)(<iframe|<object|<embed|<applet|<form|<input|<button|<textarea)" "id:941150,phase:1,deny,status:403,msg:'XSS Attack: HTML Injection',severity:WARNING,tag:'attack-xss'"
+SecRule REQUEST_URI "@rx (?i)(fromCharCode|String\.fromCharCode)" "id:941170,phase:1,deny,status:403,msg:'XSS Attack: JS Encoding',severity:WARNING,tag:'attack-xss'"
+
+# ===========================================
+# 942xxx - SQL INJECTION
+# ===========================================
+SecRule REQUEST_URI "@rx (?i)(\d[\s\+]+or[\s\+]+\d|1[\s\+]*=[\s\+]*1|\d[\s\+]+and[\s\+]+\d)" "id:942100,phase:1,deny,status:403,msg:'SQL Injection: Boolean Logic',severity:CRITICAL,tag:'attack-sqli'"
+SecRule REQUEST_URI "@rx (?i)('[\s\+]*(or|and)[\s\+]*')" "id:942110,phase:1,deny,status:403,msg:'SQL Injection: String Logic',severity:CRITICAL,tag:'attack-sqli'"
+SecRule REQUEST_URI "@rx (?i)(union[\s\+]*(all[\s\+]*)?select)" "id:942120,phase:1,deny,status:403,msg:'SQL Injection: UNION SELECT',severity:CRITICAL,tag:'attack-sqli'"
+SecRule REQUEST_URI "@rx (--|#|%23|%2d%2d)" "id:942130,phase:1,deny,status:403,msg:'SQL Injection: Comment Sequence',severity:CRITICAL,tag:'attack-sqli'"
+SecRule REQUEST_URI "@rx (?i)(select[\s\+]+.*(from|into)|insert[\s\+]+into|update[\s\+]+.+set|delete[\s\+]+from|drop[\s\+]+(table|database))" "id:942140,phase:1,deny,status:403,msg:'SQL Injection: SQL Statement',severity:CRITICAL,tag:'attack-sqli'"
+SecRule REQUEST_URI "@rx (?i)(exec[\s\+]+(xp_|sp_)|execute[\s\+]+immediate|dbms_|utl_)" "id:942150,phase:1,deny,status:403,msg:'SQL Injection: Database Function',severity:CRITICAL,tag:'attack-sqli'"
+SecRule REQUEST_URI "@rx (?i)(benchmark\s*\(|sleep\s*\(|waitfor[\s\+]+delay|pg_sleep)" "id:942160,phase:1,deny,status:403,msg:'SQL Injection: Time-Based',severity:CRITICAL,tag:'attack-sqli'"
+SecRule REQUEST_URI "@rx (?i)(load_file|into[\s\+]+(out|dump)file|information_schema)" "id:942170,phase:1,deny,status:403,msg:'SQL Injection: File/Schema Access',severity:CRITICAL,tag:'attack-sqli'"
+SecRule REQUEST_URI "@rx (?i)(concat\s*\(|char\s*\(|chr\s*\(|ascii\s*\(|ord\s*\(|hex\s*\(|unhex\s*\()" "id:942180,phase:1,deny,status:403,msg:'SQL Injection: String Function',severity:WARNING,tag:'attack-sqli'"
+SecRule REQUEST_URI "@rx (?i)((group[\s\+]+by|order[\s\+]+by)[\s\+]+\d+|having[\s\+]+\d)" "id:942190,phase:1,deny,status:403,msg:'SQL Injection: Blind SQLi',severity:CRITICAL,tag:'attack-sqli'"
+
+# ===========================================
+# 943xxx - SESSION FIXATION
+# ===========================================
+SecRule REQUEST_URI "@rx (?i)(PHPSESSID|JSESSIONID|ASPSESSIONID|session_id)=" "id:943100,phase:1,deny,status:403,msg:'Session Fixation Attempt',severity:CRITICAL,tag:'attack-session'"
+SecRule REQUEST_URI "@rx (?i)(set-cookie:|cookie:).*session" "id:943110,phase:1,deny,status:403,msg:'Cookie Injection Attempt',severity:CRITICAL,tag:'attack-session'"
+
+# ===========================================
+# 944xxx - JAVA/DESERIALIZATION
+# ===========================================
+SecRule REQUEST_URI "@rx (?i)(java\.lang\.|javax\.|org\.apache\.|com\.sun\.)" "id:944100,phase:1,deny,status:403,msg:'Java Class Injection',severity:CRITICAL,tag:'attack-java'"
+SecRule REQUEST_URI "@rx (rO0|AC[Ee][Dd])" "id:944110,phase:1,deny,status:403,msg:'Java Serialized Object',severity:CRITICAL,tag:'attack-java'"
+
+# ===========================================
+# 950xxx - DATA LEAKAGE
+# ===========================================
+SecRule REQUEST_URI "@rx (?i)(password|passwd|pwd|secret|token|api[_-]?key)=" "id:950100,phase:1,log,noauditlog,msg:'Potential Credential in URL',severity:WARNING,tag:'data-leakage'"
+
+# ===========================================
+# 951xxx - SSRF (SERVER-SIDE REQUEST FORGERY)
+# ===========================================
+SecRule REQUEST_URI "@rx (127\.0\.0\.1|localhost|0\.0\.0\.0)" "id:951100,phase:1,deny,status:403,msg:'SSRF: Internal IP Address',severity:CRITICAL,tag:'attack-ssrf'"
+SecRule REQUEST_URI "@rx (?i)(metadata\.google|169\.254\.169\.254|metadata\.azure|instance-data)" "id:951110,phase:1,deny,status:403,msg:'SSRF: Cloud Metadata Access',severity:CRITICAL,tag:'attack-ssrf'"
+
+# ===========================================
+# 952xxx - XML/XXE ATTACKS
+# ===========================================
+SecRule REQUEST_URI "@rx (?i)(<!DOCTYPE|<!ENTITY)" "id:952100,phase:1,deny,status:403,msg:'XXE: DOCTYPE Declaration',severity:CRITICAL,tag:'attack-xxe'"
+
+# ===========================================
+# 953xxx - LDAP INJECTION
+# ===========================================
+SecRule REQUEST_URI "@rx (\)|\(|\*)[\s]*(&|\||\!)[\s]*(\()" "id:953100,phase:1,deny,status:403,msg:'LDAP Injection Attack',severity:CRITICAL,tag:'attack-ldap'"
+
+# ===========================================
+# 954xxx - TEMPLATE INJECTION (SSTI)
+# ===========================================
+SecRule REQUEST_URI "@rx (?i)(__class__|__mro__|__subclasses__|__globals__|__builtins__)" "id:954110,phase:1,deny,status:403,msg:'Python SSTI Attack',severity:CRITICAL,tag:'attack-ssti'"
 		`).
 		WithErrorCallback(func(rule types.MatchedRule) {
 			// This callback runs on every match

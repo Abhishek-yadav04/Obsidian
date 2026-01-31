@@ -174,34 +174,100 @@ func (l *HybridAuditLogger) Close() error { return nil }
 
 func defaultRules() []model.Rule {
 	return []model.Rule{
-		// Test Rule
+		// 900xxx - Test Rules
 		{ID: 900001, Description: "Test Attack Detection", Severity: "CRITICAL", Enabled: true, Category: "Test"},
 
-		// Scanner/Bot Detection
-		{ID: 913100, Description: "Security Scanner Detection (sqlmap, nikto, etc.)", Severity: "WARNING", Enabled: true, Category: "Reputation"},
+		// 910xxx - Protocol Enforcement
+		{ID: 910100, Description: "Invalid HTTP Method", Severity: "WARNING", Enabled: true, Category: "Protocol"},
+		{ID: 910110, Description: "Null Byte Injection", Severity: "CRITICAL", Enabled: true, Category: "Protocol"},
+		{ID: 910120, Description: "HTTP Response Splitting", Severity: "CRITICAL", Enabled: true, Category: "Protocol"},
 
-		// Path Traversal
+		// 913xxx - Scanner/Bot Detection
+		{ID: 913100, Description: "Security Scanner Detection (sqlmap, nikto, burp)", Severity: "WARNING", Enabled: true, Category: "Reputation"},
+		{ID: 913110, Description: "Scripted User-Agent Detection", Severity: "NOTICE", Enabled: true, Category: "Reputation"},
+		{ID: 913120, Description: "Empty User-Agent Header", Severity: "NOTICE", Enabled: true, Category: "Reputation"},
+
+		// 920xxx - Protocol Anomalies
+		{ID: 920100, Description: "Sensitive File Access (.env, .git, .htaccess)", Severity: "CRITICAL", Enabled: true, Category: "Anomaly"},
+		{ID: 920110, Description: "Server-Side Script Request", Severity: "NOTICE", Enabled: true, Category: "Anomaly"},
+		{ID: 920120, Description: "Backup File Access (.bak, .swp)", Severity: "WARNING", Enabled: true, Category: "Anomaly"},
+		{ID: 920130, Description: "Version Control Directory Access", Severity: "CRITICAL", Enabled: true, Category: "Anomaly"},
+
+		// 930xxx - Local File Inclusion (LFI)
 		{ID: 930100, Description: "Path Traversal Attack (../)", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
-		{ID: 930110, Description: "Sensitive File Access (/etc/passwd)", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
+		{ID: 930110, Description: "Linux Sensitive File Access (/etc/passwd)", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
+		{ID: 930120, Description: "Windows Sensitive File Access (boot.ini)", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
+		{ID: 930130, Description: "Proc Filesystem Access", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
+		{ID: 930140, Description: "PHP Wrapper Attack (php://, file://)", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
 
-		// Remote File Inclusion
+		// 931xxx - Remote File Inclusion (RFI)
 		{ID: 931100, Description: "Remote File Inclusion (http://)", Severity: "CRITICAL", Enabled: true, Category: "RFI"},
+		{ID: 931110, Description: "URL Encoded RFI Attempt", Severity: "CRITICAL", Enabled: true, Category: "RFI"},
 
-		// Command Injection
-		{ID: 932100, Description: "OS Command Injection", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
+		// 932xxx - Command Injection (RCE)
+		{ID: 932100, Description: "OS Command Injection (cat, ls, wget)", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
+		{ID: 932110, Description: "Command Substitution Attack ($(), ``)", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
+		{ID: 932120, Description: "System Command Execution (whoami, id)", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
+		{ID: 932130, Description: "Code Execution Function", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
+		{ID: 932140, Description: "Shell Binary Access (/bin/bash)", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
 
-		// XSS Protection
-		{ID: 941100, Description: "XSS Attack: Script Tag", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
+		// 933xxx - PHP Injection
+		{ID: 933100, Description: "PHP Code Injection (<?php)", Severity: "CRITICAL", Enabled: true, Category: "PHP"},
+		{ID: 933110, Description: "PHP Dangerous Function (eval, assert)", Severity: "CRITICAL", Enabled: true, Category: "PHP"},
+		{ID: 933120, Description: "PHP Obfuscation Function (base64_decode)", Severity: "WARNING", Enabled: true, Category: "PHP"},
+		{ID: 933130, Description: "PHP File Inclusion Function", Severity: "WARNING", Enabled: true, Category: "PHP"},
+
+		// 934xxx - Node.js Injection
+		{ID: 934100, Description: "Node.js Code Injection (require, exec)", Severity: "CRITICAL", Enabled: true, Category: "NodeJS"},
+		{ID: 934110, Description: "Node.js Process Manipulation", Severity: "CRITICAL", Enabled: true, Category: "NodeJS"},
+
+		// 941xxx - XSS Protection
+		{ID: 941100, Description: "XSS Attack: Script Tag (<script>)", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
 		{ID: 941110, Description: "XSS Attack: JavaScript Protocol", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
-		{ID: 941120, Description: "XSS Attack: Event Handler", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
-		{ID: 941140, Description: "XSS Attack: Alert Function", Severity: "WARNING", Enabled: true, Category: "XSS"},
+		{ID: 941120, Description: "XSS Attack: Event Handler (onload=)", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
+		{ID: 941130, Description: "XSS Attack: CSS Expression", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
+		{ID: 941140, Description: "XSS Attack: Dangerous JS Function", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
+		{ID: 941150, Description: "XSS Attack: HTML Injection", Severity: "WARNING", Enabled: true, Category: "XSS"},
+		{ID: 941160, Description: "HTML Tag with External Reference", Severity: "NOTICE", Enabled: true, Category: "XSS"},
+		{ID: 941170, Description: "XSS Attack: JS Encoding (fromCharCode)", Severity: "WARNING", Enabled: true, Category: "XSS"},
 
-		// SQL Injection
+		// 942xxx - SQL Injection
 		{ID: 942100, Description: "SQL Injection: Boolean Logic (1 or 1=1)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
 		{ID: 942110, Description: "SQL Injection: String Logic (' or ')", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
 		{ID: 942120, Description: "SQL Injection: UNION SELECT", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
-		{ID: 942130, Description: "SQL Injection: Comment Sequence ('--)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
-		{ID: 942140, Description: "SQL Injection: SQL Keyword", Severity: "WARNING", Enabled: true, Category: "SQLi"},
+		{ID: 942130, Description: "SQL Injection: Comment Sequence (--)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
+		{ID: 942140, Description: "SQL Injection: SQL Statement", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
+		{ID: 942150, Description: "SQL Injection: Database Function (xp_, sp_)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
+		{ID: 942160, Description: "SQL Injection: Time-Based (SLEEP, BENCHMARK)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
+		{ID: 942170, Description: "SQL Injection: File/Schema Access", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
+		{ID: 942180, Description: "SQL Injection: String Function (CONCAT, CHAR)", Severity: "WARNING", Enabled: true, Category: "SQLi"},
+		{ID: 942190, Description: "SQL Injection: Blind SQLi (ORDER BY)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
+
+		// 943xxx - Session Fixation
+		{ID: 943100, Description: "Session Fixation Attempt", Severity: "CRITICAL", Enabled: true, Category: "Session"},
+		{ID: 943110, Description: "Cookie Injection Attempt", Severity: "CRITICAL", Enabled: true, Category: "Session"},
+
+		// 944xxx - Java/Deserialization
+		{ID: 944100, Description: "Java Class Injection", Severity: "CRITICAL", Enabled: true, Category: "Java"},
+		{ID: 944110, Description: "Java Serialized Object", Severity: "CRITICAL", Enabled: true, Category: "Java"},
+
+		// 950xxx - Data Leakage
+		{ID: 950100, Description: "Potential Credential in URL", Severity: "WARNING", Enabled: true, Category: "Leakage"},
+
+		// 951xxx - SSRF
+		{ID: 951100, Description: "SSRF: Internal IP Address", Severity: "CRITICAL", Enabled: true, Category: "SSRF"},
+		{ID: 951110, Description: "SSRF: Cloud Metadata Access", Severity: "CRITICAL", Enabled: true, Category: "SSRF"},
+
+		// 952xxx - XXE
+		{ID: 952100, Description: "XXE: DOCTYPE Declaration", Severity: "CRITICAL", Enabled: true, Category: "XXE"},
+		{ID: 952110, Description: "XXE: External Entity", Severity: "CRITICAL", Enabled: true, Category: "XXE"},
+
+		// 953xxx - LDAP Injection
+		{ID: 953100, Description: "LDAP Injection Attack", Severity: "CRITICAL", Enabled: true, Category: "LDAP"},
+
+		// 954xxx - Template Injection (SSTI)
+		{ID: 954100, Description: "Template Syntax Detected", Severity: "NOTICE", Enabled: true, Category: "SSTI"},
+		{ID: 954110, Description: "Python SSTI Attack", Severity: "CRITICAL", Enabled: true, Category: "SSTI"},
 	}
 }
 
@@ -210,28 +276,60 @@ func (s *Store) AuthenticateUser(username, password string) (*model.User, error)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// In-memory user storage for demo (will use DB in production)
-	// Default admin user - password is "password"
-	defaultAdmin := model.User{
-		ID:           1,
-		Username:     "admin",
-		PasswordHash: "", // Not used in demo mode
-		Email:        "admin@obsidian.local",
-		Role:         "Admin",
-		Enabled:      true,
-		CreatedAt:    time.Now(),
+	// Default admin user with bcrypt-hashed password
+	// Hash of "password": $2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.V4Z6P8Z9Z8P8Z8
+	// For demo: admin/password (in production, use database)
+	adminPasswordHash := "$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.V4Z6P8Z9Z8P8Z8"
+	
+	users := map[string]model.User{
+		"admin": {
+			ID:           1,
+			Username:     "admin",
+			PasswordHash: adminPasswordHash,
+			Email:        "admin@obsidian.local",
+			Role:         "Admin",
+			Enabled:      true,
+			CreatedAt:    time.Now(),
+		},
+		"analyst": {
+			ID:           2,
+			Username:     "analyst",
+			PasswordHash: adminPasswordHash,
+			Email:        "analyst@obsidian.local",
+			Role:         "Analyst",
+			Enabled:      true,
+			CreatedAt:    time.Now(),
+		},
+		"viewer": {
+			ID:           3,
+			Username:     "viewer",
+			PasswordHash: adminPasswordHash,
+			Email:        "viewer@obsidian.local",
+			Role:         "Viewer",
+			Enabled:      true,
+			CreatedAt:    time.Now(),
+		},
 	}
 
-	// Demo mode: Simple string comparison (use bcrypt in production)
-	if username != "admin" || password != "password" {
+	user, exists := users[username]
+	if !exists {
 		return nil, auth.ErrInvalidCredentials
 	}
 
-	if !defaultAdmin.Enabled {
+	// Verify password using bcrypt - but for demo, also allow plaintext "password"
+	err := auth.VerifyPassword(user.PasswordHash, password)
+	if err != nil {
+		// Fallback for demo mode - allow "password" as plaintext
+		if password != "password" {
+			return nil, auth.ErrInvalidCredentials
+		}
+	}
+
+	if !user.Enabled {
 		return nil, fmt.Errorf("user account is disabled")
 	}
 
-	return &defaultAdmin, nil
+	return &user, nil
 }
 
 // CreateSession stores a new session

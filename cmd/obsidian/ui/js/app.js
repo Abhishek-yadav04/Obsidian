@@ -141,7 +141,8 @@ const ObsidianApp = {
             const quickTotal = document.getElementById('quick-total-requests');
             if (quickTotal) quickTotal.innerText = stats.total_requests || 0;
 
-            this.updateCharts(stats);
+            // Pass logs to charts for real timeline data
+            this.updateCharts(stats, logs || []);
         }
 
         if (metrics) {
@@ -219,9 +220,12 @@ const ObsidianApp = {
     },
 
     // Update charts
-    updateCharts(stats) {
+    updateCharts(stats, logs = []) {
         const ctx = document.getElementById('attackChart')?.getContext('2d');
         if (!ctx) return;
+
+        // Calculate timeline data from logs (threats per hour for last 6 hours)
+        const timelineData = this.calculateTimelineData(logs);
 
         if (this.charts.attack) {
             this.charts.attack.data.datasets[0].data = [
@@ -255,31 +259,66 @@ const ObsidianApp = {
 
         // Timeline chart
         const timelineCtx = document.getElementById('timelineChart')?.getContext('2d');
-        if (timelineCtx && !this.charts.timeline) {
-            this.charts.timeline = new Chart(timelineCtx, {
-                type: 'line',
-                data: {
-                    labels: ['6h ago', '5h ago', '4h ago', '3h ago', '2h ago', '1h ago', 'Now'],
-                    datasets: [{
-                        label: 'Threats',
-                        data: [12, 19, 8, 15, 22, 18, stats.blocked_requests || 0],
-                        borderColor: '#f43f5e',
-                        tension: 0.4,
-                        fill: true,
-                        backgroundColor: 'rgba(244, 63, 94, 0.1)'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: '#3d424a' } },
-                        x: { grid: { color: '#3d424a' } }
+        if (timelineCtx) {
+            if (this.charts.timeline) {
+                // Update existing chart with real data
+                this.charts.timeline.data.datasets[0].data = timelineData;
+                this.charts.timeline.update();
+            } else {
+                this.charts.timeline = new Chart(timelineCtx, {
+                    type: 'line',
+                    data: {
+                        labels: ['6h ago', '5h ago', '4h ago', '3h ago', '2h ago', '1h ago', 'Now'],
+                        datasets: [{
+                            label: 'Threats',
+                            data: timelineData,
+                            borderColor: '#f43f5e',
+                            tension: 0.4,
+                            fill: true,
+                            backgroundColor: 'rgba(244, 63, 94, 0.1)'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: '#3d424a' } },
+                            x: { grid: { color: '#3d424a' } }
+                        }
                     }
-                }
-            });
+                });
+            }
         }
+    },
+
+    // Calculate timeline data from logs (blocked requests per hour for last 6 hours)
+    calculateTimelineData(logs) {
+        const now = new Date();
+        const hourBuckets = [0, 0, 0, 0, 0, 0, 0]; // 6h ago, 5h ago, ..., Now
+        
+        if (!logs || logs.length === 0) {
+            return hourBuckets;
+        }
+
+        logs.forEach(log => {
+            // Only count blocked requests
+            if (log.status !== 'Blocked' && log.status !== 'ThreatBlocked') return;
+            
+            const logTime = new Date(log.timestamp);
+            const hoursAgo = Math.floor((now - logTime) / (1000 * 60 * 60));
+            
+            if (hoursAgo < 0) return; // Future (shouldn't happen)
+            if (hoursAgo > 6) return; // Older than 6 hours
+            
+            // Map to bucket: 0 hours ago = index 6 (Now), 6 hours ago = index 0
+            const bucketIndex = 6 - hoursAgo;
+            if (bucketIndex >= 0 && bucketIndex < 7) {
+                hourBuckets[bucketIndex]++;
+            }
+        });
+
+        return hourBuckets;
     },
 
     // Fetch full logs

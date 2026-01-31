@@ -17,7 +17,10 @@ import (
 
 	"github.com/corazawaf/coraza/v3"
 	"github.com/corazawaf/coraza/v3/internal/app/api"
+	"github.com/corazawaf/coraza/v3/internal/app/ratelimit"
+	"github.com/corazawaf/coraza/v3/internal/app/report"
 	"github.com/corazawaf/coraza/v3/internal/app/store"
+	"github.com/corazawaf/coraza/v3/internal/app/threat"
 	"github.com/corazawaf/coraza/v3/internal/app/waf"
 	"github.com/corazawaf/coraza/v3/types"
 )
@@ -27,6 +30,13 @@ var (
 	totalRequests   int64
 	blockedRequests int64
 	startTime       = time.Now()
+)
+
+// Global instances for enterprise features
+var (
+	threatIntel *threat.ThreatIntel
+	rateLimiter *ratelimit.RateLimiter
+	reportGen   *report.Generator
 )
 
 // UserClaims for JWT authentication context
@@ -54,6 +64,11 @@ func main() {
 	if *dev {
 		fmt.Println("Running in Dev Mode")
 	}
+
+	// Initialize Enterprise Features
+	threatIntel = threat.NewThreatIntel()
+	rateLimiter = ratelimit.NewRateLimiter(ratelimit.DefaultConfig())
+	reportGen = report.NewGenerator()
 
 	// Initialize WAF
 	wafEngine, err := waf.NewWAF(s)
@@ -85,21 +100,24 @@ func main() {
 	mux.HandleFunc("/api/admin/users", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleUsers)))
 	mux.HandleFunc("/api/admin/audit", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleAuditLogs)))
 
+	// Threat Intelligence Routes
+	mux.HandleFunc("/api/threats", authMiddleware(threatIntel.HandleThreats))
+	mux.HandleFunc("/api/threats/block", authMiddleware(rbacMiddleware("Admin", threatIntel.HandleBlockIP)))
+	mux.HandleFunc("/api/threats/stats", authMiddleware(threatIntel.HandleStats))
+
 	// Static Files (UI)
-	// We need to strip "ui" prefix because embed root is "ui"
 	uiFS, err := fs.Sub(uiAssets, "ui")
 	if err != nil {
 		log.Fatal(err)
 	}
 	fileServer := http.FileServer(http.FS(uiFS))
-	// We handle root / by stripping nothing if we just passed uiFS, but we want / to match index.html
-	// FileServer handles index.html mostly automatically.
 	mux.Handle("/", fileServer)
 
-	// Middleware Stack
-	finalHandler := loggingMiddleware(wafMiddleware(wafEngine, s, mux))
+	// Middleware Stack: Rate Limit -> Logging -> WAF -> Router
+	finalHandler := rateLimiter.Middleware(loggingMiddleware(wafMiddleware(wafEngine, s, mux)))
 
 	fmt.Printf("Obsidian Sentinel WAF is running on http://localhost:%d\n", *port)
+	fmt.Println("Enterprise Features: Rate Limiting ✓ | Threat Intel ✓ | PDF Reports ✓")
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), finalHandler); err != nil {
 		log.Fatal(err)
 	}
@@ -107,6 +125,19 @@ func main() {
 
 func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check threat intelligence first
+		ip := extractClientIP(r)
+		if entry, blocked := threatIntel.CheckIP(ip); blocked {
+			atomic.AddInt64(&blockedRequests, 1)
+			threatIntel.RecordHit(ip)
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"blocked": true,
+				"reason":  fmt.Sprintf("IP blocked by threat intelligence: %s", entry.Category),
+			})
+			return
+		}
+
 		// Skip WAF for static assets (css, js, images) to save perf
 		// Simple check for extension
 		path := r.URL.Path
@@ -298,47 +329,52 @@ func handleExport(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		stats := s.GetStats()
 		logs := s.GetLogs()
+		rules := s.GetRules()
 
-		// Generate simple text report (PDF library would be used in production)
-		report := fmt.Sprintf(`OBSIDIAN SENTINEL WAF - SECURITY REPORT
-========================================
-Generated: %s
+		// Check if PDF is requested
+		format := r.URL.Query().Get("format")
 
-STATISTICS
-----------
-Total Requests: %d
-Blocked Requests: %d
-Flagged Requests: %d
-Safe Requests: %d
-Active Rules: %d
-
-RECENT SECURITY EVENTS
-----------------------
-`,
-			time.Now().Format(time.RFC3339),
-			stats.TotalRequests,
-			stats.BlockedRequests,
-			stats.FlaggedRequests,
-			stats.SafeRequests,
-			stats.ActiveRulesCount,
-		)
-
-		for i, log := range logs {
-			if i >= 20 {
-				break
+		if format == "pdf" {
+			// Generate PDF report
+			pdfData, err := reportGen.GeneratePDF(stats, logs, rules)
+			if err != nil {
+				http.Error(w, "Failed to generate PDF", http.StatusInternalServerError)
+				return
 			}
-			report += fmt.Sprintf("[%s] Rule %d: %s - %s\n",
-				log.Timestamp.Format(time.RFC3339),
-				log.RuleID,
-				log.Action,
-				log.Details,
-			)
+			w.Header().Set("Content-Type", "application/pdf")
+			w.Header().Set("Content-Disposition", "attachment; filename=obsidian-security-report.pdf")
+			w.Write(pdfData)
+			return
 		}
 
-		w.Header().Set("Content-Type", "text/plain")
-		w.Header().Set("Content-Disposition", "attachment; filename=obsidian-report.txt")
-		w.Write([]byte(report))
+		// Generate text report (default)
+		textReport := reportGen.GenerateTextReport(stats, logs, rules)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename=obsidian-security-report.txt")
+		w.Write([]byte(textReport))
 	}
+}
+
+// extractClientIP extracts the client IP from the request
+func extractClientIP(r *http.Request) string {
+	// Check X-Forwarded-For header
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	// Check X-Real-IP header
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+	// Extract from RemoteAddr
+	ip := r.RemoteAddr
+	if idx := strings.LastIndex(ip, ":"); idx != -1 {
+		ip = ip[:idx]
+	}
+	// Handle IPv6 brackets
+	ip = strings.TrimPrefix(ip, "[")
+	ip = strings.TrimSuffix(ip, "]")
+	return ip
 }
 
 // Helper for response interception (simplified)

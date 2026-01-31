@@ -1,989 +1,529 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Obsidian Sentinel - Enterprise WAF</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    :root {
-      --bg-dark: #1a1d21;
-      --bg-card: #2c3036;
-      --text-main: #e0e6ed;
-      --text-muted: #9ca3af;
-      --accent-red: #f43f5e;
-      --accent-blue: #3b82f6;
-      --border-color: #3d424a;
-    }
-    body { 
-      background-color: var(--bg-dark); 
-      color: var(--text-main);
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      overflow-x: hidden;
-    }
-    .wrapper { display: flex; min-height: 100vh; }
+    <meta charset="UTF-8">
+    <title>Obsidian Sentinel - Enterprise WAF</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Enterprise Web Application Firewall Dashboard">
+    <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
     
-    /* Sidebar */
-    .sidebar {
-      width: 260px;
-      background-color: #141619;
-      border-right: 1px solid var(--border-color);
-      display: flex;
-      flex-direction: column;
-      position: fixed;
-      height: 100vh;
-      z-index: 1000;
-    }
-    .brand {
-      padding: 1.5rem;
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: var(--accent-red);
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .brand img { height: 36px; margin-right: 10px; vertical-align: middle; display: inline-block; transition: transform 180ms ease; }
-    .brand img:hover { transform: scale(1.08); }
-
-    .mobile-toggle {
-        display: none;
-        position: fixed; 
-        top: 15px; 
-        right: 15px; 
-        z-index: 2000;
-        background: var(--bg-card);
-        border: 1px solid var(--border-color);
-        color: var(--text-main);
-        padding: 0.5rem;
-        border-radius: 4px;
-        cursor: pointer;
-    }
-
-    @media (max-width: 768px) {
-        .sidebar {
-            transform: translateX(-100%);
-            transition: transform 0.3s ease;
-            width: 80%;
-            max-width: 300px;
-            box-shadow: 2px 0 15px rgba(0,0,0,0.5);
-        }
-        .sidebar.active { transform: translateX(0); }
-        .main-content { margin-left: 0; width: 100%; }
-        .mobile-toggle { display: block; }
-        .overlay {
-            display: none;
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.5); z-index: 999;
-        }
-        .sidebar.active + .overlay { display: block; }
-    }
-    .brand .logo-wrap { background:#141619; padding:6px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; }
-    .nav-links {
-      flex: 1;
-      padding: 1rem;
-      list-style: none;
-    }
-    .nav-item {
-      margin-bottom: 0.5rem;
-    }
-    .nav-link {
-      color: var(--text-muted);
-      text-decoration: none;
-      padding: 0.75rem 1rem;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      transition: all 0.2s;
-    }
-    .nav-link:hover, .nav-link.active {
-      background-color: rgba(244, 63, 94, 0.1);
-      color: var(--accent-red);
-    }
-    .user-profile {
-      padding: 1rem;
-      border-top: 1px solid var(--border-color);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    /* Main Content */
-    .main-content {
-      margin-left: 260px;
-      flex: 1;
-      padding: 20px;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 2rem;
-      padding-bottom: 1rem;
-      border-bottom: 1px solid var(--border-color);
-    }
-    .stat-card {
-      background-color: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 1.5rem;
-      height: 100%;
-    }
-    .stat-title {
-      font-size: 0.875rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 0.5rem;
-    }
-    .stat-value {
-      font-size: 2.5rem;
-      font-weight: 600;
-      color: var(--text-main);
-    }
-    .stat-delta {
-      font-size: 0.875rem;
-      color: #10b981; /* Green for good */
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    
-    /* Table */
-    .table-dark {
-      background-color: transparent;
-      color: var(--text-main);
-    }
-    .table-dark th {
-      background-color: #23272b;
-      border-color: var(--border-color);
-      color: var(--text-muted);
-      font-weight: 600;
-      text-transform: uppercase;
-      font-size: 0.75rem;
-    }
-    .table-dark td {
-      border-color: var(--border-color);
-      vertical-align: middle;
-    }
-    
-    /* Badges */
-    .badge-sev-critical { background-color: rgba(220, 53, 69, 0.2); color: #ff6b6b; border: 1px solid #dc3545; }
-    .badge-sev-high { background-color: rgba(253, 126, 20, 0.2); color: #ffad60; border: 1px solid #fd7e14; }
-    .badge-sev-medium { background-color: rgba(255, 193, 7, 0.2); color: #ffe69c; border: 1px solid #ffc107; }
-    
-    .live-indicator {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      background-color: #10b981;
-      border-radius: 50%;
-      box-shadow: 0 0 8px #10b981;
-      margin-right: 8px;
-    }
-  </style>
+    <!-- External CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="css/styles.css" rel="stylesheet">
 </head>
 <body>
-  <button class="mobile-toggle" onclick="document.getElementById('sidebar').classList.toggle('active')">
-    <i class="fas fa-bars"></i>
-  </button>
-  <div class="overlay" onclick="document.getElementById('sidebar').classList.remove('active')"></div>
+    <!-- Mobile Navigation Toggle -->
+    <button class="mobile-toggle" aria-label="Toggle navigation">
+        <i class="fas fa-bars"></i>
+    </button>
+    <div class="overlay"></div>
 
-<div class="wrapper">
-  <!-- Sidebar -->
-  <aside class="sidebar">
-    <div class="brand">
-      <img src="assets/logo.svg" alt="Obsidian">
-      Sentinel
-    </div>
-    <ul class="nav-links">
-      <li class="nav-item">
-        <button type="button" class="nav-link active" data-view="dashboard" onclick="loadView('dashboard')">
-          <i class="fas fa-chart-line"></i> Dashboard
-        </button>
-      </li>
-      <li class="nav-item">
-        <button type="button" class="nav-link" data-view="logs" onclick="loadView('logs')">
-          <i class="fas fa-list"></i> Attack Logs
-        </button>
-      </li>
-      <li class="nav-item">
-        <button type="button" class="nav-link" data-view="rules" onclick="loadView('rules')">
-          <i class="fas fa-gavel"></i> Rules Management
-        </button>
-      </li>
-      <li class="nav-item admin-only">
-        <button type="button" class="nav-link" data-view="admin" onclick="loadView('admin')">
-          <i class="fas fa-cog"></i> Admin Panel
-        </button>
-      </li>
-      <li class="nav-item">
-        <button type="button" class="nav-link text-success" id="downloadReport">
-          <i class="fas fa-file-pdf"></i> Download Report
-        </button>
-      </li>
-    </ul>
-    <div class="user-profile">
-      <div class="avatar">
-        <i class="fas fa-user-circle fa-2x"></i>
-      </div>
-      <div class="ms-2">
-        <div class="small fw-bold" id="user-name">Admin User</div>
-        <div class="small text-muted" id="user-role">System Administrator</div>
-      </div>
-    </div>
-  </aside>
-
-  <!-- Main Content -->
-  <main class="main-content">
-    <div class="header">
-      <div>
-        <h2 class="h4 mb-0" id="pageTitle">Security Dashboard</h2>
-        <div class="text-muted small">
-            <span class="live-indicator" id="system-status-dot"></span>
-            <span id="system-status-text">System Operational</span> • Real-time Monitoring
-        </div>
-      </div>
-      <div class="d-flex gap-3">
-        <!-- Toast Notification Container -->
-        <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 1100"></div>
-        <select class="form-select form-select-sm bg-dark text-light border-secondary" style="width: auto;">
-          <option>Default Tenant</option>
-          <option>Production-US</option>
-          <option>Staging-EU</option>
-        </select>
-        <button class="btn btn-outline-danger btn-sm" onclick="logout()">
-          <i class="fas fa-sign-out-alt"></i> Logout
-        </button>
-      </div>
-    </div>
-
-    <!-- Stats Row (Dashboard Only) -->
-    <div id="view-dashboard" class="view-section">
-      <div class="row g-4 mb-4">
-        <div class="col-md-3">
-          <div class="stat-card">
-            <div class="stat-title">Total Threats Blocked</div>
-            <div class="stat-value" id="total-attacks">0</div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="stat-card">
-            <div class="stat-title">SQL Injections</div>
-            <div class="stat-value text-danger" id="sqli-attacks">0</div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="stat-card">
-            <div class="stat-title">XSS Attempts</div>
-            <div class="stat-value text-warning" id="xss-attacks">0</div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="stat-card">
-            <div class="stat-title">Active Rules</div>
-            <div class="stat-value text-primary" id="active-rules">0</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Charts & Logs -->
-      <div class="row g-4">
-        <div class="col-md-8">
-          <div class="card bg-dark border-secondary h-100">
-            <div class="card-header border-secondary bg-transparent d-flex justify-content-between align-items-center">
-              <h5 class="mb-0 text-white">Recent Security Events</h5>
-              <span class="badge bg-secondary">Live Feed</span>
+    <div class="wrapper">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" id="sidebar">
+            <div class="brand">
+                <img src="assets/logo.svg" alt="Obsidian">
+                <span>Sentinel</span>
             </div>
-            <div class="card-body p-0">
-              <div class="table-responsive">
-                <table class="table table-dark table-hover mb-0">
-                  <thead>
-                    <tr>
-                      <th>Timestamp</th>
-                      <th>Type</th>
-                      <th>Rule ID</th>
-                      <th>Severity</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody id="logs-table">
-                    <!-- JS Populated -->
-                  </tbody>
-                </table>
-              </div>
+            
+            <ul class="nav-links">
+                <li class="nav-item">
+                    <button type="button" class="nav-link active" data-view="dashboard">
+                        <i class="fas fa-chart-line"></i> Dashboard
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button type="button" class="nav-link" data-view="logs">
+                        <i class="fas fa-list"></i> Attack Logs
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button type="button" class="nav-link" data-view="rules">
+                        <i class="fas fa-gavel"></i> Rules Management
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button type="button" class="nav-link" data-view="threats">
+                        <i class="fas fa-skull-crossbones"></i> Threat Intelligence
+                    </button>
+                </li>
+                <li class="nav-item admin-only">
+                    <button type="button" class="nav-link" data-view="admin">
+                        <i class="fas fa-cog"></i> Admin Panel
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button type="button" class="nav-link text-success" id="downloadReport">
+                        <i class="fas fa-file-pdf"></i> Export Report
+                    </button>
+                </li>
+            </ul>
+            
+            <div class="user-profile">
+                <div class="avatar">
+                    <i class="fas fa-user-circle fa-2x text-muted"></i>
+                </div>
+                <div class="ms-2">
+                    <div class="small fw-bold" id="user-name">Admin User</div>
+                    <div class="small text-muted" id="user-role">Administrator</div>
+                </div>
             </div>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <div class="card bg-dark border-secondary h-100">
-            <div class="card-header border-secondary bg-transparent">
-              <h5 class="mb-0 text-white">Attack Distribution</h5>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <div class="header">
+                <div>
+                    <h2 class="h4 mb-0" id="pageTitle">Security Dashboard</h2>
+                    <div class="text-muted small">
+                        <span class="live-indicator" id="system-status-dot"></span>
+                        <span id="system-status-text">System Operational</span> • Real-time Monitoring
+                    </div>
+                </div>
+                <div class="d-flex gap-3 align-items-center">
+                    <select class="form-select form-select-sm bg-dark text-light border-secondary" style="width: auto;">
+                        <option>Default Tenant</option>
+                        <option>Production-US</option>
+                        <option>Staging-EU</option>
+                    </select>
+                    <button class="btn btn-outline-danger btn-sm" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
             </div>
-            <div class="card-body d-flex align-items-center justify-content-center">
-              <div style="width: 100%; height: 250px;">
-                <canvas id="attackChart"></canvas>
-              </div>
+
+            <!-- Toast Container -->
+            <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 1100"></div>
+
+            <!-- ============================================ -->
+            <!-- DASHBOARD VIEW -->
+            <!-- ============================================ -->
+            <div id="view-dashboard" class="view-section fade-in">
+                <!-- Stats Row -->
+                <div class="row g-4 mb-4">
+                    <div class="col-lg-3 col-md-6">
+                        <div class="stat-card">
+                            <div class="stat-title">Total Threats</div>
+                            <div class="stat-value text-danger" id="total-attacks">0</div>
+                            <div class="stat-delta"><i class="fas fa-arrow-up"></i> 12% from yesterday</div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <div class="stat-card">
+                            <div class="stat-title">Blocked Requests</div>
+                            <div class="stat-value text-warning" id="blocked-count">0</div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <div class="stat-card">
+                            <div class="stat-title">Flagged Requests</div>
+                            <div class="stat-value text-info" id="flagged-count">0</div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <div class="stat-card">
+                            <div class="stat-title">Safe Requests</div>
+                            <div class="stat-value text-success" id="safe-requests">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="row g-4 mb-4">
+                    <div class="col-lg-8">
+                        <div class="card bg-dark border-secondary h-100">
+                            <div class="card-header border-secondary bg-transparent">
+                                <h5 class="mb-0 text-white"><i class="fas fa-chart-area me-2"></i>Threat Timeline</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="timelineChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="card bg-dark border-secondary h-100">
+                            <div class="card-header border-secondary bg-transparent">
+                                <h5 class="mb-0 text-white"><i class="fas fa-chart-pie me-2"></i>Attack Distribution</h5>
+                            </div>
+                            <div class="card-body d-flex align-items-center justify-content-center">
+                                <div class="chart-container">
+                                    <canvas id="attackChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Events & Rules -->
+                <div class="row g-4">
+                    <div class="col-lg-8">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header border-secondary bg-transparent d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0 text-white"><i class="fas fa-shield-alt me-2"></i>Recent Security Events</h5>
+                                <span class="badge bg-danger"><i class="fas fa-circle me-1" style="font-size: 6px;"></i>Live Feed</span>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Time</th>
+                                                <th>Type</th>
+                                                <th>Rule ID</th>
+                                                <th>Severity</th>
+                                                <th>Details</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="logs-table">
+                                            <tr><td colspan="5" class="text-center text-muted py-4">Loading events...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header border-secondary bg-transparent">
+                                <h5 class="mb-0 text-white"><i class="fas fa-cogs me-2"></i>Quick Stats</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between mb-3">
+                                    <span class="text-muted">Active Rules</span>
+                                    <span class="fw-bold text-primary" id="quick-active-rules">0</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-3">
+                                    <span class="text-muted">Server Uptime</span>
+                                    <span class="fw-bold text-success" id="quick-uptime">-</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-3">
+                                    <span class="text-muted">Total Requests</span>
+                                    <span class="fw-bold text-warning" id="quick-total-requests">0</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-muted">Protection Mode</span>
+                                    <span class="badge bg-success" id="protection-mode">Active</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- Logs View -->
-    <div id="view-logs" class="view-section d-none">
-      <div class="card bg-dark border-secondary">
-        <div class="card-header border-secondary bg-transparent">
-          <div class="input-group">
-            <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-search"></i></span>
-            <input type="text" id="logs-search" class="form-control bg-dark border-secondary text-white" placeholder="Search logs by IP, Rule ID, or Attack Type...">
-          </div>
-        </div>
-        <div class="card-body p-0">
-          <div class="table-responsive">
-            <table class="table table-dark table-hover mb-0 align-middle">
-              <thead>
-                <tr>
-                  <th>Timestamp</th>
-                  <th>Client IP</th>
-                  <th>Method</th>
-                  <th>Path</th>
-                  <th>Rule ID</th>
-                  <th>Attack Type</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody id="full-logs-table">
-                <!-- Populated via API -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="card-footer border-secondary bg-transparent text-end">
-          <button class="btn btn-sm btn-outline-secondary">Previous</button>
-          <button class="btn btn-sm btn-outline-secondary">Next</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Rules View -->
-    <div id="view-rules" class="view-section d-none">
-      <div class="card bg-dark border-secondary">
-        <div class="card-header border-secondary bg-transparent d-flex justify-content-between">
-          <h5 class="mb-0">Active WAF Rules</h5>
-          <button class="btn btn-sm btn-primary" id="addRuleBtn" onclick="openRuleModal()"><i class="fas fa-plus"></i> Add Custom Rule</button>
-        </div>
-        <div class="card-body">
-            <div class="alert alert-info border-secondary bg-dark text-muted">
-                <i class="fas fa-info-circle"></i> Showing active rules from OWASP Core Rule Set v4.
+            <!-- ============================================ -->
+            <!-- LOGS VIEW -->
+            <!-- ============================================ -->
+            <div id="view-logs" class="view-section d-none fade-in">
+                <div class="card bg-dark border-secondary">
+                    <div class="card-header border-secondary bg-transparent">
+                        <div class="row align-items-center">
+                            <div class="col-md-6">
+                                <div class="input-group">
+                                    <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-search"></i></span>
+                                    <input type="text" id="logs-search" class="form-control bg-dark border-secondary text-white" placeholder="Search logs by IP, Rule ID, or Attack Type...">
+                                </div>
+                            </div>
+                            <div class="col-md-6 text-md-end mt-2 mt-md-0">
+                                <button class="btn btn-outline-secondary btn-sm me-2"><i class="fas fa-filter"></i> Filter</button>
+                                <button class="btn btn-outline-info btn-sm"><i class="fas fa-download"></i> Export CSV</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-dark table-hover mb-0 align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Timestamp</th>
+                                        <th>Client IP</th>
+                                        <th>Method</th>
+                                        <th>Path</th>
+                                        <th>Rule ID</th>
+                                        <th>Attack Type</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="full-logs-table">
+                                    <tr><td colspan="7" class="text-center text-muted py-4">Loading logs...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card-footer border-secondary bg-transparent d-flex justify-content-between align-items-center">
+                        <span class="text-muted small">Showing 1-50 of 500 entries</span>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary">Previous</button>
+                            <button class="btn btn-sm btn-outline-secondary ms-1">Next</button>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <table class="table table-dark table-striped">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Description</th>
-                        <th>Severity</th>
-                        <th>Category</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="rules-tbody">
-                    <tr><td colspan="6" class="text-center text-muted">Loading rules...</td></tr>
-                </tbody>
-            </table>
-        </div>
-      </div>
-    </div>
 
-    <!-- Admin Panel View -->
-    <div id="view-admin" class="view-section d-none">
-      <div class="row g-4">
-        <div class="col-md-6">
-          <div class="card bg-dark border-secondary">
-            <div class="card-header border-secondary bg-transparent">
-              <h5 class="mb-0"><i class="fas fa-users me-2"></i>User Management</h5>
+            <!-- ============================================ -->
+            <!-- RULES VIEW -->
+            <!-- ============================================ -->
+            <div id="view-rules" class="view-section d-none fade-in">
+                <div class="card bg-dark border-secondary">
+                    <div class="card-header border-secondary bg-transparent d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-gavel me-2"></i>WAF Rules</h5>
+                        <button class="btn btn-sm btn-primary" onclick="openRuleModal()">
+                            <i class="fas fa-plus"></i> Add Rule
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info border-secondary bg-dark text-muted mb-3">
+                            <i class="fas fa-info-circle me-2"></i>Rules are evaluated in order. OWASP Core Rule Set v4 is enabled.
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-dark table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Description</th>
+                                        <th>Severity</th>
+                                        <th>Category</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="rules-tbody">
+                                    <tr><td colspan="6" class="text-center text-muted">Loading rules...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-              <table class="table table-dark table-sm">
-                <thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
-                <tbody id="users-tbody">
-                  <tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-6">
-          <div class="card bg-dark border-secondary">
-            <div class="card-header border-secondary bg-transparent">
-              <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>Audit Trail</h5>
-            </div>
-            <div class="card-body" style="max-height: 400px; overflow-y: auto;">
-              <ul class="list-group list-group-flush bg-transparent" id="audit-list">
-                <li class="list-group-item bg-transparent text-muted">Loading...</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="row g-4 mt-2">
-        <div class="col-12">
-          <div class="card bg-dark border-secondary">
-            <div class="card-header border-secondary bg-transparent">
-              <h5 class="mb-0"><i class="fas fa-tachometer-alt me-2"></i>System Metrics</h5>
-            </div>
-            <div class="card-body">
-              <div class="row text-center" id="metrics-panel">
-                <div class="col-md-3"><div class="stat-card"><div class="stat-title">Memory Usage</div><div class="stat-value text-info" id="metric-memory">-</div></div></div>
-                <div class="col-md-3"><div class="stat-card"><div class="stat-title">Goroutines</div><div class="stat-value text-success" id="metric-goroutines">-</div></div></div>
-                <div class="col-md-3"><div class="stat-card"><div class="stat-title">Requests/sec</div><div class="stat-value text-warning" id="metric-rps">-</div></div></div>
-                <div class="col-md-3"><div class="stat-card"><div class="stat-title">Uptime</div><div class="stat-value text-primary" id="metric-uptime">-</div></div></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </main>
-</div>
 
-<!-- Rule Modal -->
-<div class="modal fade" id="ruleModal" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content bg-dark text-light">
-      <div class="modal-header border-secondary">
-        <h5 class="modal-title" id="ruleModalTitle">Add New Rule</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <form id="ruleForm">
-          <input type="hidden" id="ruleEditId">
-          <div class="mb-3">
-            <label class="form-label">Rule ID</label>
-            <input type="number" class="form-control bg-dark text-light border-secondary" id="ruleId" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Description</label>
-            <input type="text" class="form-control bg-dark text-light border-secondary" id="ruleDesc" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Category</label>
-            <select class="form-select bg-dark text-light border-secondary" id="ruleCategory">
-              <option value="XSS">XSS</option>
-              <option value="SQLi">SQL Injection</option>
-              <option value="RCE">Remote Code Execution</option>
-              <option value="LFI">Local File Inclusion</option>
-              <option value="Protocol">Protocol Violation</option>
-              <option value="Reputation">Reputation</option>
-            </select>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Severity</label>
-            <select class="form-select bg-dark text-light border-secondary" id="ruleSeverity">
-              <option value="CRITICAL">Critical</option>
-              <option value="HIGH">High</option>
-              <option value="WARNING">Warning</option>
-              <option value="NOTICE">Notice</option>
-            </select>
-          </div>
-          <div class="form-check mb-3">
-            <input class="form-check-input" type="checkbox" id="ruleEnabled" checked>
-            <label class="form-check-label" for="ruleEnabled">Enabled</label>
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer border-secondary">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" onclick="saveRule()">Save Rule</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-  // JavaScript Logic
-  // 1. Initial Setup
-  const token = localStorage.getItem('obsidian_token');
-  const userStr = localStorage.getItem('obsidian_user');
-  let currentUser = null;
-  
-  if (!token) {
-    globalThis.location.href = '/login.html';
-  }
-  
-  if (userStr) {
-      currentUser = JSON.parse(userStr);
-      window.addEventListener('DOMContentLoaded', () => {
-        const nameEl = document.getElementById('user-name');
-        const roleEl = document.getElementById('user-role');
-        if(nameEl) nameEl.innerText = currentUser.name || 'Admin';
-        if(roleEl) roleEl.innerText = currentUser.role || 'Security Officer';
-        
-        // Show/hide admin features based on role
-        if (currentUser.role !== 'Admin') {
-          document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
-        }
-      });
-  }
-
-  // 2. Logout
-  function logout() {
-    localStorage.removeItem('obsidian_token');
-    localStorage.removeItem('obsidian_user');
-    globalThis.location.href = '/login.html';
-  }
-  
-  // 3. Search Filter Logic for Logs
-  document.getElementById('logs-search').addEventListener('keyup', function() {
-      const filter = this.value.toLowerCase();
-      const rows = document.querySelectorAll('#full-logs-table tr');
-      rows.forEach(row => {
-          const text = row.innerText.toLowerCase();
-          row.style.display = text.includes(filter) ? '' : 'none';
-      });
-  });
-
-  // 4. Toast Notification System
-  function showToast(title, message, isError = false) {
-      const container = document.getElementById('toast-container');
-      const id = 'toast-' + Date.now();
-      const color = isError ? 'text-bg-danger' : 'text-bg-dark border-secondary text-white';
-      
-      const html = `
-        <div id="${id}" class="toast align-items-center ${color} border-0 mb-2 show" role="alert" aria-live="assertive" aria-atomic="true">
-          <div class="d-flex">
-            <div class="toast-body">
-              <strong>${title}</strong><br>${message}
-            </div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close" onclick="this.parentElement.parentElement.remove()"></button>
-          </div>
-        </div>`;
-      
-      container.innerHTML += html;
-      setTimeout(() => {
-          const el = document.getElementById(id);
-          if(el) el.remove();
-      }, 5000);
-  }
-
-  // 5. Rule CRUD Operations
-  let ruleModal;
-  document.addEventListener('DOMContentLoaded', () => {
-    ruleModal = new bootstrap.Modal(document.getElementById('ruleModal'));
-  });
-
-  function openRuleModal(ruleId = null) {
-    document.getElementById('ruleModalTitle').innerText = ruleId ? 'Edit Rule' : 'Add New Rule';
-    document.getElementById('ruleEditId').value = ruleId || '';
-    document.getElementById('ruleId').value = '';
-    document.getElementById('ruleDesc').value = '';
-    document.getElementById('ruleCategory').value = 'XSS';
-    document.getElementById('ruleSeverity').value = 'CRITICAL';
-    document.getElementById('ruleEnabled').checked = true;
-    
-    if (ruleId) {
-      document.getElementById('ruleId').disabled = true;
-      // Load existing rule data
-      loadRuleForEdit(ruleId);
-    } else {
-      document.getElementById('ruleId').disabled = false;
-    }
-    ruleModal.show();
-  }
-
-  async function loadRuleForEdit(ruleId) {
-    const headers = { 'Authorization': 'Bearer ' + token };
-    try {
-      const res = await fetch('/api/rules', { headers });
-      const rules = await res.json();
-      const rule = rules.find(r => r.id === ruleId);
-      if (rule) {
-        document.getElementById('ruleId').value = rule.id;
-        document.getElementById('ruleDesc').value = rule.description;
-        document.getElementById('ruleCategory').value = rule.category || 'XSS';
-        document.getElementById('ruleSeverity').value = rule.severity || 'CRITICAL';
-        document.getElementById('ruleEnabled').checked = rule.enabled !== false;
-      }
-    } catch(e) { console.error(e); }
-  }
-
-  async function saveRule() {
-    const editId = document.getElementById('ruleEditId').value;
-    const rule = {
-      id: parseInt(document.getElementById('ruleId').value),
-      description: document.getElementById('ruleDesc').value,
-      category: document.getElementById('ruleCategory').value,
-      severity: document.getElementById('ruleSeverity').value,
-      enabled: document.getElementById('ruleEnabled').checked
-    };
-
-    const headers = { 
-      'Authorization': 'Bearer ' + token,
-      'Content-Type': 'application/json'
-    };
-
-    try {
-      let res;
-      if (editId) {
-        res = await fetch('/api/rules/update', { method: 'PUT', headers, body: JSON.stringify(rule) });
-      } else {
-        res = await fetch('/api/rules/create', { method: 'POST', headers, body: JSON.stringify(rule) });
-      }
-      
-      const data = await res.json();
-      if (data.success) {
-        showToast('Success', editId ? 'Rule updated' : 'Rule created');
-        ruleModal.hide();
-        fetchRules();
-      } else {
-        showToast('Error', data.message || 'Failed to save rule', true);
-      }
-    } catch(e) {
-      showToast('Error', 'Network error', true);
-    }
-  }
-
-  async function deleteRule(ruleId) {
-    if (!confirm('Delete rule ' + ruleId + '?')) return;
-    
-    const headers = { 
-      'Authorization': 'Bearer ' + token,
-      'Content-Type': 'application/json'
-    };
-
-    try {
-      const res = await fetch('/api/rules/delete', { 
-        method: 'DELETE', 
-        headers, 
-        body: JSON.stringify({ id: ruleId }) 
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Success', 'Rule deleted');
-        fetchRules();
-      } else {
-        showToast('Error', data.message || 'Failed to delete', true);
-      }
-    } catch(e) {
-      showToast('Error', 'Network error', true);
-    }
-  }
-
-  async function fetchRules() {
-    const headers = { 'Authorization': 'Bearer ' + token };
-    try {
-        const res = await fetch('/api/rules', { headers });
-        const rules = await res.json();
-        const tbody = document.getElementById('rules-tbody');
-        if (tbody) {
-            tbody.innerHTML = '';
-            rules.forEach(rule => {
-                const sevClass = rule.severity === 'CRITICAL' ? 'badge-sev-critical' : 
-                                 rule.severity === 'HIGH' ? 'badge-sev-high' : 'badge-sev-medium';
-                const statusBadge = rule.enabled !== false ? 
-                  '<span class="badge bg-success">Active</span>' : 
-                  '<span class="badge bg-secondary">Disabled</span>';
+            <!-- ============================================ -->
+            <!-- THREAT INTELLIGENCE VIEW -->
+            <!-- ============================================ -->
+            <div id="view-threats" class="view-section d-none fade-in">
+                <div class="row g-4 mb-4">
+                    <div class="col-lg-4">
+                        <div class="stat-card">
+                            <div class="stat-title">Known Malicious IPs</div>
+                            <div class="stat-value text-danger" id="threat-count">1,247</div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="stat-card">
+                            <div class="stat-title">Blocked Today</div>
+                            <div class="stat-value text-warning" id="blocked-today">89</div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="stat-card">
+                            <div class="stat-title">Threat Feeds Active</div>
+                            <div class="stat-value text-success">5</div>
+                        </div>
+                    </div>
+                </div>
                 
-                tbody.innerHTML += `
-                <tr>
-                    <td class="font-monospace">${rule.id}</td>
-                    <td>${rule.description}</td>
-                    <td><span class="badge ${sevClass}">${rule.severity || 'NOTICE'}</span></td>
-                    <td>${rule.category || 'General'}</td>
-                    <td>${statusBadge}</td>
-                    <td>
-                      <button class="btn btn-sm btn-outline-info me-1" onclick="openRuleModal(${rule.id})"><i class="fas fa-edit"></i></button>
-                      <button class="btn btn-sm btn-outline-danger" onclick="deleteRule(${rule.id})"><i class="fas fa-trash"></i></button>
-                    </td>
-                </tr>`;
-            });
-        }
-    } catch(e) { console.error("Rules fetch error", e); }
-  }
+                <div class="row g-4">
+                    <div class="col-lg-8">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header border-secondary bg-transparent">
+                                <h5 class="mb-0"><i class="fas fa-skull-crossbones me-2"></i>Recent Threat Activity</h5>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>IP Address</th>
+                                                <th>Risk Level</th>
+                                                <th>Category</th>
+                                                <th>Source</th>
+                                                <th>Last Seen</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="threats-tbody">
+                                            <tr><td colspan="6" class="text-center text-muted py-4">Loading threat data...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header border-secondary bg-transparent">
+                                <h5 class="mb-0"><i class="fas fa-rss me-2"></i>Threat Feeds</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom border-secondary">
+                                    <div>
+                                        <strong>AbuseIPDB</strong>
+                                        <div class="small text-muted">Updated 5 min ago</div>
+                                    </div>
+                                    <span class="badge bg-success">Active</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom border-secondary">
+                                    <div>
+                                        <strong>Spamhaus DROP</strong>
+                                        <div class="small text-muted">Updated 1 hour ago</div>
+                                    </div>
+                                    <span class="badge bg-success">Active</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom border-secondary">
+                                    <div>
+                                        <strong>Emerging Threats</strong>
+                                        <div class="small text-muted">Updated 2 hours ago</div>
+                                    </div>
+                                    <span class="badge bg-success">Active</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>Custom Blocklist</strong>
+                                        <div class="small text-muted">Manual entries</div>
+                                    </div>
+                                    <span class="badge bg-info">247 IPs</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-  // 6. Admin Panel Functions
-  async function fetchAdminData() {
-    const headers = { 'Authorization': 'Bearer ' + token };
-    
-    // Fetch Users
-    try {
-      const res = await fetch('/api/admin/users', { headers });
-      if (res.ok) {
-        const users = await res.json();
-        const tbody = document.getElementById('users-tbody');
-        tbody.innerHTML = '';
-        users.forEach(u => {
-          tbody.innerHTML += `
-            <tr>
-              <td>${u.username}</td>
-              <td><span class="badge bg-info">${u.role}</span></td>
-              <td>${u.enabled ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-danger">Disabled</span>'}</td>
-              <td><button class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></button></td>
-            </tr>`;
-        });
-      }
-    } catch(e) { console.error(e); }
+            <!-- ============================================ -->
+            <!-- ADMIN VIEW -->
+            <!-- ============================================ -->
+            <div id="view-admin" class="view-section d-none fade-in">
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header border-secondary bg-transparent">
+                                <h5 class="mb-0"><i class="fas fa-users me-2"></i>User Management</h5>
+                            </div>
+                            <div class="card-body">
+                                <table class="table table-dark table-sm">
+                                    <thead>
+                                        <tr><th>Username</th><th>Role</th><th>Status</th><th>Actions</th></tr>
+                                    </thead>
+                                    <tbody id="users-tbody">
+                                        <tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header border-secondary bg-transparent">
+                                <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>Audit Trail</h5>
+                            </div>
+                            <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                                <ul class="list-group list-group-flush bg-transparent" id="audit-list">
+                                    <li class="list-group-item bg-transparent text-muted">Loading...</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row g-4 mt-2">
+                    <div class="col-12">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header border-secondary bg-transparent">
+                                <h5 class="mb-0"><i class="fas fa-tachometer-alt me-2"></i>System Metrics</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row text-center">
+                                    <div class="col-md-3 mb-3">
+                                        <div class="stat-card">
+                                            <div class="stat-title">Memory Usage</div>
+                                            <div class="stat-value text-info" id="metric-memory">-</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <div class="stat-card">
+                                            <div class="stat-title">Goroutines</div>
+                                            <div class="stat-value text-success" id="metric-goroutines">-</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <div class="stat-card">
+                                            <div class="stat-title">Total Requests</div>
+                                            <div class="stat-value text-warning" id="metric-rps">-</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <div class="stat-card">
+                                            <div class="stat-title">Uptime</div>
+                                            <div class="stat-value text-primary" id="metric-uptime">-</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
 
-    // Fetch Audit Logs
-    try {
-      const res = await fetch('/api/admin/audit', { headers });
-      if (res.ok) {
-        const logs = await res.json();
-        const list = document.getElementById('audit-list');
-        list.innerHTML = '';
-        logs.forEach(log => {
-          list.innerHTML += `
-            <li class="list-group-item bg-transparent border-secondary text-light">
-              <small class="text-muted">${log.timestamp}</small><br>
-              <strong>${log.action}</strong> on ${log.resource}
-            </li>`;
-        });
-      }
-    } catch(e) { console.error(e); }
+    <!-- Rule Modal -->
+    <div class="modal fade" id="ruleModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title" id="ruleModalTitle">Add New Rule</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="ruleForm">
+                        <input type="hidden" id="ruleEditId">
+                        <div class="mb-3">
+                            <label class="form-label">Rule ID</label>
+                            <input type="number" class="form-control bg-dark text-light border-secondary" id="ruleId" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary" id="ruleDesc" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Category</label>
+                            <select class="form-select bg-dark text-light border-secondary" id="ruleCategory">
+                                <option value="XSS">XSS</option>
+                                <option value="SQLi">SQL Injection</option>
+                                <option value="RCE">Remote Code Execution</option>
+                                <option value="LFI">Local File Inclusion</option>
+                                <option value="Protocol">Protocol Violation</option>
+                                <option value="Reputation">Reputation</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Severity</label>
+                            <select class="form-select bg-dark text-light border-secondary" id="ruleSeverity">
+                                <option value="CRITICAL">Critical</option>
+                                <option value="HIGH">High</option>
+                                <option value="WARNING">Warning</option>
+                                <option value="NOTICE">Notice</option>
+                            </select>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="ruleEnabled" checked>
+                            <label class="form-check-label" for="ruleEnabled">Enabled</label>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveRule()">Save Rule</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    // Fetch Metrics
-    try {
-      const res = await fetch('/api/metrics', { headers });
-      if (res.ok) {
-        const m = await res.json();
-        document.getElementById('metric-memory').innerText = m.memory_mb ? m.memory_mb.toFixed(1) + ' MB' : '-';
-        document.getElementById('metric-goroutines').innerText = m.goroutines || '-';
-        document.getElementById('metric-rps').innerText = m.requests_total || '0';
-        document.getElementById('metric-uptime').innerText = m.uptime || '-';
-      }
-    } catch(e) { console.error(e); }
-  }
-
-  // Health Check Polling
-  setInterval(async () => {
-      try {
-          const res = await fetch('/api/health');
-          if(res.ok) {
-              const el = document.getElementById('system-status-dot');
-              if(el) el.style.backgroundColor = '#10b981';
-              const txt = document.getElementById('system-status-text');
-              if(txt) txt.innerText = 'System Operational';
-          }
-      } catch(e) { /* ignore errors to avoid console spam */ }
-  }, 30000); // Check every 30s
-
-  // Add token to PDF download link
-  document.getElementById('downloadReport').addEventListener('click', (e) => {
-    e.preventDefault();
-    const headers = { 'Authorization': 'Bearer ' + (localStorage.getItem('obsidian_token') || '') };
-    fetch('/api/export', { headers })
-    .then(resp => resp.blob())
-    .then(blob => {
-      const url = globalThis.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = 'obsidian-report.pdf';
-      document.body.appendChild(a);
-      a.click();
-      globalThis.URL.revokeObjectURL(url);
-    });
-  });
-
-  // Setup Charts
-  let attackChartInstance;
-  const ctx = document.getElementById('attackChart').getContext('2d');
-  
-  function initChart(stats) {
-    if (attackChartInstance) {
-      attackChartInstance.data.datasets[0].data = [
-          stats.blocked_requests || 0, 
-          stats.flagged_requests || 0, 
-          stats.safe_requests || 0
-      ]; 
-      attackChartInstance.update();
-      return;
-    }
-    
-    Chart.defaults.color = '#9ca3af';
-    Chart.defaults.borderColor = '#3d424a';
-    
-    attackChartInstance = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Blocked', 'Flagged', 'Safe'],
-        datasets: [{
-          data: [
-             stats.blocked_requests || 0, 
-             stats.flagged_requests || 0, 
-             stats.safe_requests || 0
-          ],
-          backgroundColor: ['#f43f5e', '#fbbf24', '#10b981'],
-          borderWidth: 0
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: 'bottom' }
-        }
-      }
-    });
-  }
-
-  // Data Fetching
-  async function fetchData() {
-    const headers = { 'Authorization': 'Bearer ' + token };
-    
-    try {
-      // Fetch Stats
-      const statsRes = await fetch('/api/stats', { headers });
-      if (!statsRes.ok) return;
-      const stats = await statsRes.json();
-      
-      document.getElementById('total-attacks').innerText = (stats.blocked_requests || 0) + (stats.flagged_requests || 0);
-      
-      const el1 = document.getElementById('sqli-attacks');
-      if(el1) { 
-        el1.innerText = stats.blocked_requests || 0; 
-        if(el1.previousElementSibling) el1.previousElementSibling.innerText = "Blocked Req"; 
-      }
-      
-      const el2 = document.getElementById('xss-attacks');
-      if(el2) { 
-        el2.innerText = stats.flagged_requests || 0; 
-        if(el2.previousElementSibling) el2.previousElementSibling.innerText = "Flagged Req"; 
-      }
-
-      const el3 = document.getElementById('active-rules');
-      if(el3) { el3.innerText = stats.active_rules_count || 0; }
-      
-      initChart(stats);
-
-      // Fetch Logs
-      const logsRes = await fetch('/api/logs', { headers });
-      if (!logsRes.ok) return;
-      const logs = await logsRes.json();
-      const logsTable = document.getElementById('logs-table');
-      logsTable.innerHTML = '';
-      
-      // Reverse to show newest first
-      logs.slice().reverse().slice(0, 10).forEach(log => {
-        const date = new Date(log.timestamp).toLocaleTimeString();
-        let sevBadge = 'badge-sev-medium';
-        if(log.details && log.details.includes('CRITICAL')) sevBadge = 'badge-sev-critical';
-        else if(log.details && log.details.includes('HIGH')) sevBadge = 'badge-sev-high';
-        
-        // Truncate details
-        const shortDetails = log.details ? (log.details.length > 50 ? log.details.substring(0, 50) + '...' : log.details) : 'Unknown reason';
-
-        logsTable.innerHTML += `
-          <tr>
-            <td class="text-secondary font-monospace small">${date}</td>
-            <td><span class="badge bg-dark border border-secondary text-info">${log.action}</span></td>
-            <td>${log.rule_id}</td>
-            <td><span class="badge ${sevBadge}">Alert</span></td>
-            <td><span class="text-white-50 small">${shortDetails}</span></td>
-          </tr>
-        `;
-
-      });
-
-    } catch (e) {
-      console.error("Fetch error", e);
-    }
-  }
-
-  // Simple client-side view switcher
-  function loadView(view) {
-    // 1. Update Navigation State
-    document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
-    
-    const links = Array.from(document.querySelectorAll('.nav-link'));
-    for (const el of links) {
-      if (el.dataset && el.dataset.view === view) el.classList.add('active');
-    }
-
-    // 2. Update Page Title
-    const titles = { 
-      dashboard: 'Security Dashboard', 
-      logs: 'Attack Logs', 
-      rules: 'Rules Management',
-      admin: 'Admin Panel' 
-    };
-    document.getElementById('pageTitle').innerText = titles[view] || 'Security Dashboard';
-
-    // 3. Toggle Visibility
-    document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none'));
-    const target = document.getElementById('view-' + view);
-    if (target) {
-        target.classList.remove('d-none');
-    }
-    
-    // 4. Trigger specific data loads
-    if (view === 'logs') {
-        fetchLogs();
-    } else if (view === 'rules') {
-        fetchRules();
-    } else if (view === 'admin') {
-        fetchAdminData();
-    }
-  }
-
-  async function fetchLogs() {
-    const headers = { 'Authorization': 'Bearer ' + token };
-    try {
-        const logsRes = await fetch('/api/logs', { headers });
-        const logs = await logsRes.json();
-        const logsTable = document.getElementById('full-logs-table');
-        if (logsTable) {
-            logsTable.innerHTML = '';
-            logs.forEach(log => {
-                logsTable.innerHTML += `
-                <tr>
-                    <td class="text-secondary font-monospace small">${new Date(log.timestamp).toLocaleString()}</td>
-                    <td>${log.client_ip || '127.0.0.1'}</td>
-                    <td><span class="badge bg-secondary">${log.method || 'GET'}</span></td>
-                    <td class="font-monospace small text-muted">${log.uri || '/'}</td>
-                    <td>${log.rule_id}</td>
-                    <td><span class="text-danger">${log.details || 'Generic'}</span></td>
-                    <td><span class="badge bg-danger">${log.action}</span></td>
-                </tr>`;
-            });
-        }
-    } catch(e) { console.error("Logs fetch error", e); }
-  }
-
-  // WebSocket for Real-time
-  function connectWS() {
-    const protocol = globalThis.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${globalThis.location.host}/api/ws?token=${token}`);
-    
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'stats_update') {
-           // We could update charts directly or just trigger a fetch
-           fetchData();
-        } else if (msg.type === 'alert') {
-           showToast('⚠️ Attack Blocked!', msg.data.details || 'Security Event Detected', true);
-           fetchData();
-        }
-      } catch(e) { console.error(e); }
-    };
-    
-    ws.onclose = () => {
-      setTimeout(connectWS, 2000); // Reconnect
-    }
-  }
-
-  // Init
-  globalThis.addEventListener('load', () => {
-    fetchData();
-    connectWS();
-  });
-</script>
+    <!-- External JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>

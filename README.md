@@ -83,7 +83,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/obsidian.git
+git clone https://github.com/Abhishek-yadav04/Obsidian.git
 cd obsidian
 
 # Build the application
@@ -451,8 +451,8 @@ This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENS
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/obsidian/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/obsidian/discussions)
+- **Issues**: [GitHub Issues](https://github.com/Abhishek-yadav04/Obsidian/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Abhishek-yadav04/Obsidian/discussions)
 - **Security**: See [SECURITY.md](SECURITY.md) for reporting vulnerabilities
 
 ---

@@ -122,6 +122,9 @@ func main() {
 	mux.HandleFunc("/api/threats/block", authMiddleware(rbacMiddleware("Admin", threatIntel.HandleBlockIP)))
 	mux.HandleFunc("/api/threats/stats", authMiddleware(threatIntel.HandleStats))
 
+	// Rate Limiter Reset (Admin only) - useful for testing
+	mux.HandleFunc("/api/admin/ratelimit/reset", authMiddleware(rbacMiddleware("Admin", handleRateLimitReset)))
+
 	// Static Files (UI)
 	uiFS, err := fs.Sub(uiAssets, "ui")
 	if err != nil {
@@ -416,6 +419,29 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 		"version":   AppVersion,
 		"name":      AppName,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// handleRateLimitReset resets rate limits for testing
+func handleRateLimitReset(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		IP string `json:"ip"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+
+	// Reset rate limits
+	rateLimiter.Reset(req.IP) // Empty string resets all
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Rate limits reset successfully",
+		"ip":      req.IP,
 	})
 }
 

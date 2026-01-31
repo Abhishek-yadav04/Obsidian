@@ -34,10 +34,10 @@ type Config struct {
 // DefaultConfig returns sensible defaults
 func DefaultConfig() Config {
 	return Config{
-		RequestsPerMinute: 60,
-		BurstSize:         100,
-		BlockDuration:     15 * time.Minute,
-		Whitelist:         []string{"127.0.0.1", "::1"},
+		RequestsPerMinute: 200, // Increased for development
+		BurstSize:         300,
+		BlockDuration:     1 * time.Minute, // Reduced for development
+		Whitelist:         []string{"127.0.0.1", "::1", "[::1]", "localhost"},
 	}
 }
 
@@ -85,8 +85,14 @@ func (rl *RateLimiter) cleanupLoop() {
 
 // Allow checks if a request from IP should be allowed
 func (rl *RateLimiter) Allow(ip string) bool {
-	// Check whitelist
-	if rl.whitelist[ip] {
+	// Normalize localhost variants
+	normalizedIP := ip
+	if ip == "[::1]" || ip == "::1" || ip == "localhost" {
+		normalizedIP = "127.0.0.1"
+	}
+
+	// Check whitelist (including localhost variants)
+	if rl.whitelist[ip] || rl.whitelist[normalizedIP] || ip == "127.0.0.1" || ip == "[::1]" || ip == "::1" {
 		return true
 	}
 
@@ -153,6 +159,28 @@ func (rl *RateLimiter) Whitelist(ip string) {
 	defer rl.mu.Unlock()
 	rl.whitelist[ip] = true
 	delete(rl.blacklist, ip)
+}
+
+// Reset clears rate limit state for an IP or all IPs if empty string
+func (rl *RateLimiter) Reset(ip string) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	if ip == "" {
+		// Reset all
+		rl.visitors = make(map[string]*visitor)
+	} else {
+		delete(rl.visitors, ip)
+	}
+}
+
+// Unblock removes block status for an IP
+func (rl *RateLimiter) Unblock(ip string) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	if v, ok := rl.visitors[ip]; ok {
+		v.blocked = false
+		v.timestamps = nil
+	}
 }
 
 // GetStats returns rate limiter statistics

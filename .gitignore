@@ -1,22 +1,92 @@
+# ============================================
+# OBSIDIAN WAF - Git Ignore Configuration
+# ============================================
+
+# Compiled Binaries
 *.exe
 *.exe~
 *.dll
 *.so
 *.o
 *.dylib
+obsidian
+sentinel-api
+sentinel-api.exe
+
+# macOS
 .DS_Store
-.idea
+
+# IDE/Editor
+.idea/
+.vscode/settings.json
+.vscode/launch.json
+*.swp
+*.swo
+*~
+
 # Test binary, built with `go test -c`
 *.test
 
-# Output of the go coverage tool, specifically when used with LiteIDE
+# Output of the go coverage tool
 *.out
+coverage.html
+coverage.txt
+
+# Test directories
 test/crs
+
+# Build output
 /main
+build/
+dist/
+bin/
+
+# Vendor (if not committing)
 vendor/
+
+# Coraza WAF temp
 coraza-waf
 __debug_bin
 
-build/
-
+# Go workspace
 go.work.sum
+
+# Application Data Files
+cmd/obsidian/data.json
+cmd/obsidian/threats.json
+data.json
+threats.json
+
+# Logs
+*.log
+logs/
+
+# Environment files (NEVER commit secrets)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# PDF Reports (generated)
+*.pdf
+reports/
+
+# IDE specific
+*.iml
+.project
+.classpath
+
+# OS generated
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Backup files
+*.bak
+*.backup
+*.orig

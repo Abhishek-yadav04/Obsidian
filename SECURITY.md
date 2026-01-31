@@ -42,7 +42,7 @@ Obsidian Sentinel v2.0.0 includes the following security measures:
 
 Please report security vulnerabilities by:
 1. Email: security@obsidian-waf.local (placeholder - update with real email)
-2. GitHub Security Advisory: [Create new advisory](https://github.com/yourusername/obsidian/security/advisories/new)
+2. GitHub Security Advisory: [Create new advisory](https://github.com/Abhishek-yadav04/Obsidian/security/advisories/new)
 
 ### What to Include
 

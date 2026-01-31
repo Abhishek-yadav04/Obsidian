@@ -103,6 +103,21 @@ body {
 .nav-link i {
     width: 20px;
     text-align: center;
+    display: inline-block;
+    font-family: 'Font Awesome 6 Free', 'FontAwesome';
+    font-style: normal;
+    font-weight: 900;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+/* Ensure Font Awesome icons are visible */
+.fas, .far, .fab, .fa-solid, .fa-regular, .fa-brands {
+    display: inline-block !important;
+    font-style: normal;
+    font-variant: normal;
+    text-rendering: auto;
+    -webkit-font-smoothing: antialiased;
 }
 
 .user-profile {
@@ -904,4 +919,90 @@ dd {
 [style*="color:#000"],
 [style*="color: #000"] {
     color: var(--text-main) !important;
+}
+
+/* ============================================
+   ACTION BUTTONS - EXPLICIT VISIBILITY
+   ============================================ */
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 32px;
+    min-height: 28px;
+}
+
+.btn-outline-info {
+    color: #0dcaf0 !important;
+    border-color: #0dcaf0 !important;
+    background-color: transparent;
+}
+
+.btn-outline-info:hover {
+    color: #000 !important;
+    background-color: #0dcaf0 !important;
+    border-color: #0dcaf0 !important;
+}
+
+.btn-outline-danger {
+    color: var(--accent-red) !important;
+    border-color: var(--accent-red) !important;
+    background-color: transparent;
+}
+
+.btn-outline-danger:hover {
+    color: #fff !important;
+    background-color: var(--accent-red) !important;
+    border-color: var(--accent-red) !important;
+}
+
+.btn-outline-warning {
+    color: #ffc107 !important;
+    border-color: #ffc107 !important;
+    background-color: transparent;
+}
+
+.btn-outline-warning:hover {
+    color: #000 !important;
+    background-color: #ffc107 !important;
+    border-color: #ffc107 !important;
+}
+
+.btn-outline-success {
+    color: #198754 !important;
+    border-color: #198754 !important;
+    background-color: transparent;
+}
+
+.btn-outline-success:hover {
+    color: #fff !important;
+    background-color: #198754 !important;
+    border-color: #198754 !important;
+}
+
+/* Table action buttons */
+.table .btn {
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+.table .btn i {
+    font-size: 0.8rem;
+    display: inline-block !important;
+}
+
+/* Primary button styling */
+.btn-primary {
+    background-color: var(--accent-red) !important;
+    border-color: var(--accent-red) !important;
+    color: #fff !important;
+}
+
+.btn-primary:hover {
+    background-color: #e11d48 !important;
+    border-color: #e11d48 !important;
 }

@@ -4,11 +4,28 @@
  */
 
 // ============================================
+// AUTHENTICATION HELPER
+// ============================================
+function getStoredValue(key) {
+    // Check localStorage first (primary), then sessionStorage (fallback)
+    return localStorage.getItem(key) || sessionStorage.getItem(key);
+}
+
+function getStoredUser() {
+    const userStr = getStoredValue('obsidian_user');
+    try {
+        return userStr ? JSON.parse(userStr) : null;
+    } catch {
+        return null;
+    }
+}
+
+// ============================================
 // APPLICATION STATE
 // ============================================
 const ObsidianApp = {
-    token: localStorage.getItem('obsidian_token'),
-    user: JSON.parse(localStorage.getItem('obsidian_user') || 'null'),
+    token: getStoredValue('obsidian_token'),
+    user: getStoredUser(),
     currentView: 'dashboard',
     ws: null,
     charts: {},
@@ -17,7 +34,7 @@ const ObsidianApp = {
     // Initialize the application
     init() {
         if (!this.token) {
-            window.location.href = '/login.html';
+            globalThis.location.href = '/login.html';
             return;
         }
         this.setupNavigation();
@@ -128,11 +145,14 @@ const ObsidianApp = {
         ]);
 
         if (stats) {
-            document.getElementById('total-attacks').innerText =
-                (stats.blocked_requests || 0) + (stats.flagged_requests || 0);
+            const totalThreats = (stats.blocked_requests || 0) + (stats.flagged_requests || 0);
+            document.getElementById('total-attacks').innerText = totalThreats;
             document.getElementById('blocked-count').innerText = stats.blocked_requests || 0;
             document.getElementById('flagged-count').innerText = stats.flagged_requests || 0;
             document.getElementById('safe-requests').innerText = stats.safe_requests || 0;
+            
+            // Calculate and display dynamic delta (compare to stored previous value)
+            this.updateThreatsDelta(totalThreats, logs || []);
             
             // Quick Stats - Real Data
             const quickRules = document.getElementById('quick-active-rules');
@@ -206,14 +226,30 @@ const ObsidianApp = {
                 ? '<span class="badge bg-dark border border-success text-success">Pass</span>'
                 : `<span class="badge bg-dark border border-danger text-danger">${log.action || 'Unknown'}</span>`;
 
+            // Calculate row class based on status
+            let rowClass = '';
+            if (log.status === 'Blocked' || log.status === 'ThreatBlocked') {
+                rowClass = 'table-danger';
+            } else if (log.status === 'Flagged') {
+                rowClass = 'table-warning';
+            }
+
+            // Format URI display with truncation
+            const uriDisplay = (log.uri || '/').substring(0, 30);
+            const uriSuffix = (log.uri || '').length > 30 ? '...' : '';
+            
+            // Format details display with truncation
+            const detailsDisplay = (log.details || '').substring(0, 40);
+            const detailsSuffix = (log.details || '').length > 40 ? '...' : '';
+
             return `
-                <tr class="${log.status === 'Blocked' || log.status === 'ThreatBlocked' ? 'table-danger' : log.status === 'Flagged' ? 'table-warning' : ''}">
+                <tr class="${rowClass}">
                     <td class="text-secondary font-monospace small">${date}</td>
                     <td>${statusBadge}</td>
                     <td>${actionBadge}</td>
                     <td class="font-monospace small">${log.rule_id || '-'}</td>
-                    <td><code class="text-info">${log.method || 'GET'} ${(log.uri || '/').substring(0, 30)}${(log.uri || '').length > 30 ? '...' : ''}</code></td>
-                    <td class="text-white-50 small">${(log.details || '').substring(0, 40)}${(log.details || '').length > 40 ? '...' : ''}</td>
+                    <td><code class="text-info">${log.method || 'GET'} ${uriDisplay}${uriSuffix}</code></td>
+                    <td class="text-white-50 small">${detailsDisplay}${detailsSuffix}</td>
                 </tr>
             `;
         }).join('');
@@ -321,6 +357,53 @@ const ObsidianApp = {
         return hourBuckets;
     },
 
+    // Calculate and display threats delta (today vs last hour)
+    updateThreatsDelta(currentTotal, logs) {
+        const deltaEl = document.getElementById('threats-delta');
+        if (!deltaEl) return;
+
+        // Count threats from last hour vs this hour
+        const now = new Date();
+        const oneHourAgo = new Date(now - 60 * 60 * 1000);
+        const twoHoursAgo = new Date(now - 2 * 60 * 60 * 1000);
+
+        let thisHour = 0;
+        let lastHour = 0;
+
+        if (logs && logs.length > 0) {
+            logs.forEach(log => {
+                if (log.status !== 'Blocked' && log.status !== 'ThreatBlocked') return;
+                const logTime = new Date(log.timestamp);
+                if (logTime >= oneHourAgo) {
+                    thisHour++;
+                } else if (logTime >= twoHoursAgo) {
+                    lastHour++;
+                }
+            });
+        }
+
+        // Calculate percentage change
+        if (lastHour === 0 && thisHour === 0) {
+            deltaEl.innerHTML = '<i class="fas fa-minus"></i> No recent activity';
+            deltaEl.className = 'stat-delta text-muted';
+        } else if (lastHour === 0) {
+            deltaEl.innerHTML = `<i class="fas fa-arrow-up"></i> ${thisHour} new this hour`;
+            deltaEl.className = 'stat-delta text-warning';
+        } else {
+            const changePercent = Math.round((thisHour - lastHour) / lastHour * 100);
+            if (thisHour > lastHour) {
+                deltaEl.innerHTML = `<i class="fas fa-arrow-up"></i> ${changePercent}% from last hour`;
+                deltaEl.className = 'stat-delta text-danger';
+            } else if (thisHour < lastHour) {
+                deltaEl.innerHTML = `<i class="fas fa-arrow-down"></i> ${Math.abs(changePercent)}% from last hour`;
+                deltaEl.className = 'stat-delta text-success';
+            } else {
+                deltaEl.innerHTML = '<i class="fas fa-equals"></i> Same as last hour';
+                deltaEl.className = 'stat-delta text-muted';
+            }
+        }
+    },
+
     // Fetch full logs
     async fetchLogs() {
         const logs = await this.api('/api/logs');
@@ -401,11 +484,19 @@ const ObsidianApp = {
         if (!tbody || !rules) return;
 
         tbody.innerHTML = rules.map(rule => {
-            const sevClass = rule.severity === 'CRITICAL' ? 'badge-sev-critical' :
-                rule.severity === 'HIGH' ? 'badge-sev-high' : 'badge-sev-medium';
-            const statusBadge = rule.enabled !== false ?
-                '<span class="badge bg-success">Active</span>' :
-                '<span class="badge bg-secondary">Disabled</span>';
+            // Determine severity badge class
+            let sevClass = 'badge-sev-medium';
+            if (rule.severity === 'CRITICAL') {
+                sevClass = 'badge-sev-critical';
+            } else if (rule.severity === 'HIGH') {
+                sevClass = 'badge-sev-high';
+            }
+            
+            // Determine status badge - use positive condition
+            const isEnabled = rule.enabled !== false;
+            const statusBadge = isEnabled
+                ? '<span class="badge bg-success">Active</span>'
+                : '<span class="badge bg-secondary">Disabled</span>';
 
             return `
                 <tr>
@@ -415,11 +506,11 @@ const ObsidianApp = {
                     <td>${rule.category || 'General'}</td>
                     <td>${statusBadge}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-info me-1" onclick="ObsidianApp.editRule(${rule.id})">
-                            <i class="fas fa-edit"></i>
+                        <button class="btn btn-sm btn-outline-info me-1" onclick="ObsidianApp.editRule(${rule.id})" title="Edit Rule">
+                            <i class="fas fa-edit"></i> Edit
                         </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.deleteRule(${rule.id})">
-                            <i class="fas fa-trash"></i>
+                        <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.deleteRule(${rule.id})" title="Delete Rule">
+                            <i class="fas fa-trash"></i> Delete
                         </button>
                     </td>
                 </tr>
@@ -443,7 +534,7 @@ const ObsidianApp = {
                     <td>${u.username}</td>
                     <td><span class="badge bg-info">${u.role}</span></td>
                     <td>${u.enabled ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-danger">Disabled</span>'}</td>
-                    <td><button class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></button></td>
+                    <td><button class="btn btn-sm btn-outline-secondary" title="Edit User"><i class="fas fa-edit"></i> Edit</button></td>
                 </tr>
             `).join('');
         }
@@ -475,16 +566,26 @@ const ObsidianApp = {
         if (!tbody) return;
 
         if (threats && threats.length > 0) {
-            tbody.innerHTML = threats.map(t => `
-                <tr>
-                    <td class="font-monospace">${t.ip}</td>
-                    <td><span class="badge bg-${t.risk_level === 'HIGH' ? 'danger' : t.risk_level === 'MEDIUM' ? 'warning' : 'secondary'}">${t.risk_level}</span></td>
-                    <td>${t.category}</td>
-                    <td>${t.source}</td>
-                    <td>${new Date(t.last_seen).toLocaleString()}</td>
-                    <td><button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.blockIP('${t.ip}')"><i class="fas fa-ban"></i></button></td>
-                </tr>
-            `).join('');
+            tbody.innerHTML = threats.map(t => {
+                // Determine risk level badge color
+                let riskColor = 'secondary';
+                if (t.risk_level === 'HIGH') {
+                    riskColor = 'danger';
+                } else if (t.risk_level === 'MEDIUM') {
+                    riskColor = 'warning';
+                }
+                
+                return `
+                    <tr>
+                        <td class="font-monospace">${t.ip}</td>
+                        <td><span class="badge bg-${riskColor}">${t.risk_level}</span></td>
+                        <td>${t.category}</td>
+                        <td>${t.source}</td>
+                        <td>${new Date(t.last_seen).toLocaleString()}</td>
+                        <td><button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.blockIP('${t.ip}')" title="Block IP"><i class="fas fa-ban"></i> Block</button></td>
+                    </tr>
+                `;
+            }).join('');
         } else {
             tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No threat intelligence data available</td></tr>';
         }
@@ -523,7 +624,7 @@ const ObsidianApp = {
     async saveRule() {
         const editId = document.getElementById('ruleEditId').value;
         const rule = {
-            id: parseInt(document.getElementById('ruleId').value),
+            id: Number.parseInt(document.getElementById('ruleId').value, 10),
             description: document.getElementById('ruleDesc').value,
             category: document.getElementById('ruleCategory').value,
             severity: document.getElementById('ruleSeverity').value,
@@ -574,8 +675,9 @@ const ObsidianApp = {
 
     // WebSocket connection
     connectWebSocket() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        this.ws = new WebSocket(`${protocol}//${window.location.host}/api/ws?token=${this.token}`);
+        const isSecure = globalThis.location.protocol === 'https:';
+        const protocol = isSecure ? 'wss:' : 'ws:';
+        this.ws = new WebSocket(`${protocol}//${globalThis.location.host}/api/ws?token=${this.token}`);
 
         this.ws.onmessage = (event) => {
             try {
@@ -585,7 +687,9 @@ const ObsidianApp = {
                 } else if (msg.type === 'alert') {
                     this.showToast('⚠️ Attack Blocked!', msg.data?.details || 'Security Event Detected', true);
                 }
-            } catch (e) { console.error(e); }
+            } catch (parseError) {
+                console.error('WebSocket message parse error:', parseError.message);
+            }
         };
 
         this.ws.onclose = () => {
@@ -657,7 +761,8 @@ const ObsidianApp = {
             a.download = 'obsidian-report.pdf';
             a.click();
             URL.revokeObjectURL(url);
-        } catch (e) {
+        } catch (exportError) {
+            console.error('Export failed:', exportError.message);
             this.showToast('Error', 'Failed to export report', true);
         }
     },
@@ -692,7 +797,7 @@ const ObsidianApp = {
     logout() {
         localStorage.removeItem('obsidian_token');
         localStorage.removeItem('obsidian_user');
-        window.location.href = '/login.html';
+        globalThis.location.href = '/login.html';
     }
 };
 

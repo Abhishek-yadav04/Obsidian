@@ -21,15 +21,27 @@ var (
 	ErrInvalidToken       = errors.New("invalid token")
 )
 
-// getSecretKey retrieves JWT secret from environment or uses secure default
+// cachedSecretKey stores the JWT secret for the lifetime of the application
+var cachedSecretKey string
+
+// getSecretKey retrieves JWT secret from environment or uses a stable default for development
 func getSecretKey() string {
+	// Return cached key if already set
+	if cachedSecretKey != "" {
+		return cachedSecretKey
+	}
+
 	key := os.Getenv("OBSIDIAN_JWT_SECRET")
 	if key == "" {
-		// Generate a warning in logs but use a secure random key for development
-		// In production, this MUST be set via environment variable
-		key = "obsidian-dev-key-" + fmt.Sprintf("%d", time.Now().UnixNano())
+		// Use a stable default key for development (NOT for production!)
+		// This ensures tokens remain valid for the application lifetime
+		key = "obsidian-development-secret-key-change-in-production"
+		fmt.Println("WARNING: Using default JWT secret. Set OBSIDIAN_JWT_SECRET for production!")
 	}
-	return key
+
+	// Cache the key for consistent signing/verification
+	cachedSecretKey = key
+	return cachedSecretKey
 }
 
 // HashPassword generates a bcrypt hash of the password with cost 12

@@ -122,6 +122,7 @@ export REDIS_URL="redis://localhost:6379"
 Open your browser and navigate to: **http://localhost:8082**
 
 **Default Credentials:**
+
 *Admin*
 - Username: `admin`
 - Password: `password`

@@ -105,6 +105,11 @@ Open your browser and navigate to: **http://localhost:8082**
 - Username: `admin`
 - Password: `password`
 
+**Default Roles:**
+- **Admin**: Full access (rules, threats, users, audit logs)
+- **Analyst**: Read-only security data + report export
+- **Viewer**: Read-only dashboard and logs
+
 > ⚠️ **Important**: Change the default password in production!
 
 ---

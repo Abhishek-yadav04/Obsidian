@@ -9,6 +9,8 @@ import (
 	"testing"
 )
 
+const errIDNotSet = "ID not set"
+
 func TestNewTransaction(t *testing.T) {
 	waf := NewWAF()
 	waf.RequestBodyAccess = true
@@ -26,15 +28,15 @@ func TestNewTransaction(t *testing.T) {
 		t.Error("Request body limit not set")
 	}
 	if tx.id != "test" {
-		t.Error("ID not set")
+		t.Error(errIDNotSet)
 	}
 	tx = waf.NewTransactionWithOptions(Options{ID: ""})
 	if tx.id == "" {
-		t.Error("ID not set")
+		t.Error(errIDNotSet)
 	}
 	tx = waf.NewTransaction()
 	if tx.id == "" {
-		t.Error("ID not set")
+		t.Error(errIDNotSet)
 	}
 }
 
@@ -69,7 +71,7 @@ func TestValidate(t *testing.T) {
 	}{
 		"default": {
 			expectErr:  false,
-			customizer: func(w *WAF) {},
+			customizer: nil,
 		},
 		"request body limit less than zero": {
 			expectErr:  true,
@@ -110,7 +112,9 @@ func TestValidate(t *testing.T) {
 	for name, tCase := range testCases {
 		t.Run(name, func(t *testing.T) {
 			waf := NewWAF()
-			tCase.customizer(waf)
+			if tCase.customizer != nil {
+				tCase.customizer(waf)
+			}
 			err := waf.Validate()
 			if tCase.expectErr {
 				if err == nil {

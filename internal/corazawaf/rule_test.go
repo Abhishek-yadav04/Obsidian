@@ -16,10 +16,16 @@ import (
 	"github.com/corazawaf/coraza/v3/types/variables"
 )
 
+const (
+	logDataMessage            = "Data Message"
+	errExpectedPhase          = "Expected to have phase"
+	fmtUnexpectedTransformErr = "Unexpected errors executing transformations: %v"
+)
+
 func TestMatchEvaluate(t *testing.T) {
 	r := NewRule()
 	r.Msg, _ = macro.NewMacro("Message")
-	r.LogData, _ = macro.NewMacro("Data Message")
+	r.LogData, _ = macro.NewMacro(logDataMessage)
 	r.ID_ = 1
 	r.LogID_ = "1"
 	if err := r.AddVariable(variables.ArgsGet, "", false); err != nil {
@@ -309,22 +315,22 @@ func TestInferredPhase(t *testing.T) {
 
 	b.set(types.PhaseRequestHeaders)
 	if !b.has(types.PhaseRequestHeaders) {
-		t.Error("Expected to have phase")
+		t.Error(errExpectedPhase)
 	}
 
 	b.set(types.PhaseRequestBody)
 	if !b.has(types.PhaseRequestBody) {
-		t.Error("Expected to have phase")
+		t.Error(errExpectedPhase)
 	}
 
 	b.set(types.PhaseResponseHeaders)
 	if !b.has(types.PhaseResponseHeaders) {
-		t.Error("Expected to have phase")
+		t.Error(errExpectedPhase)
 	}
 
 	b.set(types.PhaseResponseBody)
 	if !b.has(types.PhaseResponseBody) {
-		t.Error("Expected to have phase")
+		t.Error(errExpectedPhase)
 	}
 }
 
@@ -426,7 +432,7 @@ func TestExecuteTransformations(t *testing.T) {
 	_ = rule.AddTransformation("AppendB", transformationAppendB)
 	transformedInput, error := rule.executeTransformations("input")
 	if error != nil {
-		t.Fatalf("Unexecpted errors executing transformations: %v", error)
+		t.Fatalf(fmtUnexpectedTransformErr, error)
 	}
 	if transformedInput != "inputAB" {
 		t.Fatalf("Expected inputAB, got %s", transformedInput)
@@ -462,7 +468,7 @@ func TestExecuteTransformationsMultiMatch(t *testing.T) {
 	_ = rule.AddTransformation("AppendB", transformationAppendB)
 	transformedInput, error := rule.executeTransformationsMultimatch("input")
 	if error != nil {
-		t.Fatalf("Unexecpted errors executing transformations: %v", error)
+		t.Fatalf(fmtUnexpectedTransformErr, error)
 	}
 	if len(transformedInput) != 3 {
 		t.Errorf("Expected 3 transformed inputs from executeTransformationsMultimatch, got %d", len(transformedInput))
@@ -508,7 +514,7 @@ func TestTransformArgSimple(t *testing.T) {
 	_ = rule.AddTransformation("AppendB", transformationAppendB)
 	arg, errs := rule.transformArg(md, 0, transformationCache)
 	if errs != nil {
-		t.Fatalf("Unexpected errors executing transformations: %v", errs)
+		t.Fatalf(fmtUnexpectedTransformErr, errs)
 	}
 	if arg != "/testAB" {
 		t.Errorf("Expected \"/testAB\", got \"%s\"", arg)
@@ -519,7 +525,7 @@ func TestTransformArgSimple(t *testing.T) {
 	// Repeating the same transformation, expecting still one element in the cache (that means it is a cache hit)
 	arg, errs = rule.transformArg(md, 0, transformationCache)
 	if errs != nil {
-		t.Fatalf("Unexpected errors executing transformations: %v", errs)
+		t.Fatalf(fmtUnexpectedTransformErr, errs)
 	}
 	if arg != "/testAB" {
 		t.Errorf("Expected \"/testAB\", got \"%s\"", arg)
@@ -540,7 +546,7 @@ func TestTransformArgNoCacheForTXVariable(t *testing.T) {
 	_ = rule.AddTransformation("AppendA", transformationAppendA)
 	arg, errs := rule.transformArg(md, 0, transformationCache)
 	if errs != nil {
-		t.Fatalf("Unexpected errors executing transformations: %v", errs)
+		t.Fatalf(fmtUnexpectedTransformErr, errs)
 	}
 	if arg != "testA" {
 		t.Errorf("Expected \"testA\", got \"%s\"", arg)

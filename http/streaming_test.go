@@ -18,6 +18,20 @@ import (
 	"github.com/corazawaf/coraza/v3"
 )
 
+const (
+	contentTypeHeader             = "Content-Type"
+	contentTypeTextPlain          = "text/plain"
+	messageHello                  = "Hello "
+	messageWorld                  = "world!"
+	fmtWAFCreateFailed            = "failed to create WAF: %v"
+	fmtUnexpectedRequestErr       = "unexpected error performing request: %v"
+	fmtUnexpectedStatusCode       = "unexpected status code: %d"
+	fmtUnexpectedFirstChunk       = "unexpected first chunk: %q"
+	fmtUnexpectedRemainingBody    = "unexpected remaining body: %q"
+	fmtFailedReadingRemainingBody = "failed reading remaining body: %v"
+	msgFlushNotPropagated         = "Flush() was not propagated to the underlying response writer"
+)
+
 // We use a spy to verify Flush() is actually called on the underlying writer.
 // Relying solely on network finalized timing can be flaky in unit tests (httptest).
 // spy.flushed: Proves that the Coraza middleware correctly propagated the signal.
@@ -75,20 +89,20 @@ func readFirstN(t *testing.T, r io.Reader, n int, timeout time.Duration) ([]byte
 func TestStreamingEngineOff(t *testing.T) {
 	waf, err := coraza.NewWAF(coraza.NewWAFConfig().WithDirectives(`SecRuleEngine Off`))
 	if err != nil {
-		t.Fatalf("failed to create WAF: %v", err)
+		t.Fatalf(fmtWAFCreateFailed, err)
 	}
 
 	var spy *flushSpy
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		spy = &flushSpy{ResponseWriter: w}
 		handler := WrapHandler(waf, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/plain")
+			w.Header().Set(contentTypeHeader, contentTypeTextPlain)
 			flusher, _ := w.(http.Flusher)
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("Hello "))
+			_, _ = w.Write([]byte(messageHello))
 			flusher.Flush()
 			time.Sleep(500 * time.Millisecond)
-			_, _ = w.Write([]byte("world!"))
+			_, _ = w.Write([]byte(messageWorld))
 		}))
 		handler.ServeHTTP(spy, r)
 	}))
@@ -96,34 +110,34 @@ func TestStreamingEngineOff(t *testing.T) {
 
 	res, err := http.Get(ts.URL)
 	if err != nil {
-		t.Fatalf("unexpected error performing request: %v", err)
+		t.Fatalf(fmtUnexpectedRequestErr, err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected status code: %d", res.StatusCode)
+		t.Fatalf(fmtUnexpectedStatusCode, res.StatusCode)
 	}
 
 	// Expect to receive the first chunk promptly after Flush.
 	// Since 200ms < 500ms (server sleep), success means we got data BEFORE sleep ended.
-	b, ok := readFirstN(t, res.Body, len("Hello "), 200*time.Millisecond)
+	b, ok := readFirstN(t, res.Body, len(messageHello), 200*time.Millisecond)
 	if !ok {
 		t.Fatalf("did not receive first chunk in time; flush likely did not propagate")
 	}
-	if string(b) != "Hello " {
-		t.Fatalf("unexpected first chunk: %q", string(b))
+	if string(b) != messageHello {
+		t.Fatalf(fmtUnexpectedFirstChunk, string(b))
 	}
 	// Verify Flush was actually propagated
 	if spy == nil || !spy.flushed {
-		t.Fatalf("Flush() was not propagated to the underlying response writer")
+		t.Fatalf(msgFlushNotPropagated)
 	}
 	// Read the remainder of the body without timing assertions.
 	rest, err := io.ReadAll(res.Body)
 	if err != nil {
-		t.Fatalf("failed reading remaining body: %v", err)
+		t.Fatalf(fmtFailedReadingRemainingBody, err)
 	}
-	if string(rest) != "world!" {
-		t.Fatalf("unexpected remaining body: %q", string(rest))
+	if string(rest) != messageWorld {
+		t.Fatalf(fmtUnexpectedRemainingBody, string(rest))
 	}
 }
 
@@ -138,20 +152,20 @@ SecResponseBodyMimeType application/json`)
 
 	waf, err := coraza.NewWAF(coraza.NewWAFConfig().WithDirectives(directives))
 	if err != nil {
-		t.Fatalf("failed to create WAF: %v", err)
+		t.Fatalf(fmtWAFCreateFailed, err)
 	}
 
 	var spy *flushSpy
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		spy = &flushSpy{ResponseWriter: w}
 		handler := WrapHandler(waf, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/plain")
+			w.Header().Set(contentTypeHeader, contentTypeTextPlain)
 			flusher, _ := w.(http.Flusher)
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("Hello "))
+			_, _ = w.Write([]byte(messageHello))
 			flusher.Flush()
 			time.Sleep(500 * time.Millisecond)
-			_, _ = w.Write([]byte("world!"))
+			_, _ = w.Write([]byte(messageWorld))
 		}))
 		handler.ServeHTTP(spy, r)
 	}))
@@ -159,37 +173,37 @@ SecResponseBodyMimeType application/json`)
 
 	res, err := http.Get(ts.URL)
 	if err != nil {
-		t.Fatalf("unexpected error performing request: %v", err)
+		t.Fatalf(fmtUnexpectedRequestErr, err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected status code: %d", res.StatusCode)
+		t.Fatalf(fmtUnexpectedStatusCode, res.StatusCode)
 	}
 
 	// We expect to receive the first chunk promptly after Flush.
 	// Since 200ms < 500ms (server sleep), success means we got data BEFORE sleep ended.
-	b, ok := readFirstN(t, res.Body, len("Hello "), 200*time.Millisecond)
+	b, ok := readFirstN(t, res.Body, len(messageHello), 200*time.Millisecond)
 	if !ok {
 		// This is the current buggy behavior: flush is swallowed by the interceptor.
 		t.Fatalf("did not receive first chunk in time; finalized is hindered when SecRuleEngine is On")
 	}
-	if string(b) != "Hello " {
-		t.Fatalf("unexpected first chunk: %q", string(b))
+	if string(b) != messageHello {
+		t.Fatalf(fmtUnexpectedFirstChunk, string(b))
 	}
 
 	// Verify Flush was actually propagated
 	if spy == nil || !spy.flushed {
-		t.Fatalf("Flush() was not propagated to the underlying response writer")
+		t.Fatalf(msgFlushNotPropagated)
 	}
 
 	// Read the remainder of the body without timing assertions.
 	rest, err := io.ReadAll(res.Body)
 	if err != nil {
-		t.Fatalf("failed reading remaining body: %v", err)
+		t.Fatalf(fmtFailedReadingRemainingBody, err)
 	}
-	if string(rest) != "world!" {
-		t.Fatalf("unexpected remaining body: %q", string(rest))
+	if string(rest) != messageWorld {
+		t.Fatalf(fmtUnexpectedRemainingBody, string(rest))
 	}
 }
 
@@ -202,20 +216,20 @@ SecResponseBodyAccess Off`)
 
 	waf, err := coraza.NewWAF(coraza.NewWAFConfig().WithDirectives(directives))
 	if err != nil {
-		t.Fatalf("failed to create WAF: %v", err)
+		t.Fatalf(fmtWAFCreateFailed, err)
 	}
 
 	var spy *flushSpy
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		spy = &flushSpy{ResponseWriter: w}
 		handler := WrapHandler(waf, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/plain")
+			w.Header().Set(contentTypeHeader, contentTypeTextPlain)
 			flusher, _ := w.(http.Flusher)
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("Hello "))
+			_, _ = w.Write([]byte(messageHello))
 			flusher.Flush()
 			time.Sleep(500 * time.Millisecond)
-			_, _ = w.Write([]byte("world!"))
+			_, _ = w.Write([]byte(messageWorld))
 		}))
 		handler.ServeHTTP(spy, r)
 	}))
@@ -223,37 +237,37 @@ SecResponseBodyAccess Off`)
 
 	res, err := http.Get(ts.URL)
 	if err != nil {
-		t.Fatalf("unexpected error performing request: %v", err)
+		t.Fatalf(fmtUnexpectedRequestErr, err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected status code: %d", res.StatusCode)
+		t.Fatalf(fmtUnexpectedStatusCode, res.StatusCode)
 	}
 
 	// We expect to receive the first chunk promptly after Flush.
 	// Since 200ms < 500ms (server sleep), success means we got data BEFORE sleep ended.
-	b, ok := readFirstN(t, res.Body, len("Hello "), 200*time.Millisecond)
+	b, ok := readFirstN(t, res.Body, len(messageHello), 200*time.Millisecond)
 	if !ok {
 		// This is the current buggy behavior: flush is swallowed by the interceptor.
 		t.Fatalf("did not receive first chunk in time; finalized is hindered when SecRuleEngine is On")
 	}
-	if string(b) != "Hello " {
-		t.Fatalf("unexpected first chunk: %q", string(b))
+	if string(b) != messageHello {
+		t.Fatalf(fmtUnexpectedFirstChunk, string(b))
 	}
 
 	// Verify Flush was actually propagated
 	if spy == nil || !spy.flushed {
-		t.Fatalf("Flush() was not propagated to the underlying response writer")
+		t.Fatalf(msgFlushNotPropagated)
 	}
 
 	// Read the remainder of the body without timing assertions.
 	rest, err := io.ReadAll(res.Body)
 	if err != nil {
-		t.Fatalf("failed reading remaining body: %v", err)
+		t.Fatalf(fmtFailedReadingRemainingBody, err)
 	}
-	if string(rest) != "world!" {
-		t.Fatalf("unexpected remaining body: %q", string(rest))
+	if string(rest) != messageWorld {
+		t.Fatalf(fmtUnexpectedRemainingBody, string(rest))
 	}
 }
 
@@ -267,22 +281,22 @@ SecResponseBodyAccess Off`)
 
 	waf, err := coraza.NewWAF(coraza.NewWAFConfig().WithDirectives(directives))
 	if err != nil {
-		t.Fatalf("failed to create WAF: %v", err)
+		t.Fatalf(fmtWAFCreateFailed, err)
 	}
 
 	var spy *flushSpy
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		spy = &flushSpy{ResponseWriter: w}
 		handler := WrapHandler(waf, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/plain")
+			w.Header().Set(contentTypeHeader, contentTypeTextPlain)
 			// set the trigger header
 			w.Header().Set("trigger", "trigger")
 			flusher, _ := w.(http.Flusher)
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("Hello "))
+			_, _ = w.Write([]byte(messageHello))
 			flusher.Flush()
 			time.Sleep(500 * time.Millisecond)
-			_, _ = w.Write([]byte("world!"))
+			_, _ = w.Write([]byte(messageWorld))
 		}))
 		handler.ServeHTTP(spy, r)
 	}))
@@ -296,7 +310,7 @@ SecResponseBodyAccess Off`)
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusForbidden {
-		t.Fatalf("unexpected status code: %d", res.StatusCode)
+		t.Fatalf(fmtUnexpectedStatusCode, res.StatusCode)
 	}
 
 	// Ensure Flush was NOT propagated
@@ -307,10 +321,10 @@ SecResponseBodyAccess Off`)
 	// Read the remainder of the body without timing assertions.
 	rest, err := io.ReadAll(res.Body)
 	if err != nil {
-		t.Fatalf("failed reading remaining body: %v", err)
+		t.Fatalf(fmtFailedReadingRemainingBody, err)
 	}
 	if string(rest) != "" {
-		t.Fatalf("unexpected remaining body: %q", string(rest))
+		t.Fatalf(fmtUnexpectedRemainingBody, string(rest))
 	}
 }
 
@@ -325,14 +339,14 @@ SecResponseBodyAccess Off`)
 // even if the client request is HTTP/1.0. Since this test specifically targets
 // HTTP/1.0 behavior, we must bypass httptest and use a net.Listener with a custom http.Server
 // to ensure the response is sent using HTTP/1.0 semantics.
-func TestStreamingEngineOnNoResponseBodyAccess_HTTP10(t *testing.T) {
+func TestStreamingEngineOnNoResponseBodyAccessHTTP10(t *testing.T) {
 	directives := strings.TrimSpace(`
 SecRuleEngine On
 SecResponseBodyAccess Off`)
 
 	waf, err := coraza.NewWAF(coraza.NewWAFConfig().WithDirectives(directives))
 	if err != nil {
-		t.Fatalf("failed to create WAF: %v", err)
+		t.Fatalf(fmtWAFCreateFailed, err)
 	}
 
 	// Create a listener on a random port
@@ -348,13 +362,13 @@ SecResponseBodyAccess Off`)
 	// Set up HTTP server with handler
 	server := &http.Server{
 		Handler: WrapHandler(waf, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/plain")
+			w.Header().Set(contentTypeHeader, contentTypeTextPlain)
 			flusher, _ := w.(http.Flusher)
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("Hello "))
+			_, _ = w.Write([]byte(messageHello))
 			flusher.Flush()
 			time.Sleep(500 * time.Millisecond)
-			_, _ = w.Write([]byte("world!"))
+			_, _ = w.Write([]byte(messageWorld))
 		})),
 	}
 
@@ -397,7 +411,7 @@ SecResponseBodyAccess Off`)
 	}
 
 	// Check that the first part "Hello " is sent immediately
-	if !strings.Contains(responseText, "Hello ") {
+	if !strings.Contains(responseText, messageHello) {
 		t.Fatalf("response does not contain 'Hello ': %q", responseText)
 	}
 
@@ -414,7 +428,7 @@ SecResponseBodyAccess Off`)
 	}
 
 	// Check the second part
-	if n > 0 && !strings.Contains(string(buf[:n]), "world!") {
+	if n > 0 && !strings.Contains(string(buf[:n]), messageWorld) {
 		t.Fatalf("second part does not contain 'world!': %q", string(buf[:n]))
 	}
 

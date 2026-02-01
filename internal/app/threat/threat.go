@@ -13,6 +13,11 @@ import (
 	"time"
 )
 
+const (
+	contentTypeHeader = "Content-Type"
+	contentTypeJSON   = "application/json"
+)
+
 // ThreatIntel manages threat intelligence feeds and IP reputation
 type ThreatIntel struct {
 	mu           sync.RWMutex
@@ -437,7 +442,7 @@ func (ti *ThreatIntel) RecordHit(ip string) {
 
 // HTTPHandler returns an http.Handler for threat intelligence API
 func (ti *ThreatIntel) HandleThreats(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	json.NewEncoder(w).Encode(ti.GetAllThreats())
 }
 
@@ -463,7 +468,7 @@ func (ti *ThreatIntel) HandleBlockIP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := ti.BlockIP(req.IP, req.Category); err != nil {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(contentTypeHeader, contentTypeJSON)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"message": err.Error(),
@@ -471,7 +476,7 @@ func (ti *ThreatIntel) HandleBlockIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": fmt.Sprintf("IP %s blocked successfully", req.IP),
@@ -480,6 +485,6 @@ func (ti *ThreatIntel) HandleBlockIP(w http.ResponseWriter, r *http.Request) {
 
 // HandleStats returns threat intelligence statistics
 func (ti *ThreatIntel) HandleStats(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	json.NewEncoder(w).Encode(ti.GetStats())
 }

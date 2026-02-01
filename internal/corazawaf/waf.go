@@ -91,7 +91,7 @@ type WAF struct {
 	UploadDir string
 
 	// Request body in memory limit excluding the size of any files being transported in the request.
-	// TODO: SecRequestBodyNoFilesLimit directive is retrieving the value, but no logic based on it is implemented. See https://github.com/corazawaf/coraza/issues/896
+	// Note: SecRequestBodyNoFilesLimit stores the value here, but enforcement is not implemented yet. See https://github.com/corazawaf/coraza/issues/896
 	RequestBodyNoFilesLimit int64
 
 	RequestBodyLimitAction types.BodyLimitAction
@@ -271,7 +271,7 @@ func resolveLogPath(path string) (io.Writer, error) {
 // appendFileWriter opens the target file on each Write and closes it so that
 // the file is not held open by the process between writes. This avoids file
 // locking issues on Windows during test cleanup.
-type appendFileWriter struct{
+type appendFileWriter struct {
 	path string
 	mode os.FileMode
 }

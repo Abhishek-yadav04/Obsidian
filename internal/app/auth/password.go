@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -165,67 +166,8 @@ func parseJSONClaims(data []byte, claims *Claims) error {
 	}
 
 	var jc jsonClaims
-	// We need encoding/json for proper parsing
-	str := string(data)
-
-	// Extract user_id
-	if idx := strings.Index(str, `"user_id":`); idx != -1 {
-		numStart := idx + 10
-		numEnd := numStart
-		for numEnd < len(str) && str[numEnd] >= '0' && str[numEnd] <= '9' {
-			numEnd++
-		}
-		if numEnd > numStart {
-			var num int
-			fmt.Sscanf(str[numStart:numEnd], "%d", &num)
-			jc.UserID = num
-		}
-	}
-
-	// Extract username
-	if idx := strings.Index(str, `"username":"`); idx != -1 {
-		start := idx + 12
-		end := strings.Index(str[start:], `"`)
-		if end != -1 {
-			jc.Username = str[start : start+end]
-		}
-	}
-
-	// Extract role
-	if idx := strings.Index(str, `"role":"`); idx != -1 {
-		start := idx + 8
-		end := strings.Index(str[start:], `"`)
-		if end != -1 {
-			jc.Role = str[start : start+end]
-		}
-	}
-
-	// Extract exp
-	if idx := strings.Index(str, `"exp":`); idx != -1 {
-		numStart := idx + 6
-		numEnd := numStart
-		for numEnd < len(str) && str[numEnd] >= '0' && str[numEnd] <= '9' {
-			numEnd++
-		}
-		if numEnd > numStart {
-			var num int64
-			fmt.Sscanf(str[numStart:numEnd], "%d", &num)
-			jc.Exp = num
-		}
-	}
-
-	// Extract iat
-	if idx := strings.Index(str, `"iat":`); idx != -1 {
-		numStart := idx + 6
-		numEnd := numStart
-		for numEnd < len(str) && str[numEnd] >= '0' && str[numEnd] <= '9' {
-			numEnd++
-		}
-		if numEnd > numStart {
-			var num int64
-			fmt.Sscanf(str[numStart:numEnd], "%d", &num)
-			jc.Iat = num
-		}
+	if err := json.Unmarshal(data, &jc); err != nil {
+		return err
 	}
 
 	claims.UserID = jc.UserID

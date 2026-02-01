@@ -22,6 +22,11 @@ import (
 	coraza "github.com/corazawaf/coraza/v3/internal/corazawaf"
 )
 
+const (
+	fmtUnexpectedError    = "unexpected error: %s"
+	fmtExpectedRulesFound = "Expected 4 rules loaded using include directive. Found: %d"
+)
+
 //go:embed testdata
 var testdata embed.FS
 
@@ -97,7 +102,7 @@ func TestLoadConfigurationFile(t *testing.T) {
 		p.options.WAF.Logger = debuglog.Default().WithLevel(debuglog.LevelWarn).WithOutput(logsBuf)
 		err := p.FromFile("../../coraza.conf-recommended")
 		if err != nil {
-			t.Errorf("unexpected error: %s", err.Error())
+			t.Errorf(fmtUnexpectedError, err.Error())
 		}
 		// The recommended file is expected to have no warnings/error logs
 		if logsBuf.Len() > 0 {
@@ -115,7 +120,7 @@ func TestLoadConfigurationFile(t *testing.T) {
 	t.Run("successful glob", func(t *testing.T) {
 		err := p.FromFile("./testdata/glob/*.conf")
 		if err != nil {
-			t.Errorf("unexpected error: %s", err.Error())
+			t.Errorf(fmtUnexpectedError, err.Error())
 		}
 	})
 
@@ -137,23 +142,23 @@ func TestLoadConfigurationFileWithMultiFs(t *testing.T) {
 
 	err := p.FromFile("../../coraza.conf-recommended")
 	if err != nil {
-		t.Errorf("unexpected error: %s", err.Error())
+		t.Errorf(fmtUnexpectedError, err.Error())
 	}
 
 	err = p.FromFile("../doesnotexist.conf")
 	// Go and TinyGo have different error messages
-	if !strings.Contains(err.Error(), "no such file or directory") && !strings.Contains(err.Error(), "file does not exist") {
+	if !strings.Contains(err.Error(), "no such file or directory") && !strings.Contains(err.Error(), "file does not exist") && !strings.Contains(err.Error(), "cannot find the file specified") {
 		t.Errorf("expected not found error. Got: %s", err.Error())
 	}
 
 	err = p.FromFile("/tmp/doesnotexist.conf")
-	if !strings.Contains(err.Error(), "no such file or directory") && !strings.Contains(err.Error(), "file does not exist") {
+	if !strings.Contains(err.Error(), "no such file or directory") && !strings.Contains(err.Error(), "file does not exist") && !strings.Contains(err.Error(), "cannot find the path specified") {
 		t.Errorf("expected not found error. Got: %s", err.Error())
 	}
 
 	err = p.FromFile("./testdata/glob/*.conf")
 	if err != nil {
-		t.Errorf("unexpected error: %s", err.Error())
+		t.Errorf(fmtUnexpectedError, err.Error())
 	}
 
 	if err := p.FromString("Include @owasp_crs/REQUEST-911-METHOD-ENFORCEMENT.conf"); err != nil {
@@ -182,7 +187,7 @@ func TestHardcodedSubIncludeDirective(t *testing.T) {
 		t.Error(err)
 	}
 	if waf.Rules.Count() != 4 {
-		t.Error("Expected 4 rules loaded using include directive. Found: ", waf.Rules.Count())
+		t.Errorf(fmtExpectedRulesFound, waf.Rules.Count())
 	}
 }
 
@@ -195,7 +200,7 @@ func TestHardcodedSubIncludeDirectiveAbsolutePath(t *testing.T) {
 		t.Error(err)
 	}
 	if waf.Rules.Count() != 4 {
-		t.Error("Expected 4 rules loaded using include directive. Found: ", waf.Rules.Count())
+		t.Errorf(fmtExpectedRulesFound, waf.Rules.Count())
 	}
 }
 
@@ -282,7 +287,7 @@ func TestEmbedFS(t *testing.T) {
 		t.Error(err)
 	}
 	if waf.Rules.Count() != 4 {
-		t.Error("Expected 4 rules loaded using include directive. Found: ", waf.Rules.Count())
+		t.Errorf(fmtExpectedRulesFound, waf.Rules.Count())
 	}
 }
 

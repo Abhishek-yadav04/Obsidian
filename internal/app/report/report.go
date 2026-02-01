@@ -11,6 +11,12 @@ import (
 // Generator creates PDF reports
 type Generator struct{}
 
+const (
+	textBoxTop    = "┌──────────────────────────────────────────────────────────────┐\n"
+	textBoxMid    = "├──────────────────────────────────────────────────────────────┤\n"
+	textBoxBottom = "└──────────────────────────────────────────────────────────────┘\n\n"
+)
+
 // NewGenerator creates a new report generator
 func NewGenerator() *Generator {
 	return &Generator{}
@@ -104,7 +110,7 @@ func (g *Generator) generateContent(stats model.Stats, logs []model.LogEntry, ru
 	}
 
 	// Footer
-	buf.WriteString(fmt.Sprintf("BT /F1 8 Tf 50 30 Td (Obsidian Sentinel WAF - Enterprise Security Report - Page 1) Tj ET\n"))
+	buf.WriteString("BT /F1 8 Tf 50 30 Td (Obsidian Sentinel WAF - Enterprise Security Report - Page 1) Tj ET\n")
 
 	return buf.String()
 }
@@ -118,19 +124,19 @@ func (g *Generator) GenerateTextReport(stats model.Stats, logs []model.LogEntry,
 	buf.WriteString("╚══════════════════════════════════════════════════════════════╝\n\n")
 	buf.WriteString(fmt.Sprintf("Generated: %s\n\n", time.Now().Format("2006-01-02 15:04:05")))
 
-	buf.WriteString("┌──────────────────────────────────────────────────────────────┐\n")
+	buf.WriteString(textBoxTop)
 	buf.WriteString("│                        STATISTICS                            │\n")
-	buf.WriteString("├──────────────────────────────────────────────────────────────┤\n")
+	buf.WriteString(textBoxMid)
 	buf.WriteString(fmt.Sprintf("│ Total Requests:    %-40d │\n", stats.TotalRequests))
 	buf.WriteString(fmt.Sprintf("│ Blocked Requests:  %-40d │\n", stats.BlockedRequests))
 	buf.WriteString(fmt.Sprintf("│ Flagged Requests:  %-40d │\n", stats.FlaggedRequests))
 	buf.WriteString(fmt.Sprintf("│ Safe Requests:     %-40d │\n", stats.SafeRequests))
 	buf.WriteString(fmt.Sprintf("│ Active Rules:      %-40d │\n", stats.ActiveRulesCount))
-	buf.WriteString("└──────────────────────────────────────────────────────────────┘\n\n")
+	buf.WriteString(textBoxBottom)
 
-	buf.WriteString("┌──────────────────────────────────────────────────────────────┐\n")
+	buf.WriteString(textBoxTop)
 	buf.WriteString("│                       ACTIVE RULES                           │\n")
-	buf.WriteString("├──────────────────────────────────────────────────────────────┤\n")
+	buf.WriteString(textBoxMid)
 	for _, rule := range rules {
 		status := "ENABLED"
 		if !rule.Enabled {
@@ -139,11 +145,11 @@ func (g *Generator) GenerateTextReport(stats model.Stats, logs []model.LogEntry,
 		buf.WriteString(fmt.Sprintf("│ [%d] %-35s [%-8s] │\n",
 			rule.ID, truncate(rule.Description, 35), status))
 	}
-	buf.WriteString("└──────────────────────────────────────────────────────────────┘\n\n")
+	buf.WriteString(textBoxBottom)
 
-	buf.WriteString("┌──────────────────────────────────────────────────────────────┐\n")
+	buf.WriteString(textBoxTop)
 	buf.WriteString("│                   RECENT SECURITY EVENTS                     │\n")
-	buf.WriteString("├──────────────────────────────────────────────────────────────┤\n")
+	buf.WriteString(textBoxMid)
 	for i, log := range logs {
 		if i >= 20 {
 			buf.WriteString("│ ... (truncated)                                              │\n")
@@ -154,7 +160,7 @@ func (g *Generator) GenerateTextReport(stats model.Stats, logs []model.LogEntry,
 			log.RuleID,
 			truncate(log.Action+" - "+log.Details, 35)))
 	}
-	buf.WriteString("└──────────────────────────────────────────────────────────────┘\n\n")
+	buf.WriteString(textBoxBottom)
 
 	buf.WriteString("════════════════════════════════════════════════════════════════\n")
 	buf.WriteString("           End of Report - Obsidian Sentinel WAF\n")

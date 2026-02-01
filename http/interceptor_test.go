@@ -20,6 +20,23 @@ import (
 	"github.com/corazawaf/coraza/v3"
 )
 
+const (
+	fmtUnexpectedStatusCode     = "unexpected status code %d"
+	fmtUnexpectedError          = "unexpected error: %v"
+	fmtUnexpectedStatusCodeWant = "unexpected status code, want %d, have %d"
+	fmtUnexpectedStatusCodeGot  = "unexpected status code, got=%d, want=%d"
+	fmtUnexpectedRequestErr     = "unexpected error performing request: %v"
+	fmtFailedReadResponseBody   = "failed to read response body: %v"
+)
+
+type responseBodyTestCase struct {
+	name                      string
+	content                   string
+	responseBodyRelativeLimit int
+	responseBodyLimitAction   string
+	expectedStatusCode        int
+}
+
 func TestWriteHeader(t *testing.T) {
 	waf, err := coraza.NewWAF(coraza.NewWAFConfig())
 	if err != nil {
@@ -35,18 +52,18 @@ func TestWriteHeader(t *testing.T) {
 	// although we called WriteHeader, status code should be applied until
 	// responseProcessor is called.
 	if unwanted, have := 204, res.Code; unwanted == have {
-		t.Errorf("unexpected status code %d", have)
+		t.Errorf(fmtUnexpectedStatusCode, have)
 	}
 
 	err = responseProcessor(tx, req)
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(fmtUnexpectedError, err)
 	}
 
 	// although we called a second time with 205, status code should remain the first
 	// value.
 	if want, have := 204, res.Code; want != have {
-		t.Errorf("unexpected status code, want %d, have %d", want, have)
+		t.Errorf(fmtUnexpectedStatusCodeWant, want, have)
 	}
 }
 
@@ -63,21 +80,21 @@ func TestWrite(t *testing.T) {
 	rw, responseProcessor := wrap(res, req, tx)
 	_, err = rw.Write([]byte("hello"))
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(fmtUnexpectedError, err)
 	}
 
 	_, err = rw.Write([]byte("world"))
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(fmtUnexpectedError, err)
 	}
 
 	err = responseProcessor(tx, req)
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(fmtUnexpectedError, err)
 	}
 
 	if want, have := 200, res.Code; want != have {
-		t.Errorf("unexpected status code, want %d, have %d", want, have)
+		t.Errorf(fmtUnexpectedStatusCodeWant, want, have)
 	}
 }
 
@@ -96,26 +113,26 @@ func TestWriteWithWriteHeader(t *testing.T) {
 	// although we called WriteHeader, status code should be applied until
 	// responseProcessor is called.
 	if unwanted, have := 204, res.Code; unwanted == have {
-		t.Errorf("unexpected status code %d", have)
+		t.Errorf(fmtUnexpectedStatusCode, have)
 	}
 
 	_, err = rw.Write([]byte("hello"))
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(fmtUnexpectedError, err)
 	}
 
 	_, err = rw.Write([]byte("world"))
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(fmtUnexpectedError, err)
 	}
 
 	err = responseProcessor(tx, req)
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(fmtUnexpectedError, err)
 	}
 
 	if want, have := 204, res.Code; want != have {
-		t.Errorf("unexpected status code, want %d, have %d", want, have)
+		t.Errorf(fmtUnexpectedStatusCodeWant, want, have)
 	}
 }
 
@@ -135,16 +152,16 @@ func TestFlush(t *testing.T) {
 		// although we called WriteHeader, status code should be applied until
 		// responseProcessor is called.
 		if unwanted, have := 204, res.Code; unwanted == have {
-			t.Errorf("unexpected status code %d", have)
+			t.Errorf(fmtUnexpectedStatusCode, have)
 		}
 
 		err = responseProcessor(tx, req)
 		if err != nil {
-			t.Errorf("unexpected error: %v", err)
+			t.Errorf(fmtUnexpectedError, err)
 		}
 
 		if want, have := 204, res.Code; want != have {
-			t.Errorf("unexpected status code, want %d, have %d", want, have)
+			t.Errorf(fmtUnexpectedStatusCodeWant, want, have)
 		}
 	})
 
@@ -157,16 +174,16 @@ func TestFlush(t *testing.T) {
 		rw.WriteHeader(204)
 
 		if want, have := 200, res.Code; want != have {
-			t.Errorf("unexpected status code, want %d, have %d", want, have)
+			t.Errorf(fmtUnexpectedStatusCodeWant, want, have)
 		}
 
 		err = responseProcessor(tx, req)
 		if err != nil {
-			t.Errorf("unexpected error: %v", err)
+			t.Errorf(fmtUnexpectedError, err)
 		}
 
 		if want, have := 200, res.Code; want != have {
-			t.Errorf("unexpected status code, want %d, have %d", want, have)
+			t.Errorf(fmtUnexpectedStatusCodeWant, want, have)
 		}
 	})
 }
@@ -207,26 +224,26 @@ func TestReadFrom(t *testing.T) {
 	// although we called WriteHeader, status code should be applied until
 	// responseProcessor is called.
 	if unwanted, have := 204, res.Code; unwanted == have {
-		t.Errorf("unexpected status code %d", have)
+		t.Errorf(fmtUnexpectedStatusCode, have)
 	}
 
 	_, err = rw.(io.ReaderFrom).ReadFrom(bytes.NewBuffer([]byte("hello world")))
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(fmtUnexpectedError, err)
 	}
 
 	_, err = rw.(io.ReaderFrom).ReadFrom(struct{ io.Reader }{bytes.NewBuffer([]byte("hello world"))})
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(fmtUnexpectedError, err)
 	}
 
 	err = responseProcessor(tx, req)
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(fmtUnexpectedError, err)
 	}
 
 	if want, have := 204, res.Code; want != have {
-		t.Errorf("unexpected status code, want %d, have %d", want, have)
+		t.Errorf(fmtUnexpectedStatusCodeWant, want, have)
 	}
 }
 
@@ -340,13 +357,7 @@ func TestResponseBody(t *testing.T) {
 		limitActionReject         = "Reject"
 		limitActionProcessPartial = "ProcessPartial"
 	)
-	testCases := []struct {
-		name                      string
-		content                   string
-		responseBodyRelativeLimit int
-		responseBodyLimitAction   string
-		expectedStatusCode        int
-	}{
+	testCases := []responseBodyTestCase{
 		{
 			name:                      "OneByteLongerThanLimitAndRejects",
 			content:                   contentWithoutDataLeak,
@@ -411,61 +422,66 @@ func TestResponseBody(t *testing.T) {
 
 			for name, chunks := range bodyChunks {
 				t.Run(name, func(t *testing.T) {
-					directives := fmt.Sprintf(`
-						SecRuleEngine On
-						SecResponseBodyAccess On
-						SecResponseBodyMimeType text/plain
-						SecResponseBodyLimit %d
-						SecResponseBodyLimitAction %s
-						SecRule RESPONSE_BODY "SQL Error" "id:100,phase:4,deny"
-					`, len(testCase.content)+testCase.responseBodyRelativeLimit, testCase.responseBodyLimitAction)
-
-					waf, err := coraza.NewWAF(coraza.NewWAFConfig().WithDirectives(directives))
-					if err != nil {
-						t.Fatal(err)
-					}
-
-					handler := WrapHandler(waf, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						if len(chunks) == 1 {
-							w.Header().Set("Content-Length", strconv.Itoa(len(testCase.content)))
-						}
-						w.Header().Set("Content-Type", "text/plain")
-						for _, chunk := range chunks {
-							if n, err := fmt.Fprint(w, chunk); err != nil {
-								t.Logf("failed to write response: %s", err)
-							} else if got, want := n, len(chunk); got != want {
-								t.Errorf("written response byte count mismatch, got=%d, want=%d", got, want)
-							}
-							if f, ok := w.(http.Flusher); ok && len(chunks) > 1 {
-								f.Flush()
-							}
-						}
-					}))
-
-					ts := httptest.NewServer(handler)
-					t.Cleanup(ts.Close)
-
-					res, err := http.Get(ts.URL)
-					if err != nil {
-						t.Fatalf("unexpected error performing request: %v", err)
-					}
-					defer res.Body.Close()
-
-					if got, want := res.StatusCode, testCase.expectedStatusCode; got != want {
-						t.Errorf("unexpected status code, got=%d, want=%d", got, want)
-					}
-
-					if testCase.expectedStatusCode == http.StatusOK {
-						body, err := io.ReadAll(res.Body)
-						if err != nil {
-							t.Fatalf("failed to read response body: %v", err)
-						}
-						if got, want := string(body), testCase.content; got != want {
-							t.Errorf("unexpected response body, got=%q, want=%q", got, want)
-						}
-					}
+					runResponseBodyCase(t, testCase, chunks)
 				})
 			}
 		})
+	}
+}
+
+func runResponseBodyCase(t *testing.T, testCase responseBodyTestCase, chunks []string) {
+	t.Helper()
+	directives := fmt.Sprintf(`
+			SecRuleEngine On
+			SecResponseBodyAccess On
+			SecResponseBodyMimeType text/plain
+			SecResponseBodyLimit %d
+			SecResponseBodyLimitAction %s
+			SecRule RESPONSE_BODY "SQL Error" "id:100,phase:4,deny"
+		`, len(testCase.content)+testCase.responseBodyRelativeLimit, testCase.responseBodyLimitAction)
+
+	waf, err := coraza.NewWAF(coraza.NewWAFConfig().WithDirectives(directives))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	handler := WrapHandler(waf, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(chunks) == 1 {
+			w.Header().Set("Content-Length", strconv.Itoa(len(testCase.content)))
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		for _, chunk := range chunks {
+			if n, err := fmt.Fprint(w, chunk); err != nil {
+				t.Logf("failed to write response: %s", err)
+			} else if got, want := n, len(chunk); got != want {
+				t.Errorf("written response byte count mismatch, got=%d, want=%d", got, want)
+			}
+			if f, ok := w.(http.Flusher); ok && len(chunks) > 1 {
+				f.Flush()
+			}
+		}
+	}))
+
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+
+	res, err := http.Get(ts.URL)
+	if err != nil {
+		t.Fatalf(fmtUnexpectedRequestErr, err)
+	}
+	defer res.Body.Close()
+
+	if got, want := res.StatusCode, testCase.expectedStatusCode; got != want {
+		t.Errorf(fmtUnexpectedStatusCodeGot, got, want)
+	}
+
+	if testCase.expectedStatusCode == http.StatusOK {
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			t.Fatalf(fmtFailedReadResponseBody, err)
+		}
+		if got, want := string(body), testCase.content; got != want {
+			t.Errorf("unexpected response body, got=%q, want=%q", got, want)
+		}
 	}
 }

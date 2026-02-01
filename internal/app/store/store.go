@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"strings"
 
 	"github.com/corazawaf/coraza/v3/experimental/plugins/plugintypes"
 	"github.com/corazawaf/coraza/v3/internal/app/auth"
@@ -59,11 +60,12 @@ func (s *Store) AddLog(entry model.LogEntry) {
 
 	// Set status based on action if not already set
 	if entry.Status == "" {
-		if entry.Action == "Blocked" || entry.Action == "Deny" || entry.Action == "deny" {
+		switch strings.ToLower(entry.Action) {
+		case "blocked", "deny":
 			entry.Status = "Blocked"
-		} else if entry.Action == "Log" || entry.Action == "log" {
+		case "log":
 			entry.Status = "Flagged"
-		} else {
+		default:
 			entry.Status = "Safe"
 		}
 	}
@@ -72,11 +74,12 @@ func (s *Store) AddLog(entry model.LogEntry) {
 
 	// Update stats based on status
 	s.state.Stats.TotalRequests++
-	if entry.Status == "Blocked" || entry.Status == "ThreatBlocked" {
+	switch entry.Status {
+	case "Blocked", "ThreatBlocked":
 		s.state.Stats.BlockedRequests++
-	} else if entry.Status == "Flagged" {
+	case "Flagged":
 		s.state.Stats.FlaggedRequests++
-	} else {
+	default:
 		s.state.Stats.SafeRequests++
 	}
 }

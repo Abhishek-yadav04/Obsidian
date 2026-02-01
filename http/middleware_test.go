@@ -27,8 +27,17 @@ import (
 	"github.com/corazawaf/coraza/v3/types"
 )
 
+const (
+	defaultTestURL     = "https://www.coraza.io/test"
+	defaultHelloPath   = "/hello"
+	defaultHTTP11Proto = "HTTP/1.1"
+	payloadEvalCat     = "eval('cat /etc/passwd')"
+	headerContentType  = "Content-Type"
+	headerContentLen   = "Content-Length"
+)
+
 func TestProcessRequest(t *testing.T) {
-	req, _ := http.NewRequest("POST", "https://www.coraza.io/test", strings.NewReader("test=456"))
+	req, _ := http.NewRequest("POST", defaultTestURL, strings.NewReader("test=456"))
 	waf, _ := coraza.NewWAF(coraza.NewWAFConfig())
 	tx := waf.NewTransaction().(*corazawaf.Transaction)
 	if _, err := processRequest(tx, req); err != nil {
@@ -43,8 +52,8 @@ func TestProcessRequest(t *testing.T) {
 }
 
 func TestProcessRequestEngineOff(t *testing.T) {
-	req, _ := http.NewRequest("POST", "https://www.coraza.io/test", strings.NewReader("test=456"))
-	// TODO(jcchavezs): Shall we make RuleEngine a first class method in WAF config?
+	req, _ := http.NewRequest("POST", defaultTestURL, strings.NewReader("test=456"))
+	// Note: RuleEngine is currently set through directives in this test.
 	waf, _ := coraza.NewWAF(coraza.NewWAFConfig().WithDirectives("SecRuleEngine OFF"))
 	tx := waf.NewTransaction().(*corazawaf.Transaction)
 	if _, err := processRequest(tx, req); err != nil {
@@ -91,7 +100,7 @@ SecRule &REQUEST_HEADERS:Transfer-Encoding "!@eq 0" "id:1,phase:1,deny"
 `))
 	tx := waf.NewTransaction()
 
-	req, _ := http.NewRequest("GET", "https://www.coraza.io/test", nil)
+	req, _ := http.NewRequest("GET", defaultTestURL, nil)
 	req.TransferEncoding = []string{"chunked"}
 
 	it, err := processRequest(tx, req)
@@ -115,7 +124,7 @@ func createMultipartRequest(t *testing.T) *http.Request {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	metadataHeader := textproto.MIMEHeader{}
-	metadataHeader.Set("Content-Type", "application/json; charset=UTF-8")
+	metadataHeader.Set(headerContentType, "application/json; charset=UTF-8")
 
 	part, err := writer.CreatePart(metadataHeader)
 	if err != nil {
@@ -124,7 +133,7 @@ func createMultipartRequest(t *testing.T) *http.Request {
 	_, _ = part.Write([]byte(metadata))
 
 	mediaHeader := textproto.MIMEHeader{}
-	mediaHeader.Set("Content-Type", "image/jpeg")
+	mediaHeader.Set(headerContentType, "image/jpeg")
 
 	mediaPart, err := writer.CreatePart(mediaHeader)
 	if err != nil {
@@ -139,8 +148,8 @@ func createMultipartRequest(t *testing.T) *http.Request {
 		t.Fatal(err)
 	}
 
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", body.Len()))
+	req.Header.Set(headerContentType, writer.FormDataContentType())
+	req.Header.Set(headerContentLen, fmt.Sprintf("%d", body.Len()))
 
 	return req
 }
@@ -165,7 +174,7 @@ func TestChainEvaluation(t *testing.T) {
 	tx.ForceRequestBodyVariable = true
 	// request
 	rdata := []string{
-		"POST /login HTTP/1.1",
+		fmt.Sprintf("POST /login %s", defaultHTTP11Proto),
 		"Accept: */*",
 		"Accept-Encoding: gzip, deflate",
 		"Connection: close",
@@ -241,99 +250,99 @@ type httpTest struct {
 	expectedRespBody        string
 }
 
-var expectedNoBlockingHeaders = []string{"Content-Type", "Content-Length", "Coraza-Middleware", "Date"}
+var expectedNoBlockingHeaders = []string{headerContentType, headerContentLen, "Coraza-Middleware", "Date"}
 
 // When an interruption occur, we are expecting that no response headers are sent back to the client.
-var expectedBlockingHeaders = []string{"Content-Length", "Date"}
+var expectedBlockingHeaders = []string{headerContentLen, "Date"}
 
 func TestHttpServer(t *testing.T) {
 	tests := map[string]httpTest{
 		"no blocking": {
-			reqURI:                  "/hello",
-			expectedProto:           "HTTP/1.1",
+			reqURI:                  defaultHelloPath,
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          201,
 			expectedRespHeadersKeys: expectedNoBlockingHeaders,
 		},
 		"no blocking HTTP/2": {
 			http2:                   true,
-			reqURI:                  "/hello",
+			reqURI:                  defaultHelloPath,
 			expectedProto:           "HTTP/2.0",
 			expectedStatus:          201,
 			expectedRespHeadersKeys: expectedNoBlockingHeaders,
 		},
 		"args blocking": {
-			reqURI:                  "/hello?id=0",
-			expectedProto:           "HTTP/1.1",
+			reqURI:                  defaultHelloPath + "?id=0",
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          403,
 			expectedRespHeadersKeys: expectedBlockingHeaders,
 		},
 		"request body blocking": {
-			reqURI:                  "/hello",
-			reqBody:                 "eval('cat /etc/passwd')",
-			expectedProto:           "HTTP/1.1",
+			reqURI:                  defaultHelloPath,
+			reqBody:                 payloadEvalCat,
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          403,
 			expectedRespHeadersKeys: expectedBlockingHeaders,
 		},
 		"request body larger than limit (process partial)": {
-			reqURI:      "/hello",
-			reqBody:     "eval('cat /etc/passwd')",
+			reqURI:      defaultHelloPath,
+			reqBody:     payloadEvalCat,
 			echoReqBody: true,
 			// Coraza only sees eva, not eval
 			reqBodyLimit:            3,
-			expectedProto:           "HTTP/1.1",
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          201,
 			expectedRespHeadersKeys: expectedNoBlockingHeaders,
-			expectedRespBody:        "eval('cat /etc/passwd')",
+			expectedRespBody:        payloadEvalCat,
 		},
 		"request body larger than limit (reject)": {
-			reqURI:                  "/hello",
+			reqURI:                  defaultHelloPath,
 			reqBody:                 "something larger than 3",
 			echoReqBody:             true,
 			reqBodyLimit:            3,
 			shouldRejectOnBodyLimit: true,
-			expectedProto:           "HTTP/1.1",
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          413,
 			expectedRespHeadersKeys: expectedBlockingHeaders,
 			expectedRespBody:        "",
 		},
 		"response headers blocking": {
-			reqURI:                  "/hello",
+			reqURI:                  defaultHelloPath,
 			respHeaders:             map[string]string{"foo": "bar"},
-			expectedProto:           "HTTP/1.1",
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          401,
 			expectedRespHeadersKeys: expectedBlockingHeaders,
 		},
 		"response body not blocking": {
-			reqURI:                  "/hello",
+			reqURI:                  defaultHelloPath,
 			respBody:                "true negative response body",
-			expectedProto:           "HTTP/1.1",
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          201,
 			expectedRespHeadersKeys: expectedNoBlockingHeaders,
 			expectedRespBody:        "true negative response body",
 		},
 		"response body blocking": {
-			reqURI:                  "/hello",
+			reqURI:                  defaultHelloPath,
 			respBody:                "password=xxxx",
-			expectedProto:           "HTTP/1.1",
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          403,
 			expectedRespBody:        "", // blocking at response body phase means returning it empty
 			expectedRespHeadersKeys: expectedBlockingHeaders,
 		},
 		"allow": {
 			reqURI:                  "/allow_me",
-			expectedProto:           "HTTP/1.1",
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          201,
 			expectedRespHeadersKeys: expectedNoBlockingHeaders,
 		},
 		"deny passes over allow due to ordering": {
 			reqURI:                  "/allow_me?id=0",
-			expectedProto:           "HTTP/1.1",
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          403,
 			expectedRespHeadersKeys: expectedBlockingHeaders,
 		},
 		"deny based on number of post arguments matching a name": {
-			reqURI:                  "/hello?foobar=1&foobar=2",
-			expectedProto:           "HTTP/1.1",
+			reqURI:                  defaultHelloPath + "?foobar=1&foobar=2",
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          403,
 			expectedRespHeadersKeys: expectedBlockingHeaders,
 		},
@@ -380,25 +389,25 @@ func TestHttpServer(t *testing.T) {
 func TestHttpServerWithRuleEngineOff(t *testing.T) {
 	tests := map[string]httpTest{
 		"no blocking true negative": {
-			reqURI:                  "/hello",
-			expectedProto:           "HTTP/1.1",
+			reqURI:                  defaultHelloPath,
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          201,
 			respBody:                "Hello!",
 			expectedRespHeadersKeys: expectedNoBlockingHeaders,
 			expectedRespBody:        "Hello!",
 		},
 		"no blocking true positive header phase": {
-			reqURI:                  "/hello?id=0",
-			expectedProto:           "HTTP/1.1",
+			reqURI:                  defaultHelloPath + "?id=0",
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          201,
 			respBody:                "Downstream works!",
 			expectedRespHeadersKeys: expectedNoBlockingHeaders,
 			expectedRespBody:        "Downstream works!",
 		},
 		"no blocking true positive body phase": {
-			reqURI:                  "/hello",
-			reqBody:                 "eval('cat /etc/passwd')",
-			expectedProto:           "HTTP/1.1",
+			reqURI:                  defaultHelloPath,
+			reqBody:                 payloadEvalCat,
+			expectedProto:           defaultHTTP11Proto,
 			expectedStatus:          201,
 			respBody:                "Waf is Off!",
 			expectedRespHeadersKeys: expectedNoBlockingHeaders,
@@ -432,13 +441,29 @@ func runAgainstWAF(t *testing.T, tCase httpTest, waf coraza.WAF) {
 	serverErrC := make(chan error, 1)
 	defer close(serverErrC)
 
+	ts := newTestServer(t, tCase, waf, serverErrC)
+	defer ts.Close()
+
+	res := performRequest(t, tCase, ts)
+	checkResponse(t, tCase, res)
+
+	select {
+	case err := <-serverErrC:
+		t.Errorf("unexpected error from server when writing response body: %v", err)
+	default:
+		return
+	}
+}
+
+func newTestServer(t *testing.T, tCase httpTest, waf coraza.WAF, serverErrC chan error) *httptest.Server {
+	t.Helper()
 	// Spin up the test server
 	ts := httptest.NewUnstartedServer(WrapHandler(waf, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if want, have := tCase.expectedProto, req.Proto; want != have {
 			t.Errorf("unexpected proto, want: %s, have: %s", want, have)
 		}
 
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set(headerContentType, "text/plain")
 		w.Header().Add("coraza-middleware", "true")
 		for k, v := range tCase.respHeaders {
 			w.Header().Set(k, v)
@@ -464,8 +489,11 @@ func runAgainstWAF(t *testing.T, tCase httpTest, waf coraza.WAF) {
 	} else {
 		ts.Start()
 	}
-	defer ts.Close()
+	return ts
+}
 
+func performRequest(t *testing.T, tCase httpTest, ts *httptest.Server) *http.Response {
+	t.Helper()
 	var reqBody io.Reader
 	if tCase.reqBody != "" {
 		reqBody = strings.NewReader(tCase.reqBody)
@@ -479,6 +507,12 @@ func runAgainstWAF(t *testing.T, tCase httpTest, waf coraza.WAF) {
 	if err != nil {
 		t.Fatalf("unexpected error when performing the request: %v", err)
 	}
+	return res
+}
+
+func checkResponse(t *testing.T, tCase httpTest, res *http.Response) {
+	t.Helper()
+	defer res.Body.Close()
 
 	if want, have := tCase.expectedStatus, res.StatusCode; want != have {
 		t.Errorf("unexpected status code, want: %d, have: %d", want, have)
@@ -495,18 +529,6 @@ func runAgainstWAF(t *testing.T, tCase httpTest, waf coraza.WAF) {
 
 	if want, have := tCase.expectedRespBody, string(resBody); want != have {
 		t.Errorf("unexpected response body, want: %q, have %q", want, have)
-	}
-
-	err = res.Body.Close()
-	if err != nil {
-		t.Errorf("failed to close the body: %v", err)
-	}
-
-	select {
-	case err = <-serverErrC:
-		t.Errorf("unexpected error from server when writing response body: %v", err)
-	default:
-		return
 	}
 }
 
@@ -560,7 +582,9 @@ func TestObtainStatusCodeFromInterruptionOrDefault(t *testing.T) {
 }
 
 func TestHandlerWithNilWAF(t *testing.T) {
-	delegateHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	delegateHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Intentionally empty: used to verify wrapper identity.
+	})
 	wrappedHandler := WrapHandler(nil, delegateHandler).(http.HandlerFunc)
 	if want, have := fmt.Sprintf("%v", delegateHandler), fmt.Sprintf("%v", wrappedHandler); want != have {
 		t.Errorf("unexpected wrapped handler")
@@ -573,7 +597,9 @@ func TestHandlerAPI(t *testing.T) {
 		expectedStatusCode int
 	}{
 		"empty handler": {
-			handler:            func(w http.ResponseWriter, r *http.Request) {},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				// Intentionally empty: validates default status code behavior.
+			},
 			expectedStatusCode: 200,
 		},
 		"read the request body": {

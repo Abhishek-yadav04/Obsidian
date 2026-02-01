@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const localHostIP = "127.0.0.1"
+
 // RateLimiter implements a sliding window rate limiter
 type RateLimiter struct {
 	mu        sync.RWMutex
@@ -37,7 +39,7 @@ func DefaultConfig() Config {
 		RequestsPerMinute: 200, // Increased for development
 		BurstSize:         300,
 		BlockDuration:     1 * time.Minute, // Reduced for development
-		Whitelist:         []string{"127.0.0.1", "::1", "[::1]", "localhost"},
+		Whitelist:         []string{localHostIP, "::1", "[::1]", "localhost"},
 	}
 }
 
@@ -88,11 +90,11 @@ func (rl *RateLimiter) Allow(ip string) bool {
 	// Normalize localhost variants
 	normalizedIP := ip
 	if ip == "[::1]" || ip == "::1" || ip == "localhost" {
-		normalizedIP = "127.0.0.1"
+		normalizedIP = localHostIP
 	}
 
 	// Check whitelist (including localhost variants)
-	if rl.whitelist[ip] || rl.whitelist[normalizedIP] || ip == "127.0.0.1" || ip == "[::1]" || ip == "::1" {
+	if rl.whitelist[ip] || rl.whitelist[normalizedIP] || ip == localHostIP || ip == "[::1]" || ip == "::1" {
 		return true
 	}
 

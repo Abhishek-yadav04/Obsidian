@@ -10,7 +10,7 @@ import (
 	"github.com/corazawaf/coraza/v3/experimental"
 )
 
-func ExampleWAFWithOptions_NewTransactionWithOptions() {
+func ExampleWAFWithOptionsNewTransactionWithOptions() {
 	waf, err := coraza.NewWAF(coraza.NewWAFConfig())
 	if err != nil {
 		panic(err)

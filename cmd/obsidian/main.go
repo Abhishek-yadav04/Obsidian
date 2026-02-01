@@ -263,13 +263,13 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 			}
 		}
 		if it := tx.ProcessRequestHeaders(); it != nil {
-			processInterruption(w, it, s, tx, r)
+			processInterruption(w, it, s, r)
 			return
 		}
 
 		// 2. Process Request Body
 		if it, _ := tx.ProcessRequestBody(); it != nil {
-			processInterruption(w, it, s, tx, r)
+			processInterruption(w, it, s, r)
 			return
 		}
 
@@ -309,7 +309,7 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 	})
 }
 
-func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store.Store, tx types.Transaction, r *http.Request) {
+func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store.Store, r *http.Request) {
 	atomic.AddInt64(&blockedRequests, 1)
 
 	// Log blocked request

@@ -11,6 +11,19 @@ import (
 	"github.com/corazawaf/coraza/v3/types/variables"
 )
 
+const errExceptionsFmt = "got %d exceptions, expected %d"
+
+func assertException(t *testing.T, vars []variable, idx, want int, key string) {
+	t.Helper()
+	if len(vars[idx].Exceptions) != want {
+		t.Errorf(errExceptionsFmt, len(vars[idx].Exceptions), want)
+		return
+	}
+	if key != "" && vars[idx].Exceptions[want-1].KeyStr != key {
+		t.Errorf("expected exception key %s, got %s", key, vars[idx].Exceptions[want-1].KeyStr)
+	}
+}
+
 func TestARGSSplit(t *testing.T) {
 	rule := NewRule()
 	key := "something"
@@ -29,7 +42,7 @@ func TestARGSSplit(t *testing.T) {
 	}
 }
 
-func TestARGS_NAMESSplit(t *testing.T) {
+func TestARGSNamesSplit(t *testing.T) {
 	rule := NewRule()
 	key := "name"
 	if err := rule.AddVariable(variables.ArgsNames, key, false); err != nil {
@@ -65,13 +78,8 @@ func TestRuleNegativeVariablesMulti(t *testing.T) {
 		t.Error(err)
 	}
 
-	if len(rule.variables[0].Exceptions) != 1 || rule.variables[0].Exceptions[0].KeyStr != "test" {
-		t.Errorf("got %d exceptions, expected 1", len(rule.variables[0].Exceptions))
-	}
-
-	if len(rule.variables[1].Exceptions) != 1 || rule.variables[1].Exceptions[0].KeyStr != "test" {
-		t.Errorf("got %d exceptions, expected 1", len(rule.variables[0].Exceptions))
-	}
+	assertException(t, rule.variables, 0, 1, "test")
+	assertException(t, rule.variables, 1, 1, "test")
 
 	if err := rule.AddVariable(variables.Args, "/test.*/", false); err != nil {
 		t.Error(err)
@@ -95,20 +103,9 @@ func TestRuleNegativeVariablesMulti(t *testing.T) {
 		t.Error(err)
 	}
 
-	if len(rule.variables[0].Exceptions) != 2 || rule.variables[0].Exceptions[1].KeyStr != "test2" {
-		t.Errorf("got %d exceptions, expected 2", len(rule.variables[0].Exceptions))
-	}
-
-	if len(rule.variables[1].Exceptions) != 2 || rule.variables[1].Exceptions[1].KeyStr != "test2" {
-		t.Errorf("got %d exceptions, expected 2", len(rule.variables[0].Exceptions))
-	}
-
-	if len(rule.variables[2].Exceptions) != 1 || rule.variables[0].Exceptions[1].KeyStr != "test2" {
-		t.Errorf("got %d exceptions, expected 2", len(rule.variables[0].Exceptions))
-	}
-
-	if len(rule.variables[3].Exceptions) != 1 || rule.variables[0].Exceptions[1].KeyStr != "test2" {
-		t.Errorf("got %d exceptions, expected 2", len(rule.variables[0].Exceptions))
-	}
+	assertException(t, rule.variables, 0, 2, "test2")
+	assertException(t, rule.variables, 1, 2, "test2")
+	assertException(t, rule.variables, 2, 1, "")
+	assertException(t, rule.variables, 3, 1, "")
 
 }

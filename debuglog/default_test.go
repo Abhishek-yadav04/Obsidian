@@ -11,11 +11,42 @@ import (
 	"testing"
 )
 
+const (
+	msgMyMessage         = "my message"
+	fmtUnexpectedMessage = "unexpected message, want %q, have %q"
+)
+
+type logLevelTestCase struct {
+	logFunction                func(Logger) func() Event
+	expectedLowestPrintedLevel int
+}
+
+func assertLogLevel(t *testing.T, name string, tCase logLevelTestCase) {
+	t.Helper()
+	buf := bytes.Buffer{}
+	Default().WithOutput(&buf)
+	for settedLevel := 0; settedLevel <= 9; settedLevel++ {
+		l := Default().WithOutput(io.Discard).WithLevel(Level(settedLevel))
+		event := tCase.logFunction(l)()
+		if settedLevel >= tCase.expectedLowestPrintedLevel {
+			if _, ok := event.(noopEvent); ok {
+				t.Fatalf("Missing expected log. Level: %s, Function: %s", Level(settedLevel).String(), name)
+			}
+
+			if !event.IsEnabled() {
+				t.Fatalf("Unexpected event, wanted to be enabled")
+			}
+		}
+		if settedLevel < tCase.expectedLowestPrintedLevel {
+			if _, ok := event.(noopEvent); !ok {
+				t.Fatalf("Unexpected log. Level: %d, Function: %s", settedLevel, name)
+			}
+		}
+	}
+}
+
 func TestLoggerLogLevels(t *testing.T) {
-	testCases := map[string]struct {
-		logFunction                func(Logger) func() Event
-		expectedLowestPrintedLevel int
-	}{
+	testCases := map[string]logLevelTestCase{
 		"Trace": {
 			logFunction:                func(l Logger) func() Event { return l.Trace },
 			expectedLowestPrintedLevel: 9,
@@ -40,26 +71,7 @@ func TestLoggerLogLevels(t *testing.T) {
 
 	for name, tCase := range testCases {
 		t.Run(name, func(t *testing.T) {
-			buf := bytes.Buffer{}
-			Default().WithOutput(&buf)
-			for settedLevel := 0; settedLevel <= 9; settedLevel++ {
-				l := Default().WithOutput(io.Discard).WithLevel(Level(settedLevel))
-				event := tCase.logFunction(l)()
-				if settedLevel >= tCase.expectedLowestPrintedLevel {
-					if _, ok := event.(noopEvent); ok {
-						t.Fatalf("Missing expected log. Level: %s, Function: %s", Level(settedLevel).String(), name)
-					}
-
-					if !event.IsEnabled() {
-						t.Fatalf("Unexpected event, wanted to be enabled")
-					}
-				}
-				if settedLevel < tCase.expectedLowestPrintedLevel {
-					if _, ok := event.(noopEvent); !ok {
-						t.Fatalf("Unexpected log. Level: %d, Function: %s", settedLevel, name)
-					}
-				}
-			}
+			assertLogLevel(t, name, tCase)
 		})
 	}
 }
@@ -93,13 +105,13 @@ func TestMsg(t *testing.T) {
 			Stringer("e", bytes.NewBufferString("y & z")).
 			Bool("f", false).
 			Err(errors.New("my error")).
-			Msg("my message")
+			Msg(msgMyMessage)
 
 		expected := "[INFO] my message a=true b=-1 c=1 d=\"x\" e=\"y & z\" f=false error=\"my error\"\n"
 
 		// [20:] Skips the timestamp.
 		if want, have := expected, buf.String()[20:]; want != have {
-			t.Fatalf("unexpected message, want %q, have %q", want, have)
+			t.Fatalf(fmtUnexpectedMessage, want, have)
 		}
 	})
 }
@@ -141,13 +153,13 @@ func TestWithLogger(t *testing.T) {
 		)
 	l2.Info().
 		Str("g", "w").
-		Msg("my message")
+		Msg(msgMyMessage)
 
 	expected := "[INFO] my message a=true b=-1 c=1 d=\"x\" e=\"y & z\" f=false g=\"w\"\n"
 
 	// [20:] Skips the timestamp.
 	if want, have := expected, buf.String()[20:]; want != have {
-		t.Fatalf("unexpected message, want %q, have %q", want, have)
+		t.Fatalf(fmtUnexpectedMessage, want, have)
 	}
 
 	// Check that the original log hasn't been modified.
@@ -155,13 +167,13 @@ func TestWithLogger(t *testing.T) {
 	l = l.WithOutput(&buf2)
 	l.Info().
 		Str("g", "w").
-		Msg("my message")
+		Msg(msgMyMessage)
 
 	expected = "[INFO] my message g=\"w\"\n"
 
 	// [20:] Skips the timestamp.
 	if want, have := expected, buf2.String()[20:]; want != have {
-		t.Fatalf("unexpected message, want %q, have %q", want, have)
+		t.Fatalf(fmtUnexpectedMessage, want, have)
 	}
 }
 
@@ -172,12 +184,12 @@ func TestWithLoggerAccumulative(t *testing.T) {
 	l3 := l2.With(Int("b", -1))
 	l3.Info().
 		Str("g", "w").
-		Msg("my message")
+		Msg(msgMyMessage)
 
 	expected := "[INFO] my message a=true b=-1 g=\"w\"\n"
 
 	// [20:] Skips the timestamp.
 	if want, have := expected, buf.String()[20:]; want != have {
-		t.Fatalf("unexpected message, want %q, have %q", want, have)
+		t.Fatalf(fmtUnexpectedMessage, want, have)
 	}
 }

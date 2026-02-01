@@ -20,15 +20,24 @@ import (
 	"github.com/corazawaf/coraza/v3/internal/seclang"
 )
 
+const (
+	tmpLogFilename        = "tmp.log"
+	secAuditLogFormat     = "SecAuditLog %s"
+	errExpectedMsgCount   = "Expected 1 message, got %d"
+	msgUnconditionalMatch = "unconditional match"
+)
+
 func TestAuditLogMessages(t *testing.T) {
 	waf := corazawaf.NewWAF()
 	parser := seclang.NewParser(waf)
 	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), "tmp.log"))
+	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", file.Name())); err != nil {
+	logPath := file.Name()
+	file.Close() // Close to avoid locking issues on Windows
+	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
 		t.Fatal(err)
 	}
 	if err := parser.FromString(`
@@ -42,31 +51,35 @@ func TestAuditLogMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Remove(file.Name())
+	// On Windows, the logger keeps the file locked. We must switch the log to release the lock.
+	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
 
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	al := tx.AuditLog()
 	if len(al.Messages()) != 1 {
-		t.Errorf("Expected 1 message, got %d", len(al.Messages()))
+		t.Errorf(errExpectedMsgCount, len(al.Messages()))
 	}
-	if al.Messages()[0].Message() != "unconditional match" {
-		t.Errorf("Expected message 'unconditional match', got '%s'", al.Messages()[0].Message())
+	if al.Messages()[0].Message() != msgUnconditionalMatch {
+		t.Errorf("Expected message %q, got %q", msgUnconditionalMatch, al.Messages()[0].Message())
 	}
 	tx.ProcessLogging()
 	// now we read file
-	if _, err := file.Seek(0, 0); err != nil {
-		t.Error(err)
+	file, err = os.Open(logPath)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer file.Close()
 	var al2 auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al2); err != nil {
 		t.Error(err)
 	}
 	if len(al2.Messages()) != 1 {
-		t.Fatalf("Expected 1 message, got %d", len(al2.Messages()))
+		t.Fatalf(errExpectedMsgCount, len(al2.Messages()))
 	}
-	if al2.Messages()[0].Message() != "unconditional match" {
-		t.Errorf("Expected message %q, got %q", "unconditional match", al2.Messages()[0].Message())
+	if al2.Messages()[0].Message() != msgUnconditionalMatch {
+		t.Errorf("Expected message %q, got %q", msgUnconditionalMatch, al2.Messages()[0].Message())
 	}
 }
 
@@ -84,22 +97,27 @@ func TestAuditLogRelevantOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), "tmp.log"))
+	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", file.Name())); err != nil {
+	logPath := file.Name()
+	file.Close()
+	defer os.Remove(logPath)
+	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
 		t.Fatal(err)
 	}
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
-	// now we read file
-	if _, err := file.Seek(0, 0); err != nil {
-		t.Error(err)
-	}
 	tx.ProcessLogging()
+	// now we read file
+	// We re-open the file to ensure we can read what WAF wrote (and handle Windows locking)
+	file, err = os.Open(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
 	var al2 auditlog.Log
 	// this should fail, there should be no log
 	if err := json.NewDecoder(file).Decode(&al2); err == nil {
@@ -111,12 +129,12 @@ func TestAuditLogRelevantOnlyOk(t *testing.T) {
 	waf := corazawaf.NewWAF()
 	parser := seclang.NewParser(waf)
 	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), "tmp.log"))
+	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", file.Name())); err != nil {
+	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, file.Name())); err != nil {
 		t.Fatal(err)
 	}
 	if err := parser.FromString(`
@@ -133,11 +151,11 @@ func TestAuditLogRelevantOnlyOk(t *testing.T) {
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
+	tx.ProcessLogging()
 	// now we read file
 	if _, err := file.Seek(0, 0); err != nil {
 		t.Error(err)
 	}
-	tx.ProcessLogging()
 	var al2 auditlog.Log
 	// this should pass as it matches any status
 	if err := json.NewDecoder(file).Decode(&al2); err != nil {
@@ -159,22 +177,22 @@ func TestAuditLogRelevantOnlyNoAuditlog(t *testing.T) {
 		t.Fatal(err)
 	}
 	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), "tmp.log"))
+	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", file.Name())); err != nil {
+	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, file.Name())); err != nil {
 		t.Fatal(err)
 	}
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
+	tx.ProcessLogging()
 	// now we read file
 	if _, err := file.Seek(0, 0); err != nil {
 		t.Error(err)
 	}
-	tx.ProcessLogging()
 	var al2 auditlog.Log
 	// there should be no audit log because of noauditlog
 	if err := json.NewDecoder(file).Decode(&al2); err == nil {
@@ -198,22 +216,22 @@ func TestAuditLogOnWithNoLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), "tmp.log"))
+	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", file.Name())); err != nil {
+	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, file.Name())); err != nil {
 		t.Fatal(err)
 	}
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
+	tx.ProcessLogging()
 	// now we read file
 	if _, err := file.Seek(0, 0); err != nil {
 		t.Error(err)
 	}
-	tx.ProcessLogging()
 	var al2 auditlog.Log
 	// there should be no audit log because of nolog
 	if err := json.NewDecoder(file).Decode(&al2); err == nil {
@@ -237,12 +255,12 @@ func TestAuditLogRequestMethodURIProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), "tmp.log"))
+	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", file.Name())); err != nil {
+	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, file.Name())); err != nil {
 		t.Fatal(err)
 	}
 	tx := waf.NewTransaction()
@@ -252,11 +270,11 @@ func TestAuditLogRequestMethodURIProtocol(t *testing.T) {
 	proto := "HTTP/1.1"
 
 	tx.ProcessURI(uri, method, proto)
+	tx.ProcessLogging()
 	// now we read file
 	if _, err := file.Seek(0, 0); err != nil {
 		t.Error(err)
 	}
-	tx.ProcessLogging()
 	var al2 auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al2); err != nil {
 		t.Error(err)
@@ -311,11 +329,11 @@ func TestAuditLogRequestBody(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	tx.ProcessLogging()
 	// now we read file
 	if _, err := file.Seek(0, 0); err != nil {
 		t.Error(err)
 	}
-	tx.ProcessLogging()
 	var al2 auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al2); err != nil {
 		t.Error(err)
@@ -362,17 +380,17 @@ func TestAuditLogHFlag(t *testing.T) {
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
+	tx.ProcessLogging()
 	// now we read file
 	if _, err := file.Seek(0, 0); err != nil {
 		t.Error(err)
 	}
-	tx.ProcessLogging()
 	var al auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al); err != nil {
 		t.Error(err)
 	}
 	if len(al.Messages()) != 1 {
-		t.Fatalf("Expected 1 message, got %d", len(al.Messages()))
+		t.Fatalf(errExpectedMsgCount, len(al.Messages()))
 	}
 	type auditLogWithErrMesg interface{ ErrorMessage() string }
 	alWithErrMsg, ok := al.Messages()[0].(auditLogWithErrMesg)
@@ -401,28 +419,28 @@ func TestAuditLogWithKFlagWithoutHFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), "tmp.log"))
+	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", file.Name())); err != nil {
+	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, file.Name())); err != nil {
 		t.Fatal(err)
 	}
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
+	tx.ProcessLogging()
 	// now we read file
 	if _, err := file.Seek(0, 0); err != nil {
 		t.Error(err)
 	}
-	tx.ProcessLogging()
 	var al auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al); err != nil {
 		t.Error(err)
 	}
 	if len(al.Messages()) != 1 {
-		t.Fatalf("Expected 1 message, got %d", len(al.Messages()))
+		t.Fatalf(errExpectedMsgCount, len(al.Messages()))
 	}
 	type auditLogWithErrMesg interface{ ErrorMessage() string }
 	alWithErrMsg, ok := al.Messages()[0].(auditLogWithErrMesg)

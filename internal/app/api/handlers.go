@@ -21,6 +21,13 @@ var AllowedOrigins = []string{
 	"https://localhost:8082",
 }
 
+const (
+	contentTypeHeader     = "Content-Type"
+	contentTypeJSON       = "application/json"
+	msgMethodNotAllowed   = "Method not allowed"
+	msgInvalidRequestBody = "Invalid request body"
+)
+
 type API struct {
 	Store *store.Store
 	// Upgrader for websockets
@@ -58,19 +65,19 @@ func NewAPI(s *store.Store) *API {
 
 func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
 		return
 	}
 
 	var req model.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
 
 	// Validate input
 	if req.Username == "" || req.Password == "" {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(contentTypeHeader, contentTypeJSON)
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Username and password required"})
 		return
@@ -81,7 +88,7 @@ func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Add slight delay to prevent timing attacks
 		time.Sleep(100 * time.Millisecond)
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(contentTypeHeader, contentTypeJSON)
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid credentials"})
 		return
@@ -134,7 +141,7 @@ func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: user.CreatedAt,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(model.LoginResponse{
 		Token:        token,
@@ -162,19 +169,19 @@ func extractClientIP(r *http.Request) string {
 
 func (a *API) HandleStats(w http.ResponseWriter, r *http.Request) {
 	stats := a.Store.GetStats()
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	json.NewEncoder(w).Encode(stats)
 }
 
 func (a *API) HandleLogs(w http.ResponseWriter, r *http.Request) {
 	logs := a.Store.GetLogs()
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	json.NewEncoder(w).Encode(logs)
 }
 
 func (a *API) HandleRules(w http.ResponseWriter, r *http.Request) {
 	rules := a.Store.GetRules()
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	json.NewEncoder(w).Encode(rules)
 }
 
@@ -205,13 +212,13 @@ func (a *API) HandleWS(w http.ResponseWriter, r *http.Request) {
 // HandleCreateRule creates a new WAF rule (Admin only)
 func (a *API) HandleCreateRule(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
 		return
 	}
 
 	var rule model.Rule
 	if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
 
@@ -220,7 +227,7 @@ func (a *API) HandleCreateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
@@ -232,13 +239,13 @@ func (a *API) HandleCreateRule(w http.ResponseWriter, r *http.Request) {
 // HandleUpdateRule updates an existing WAF rule (Admin only)
 func (a *API) HandleUpdateRule(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut && r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
 		return
 	}
 
 	var rule model.Rule
 	if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
 
@@ -247,7 +254,7 @@ func (a *API) HandleUpdateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Rule updated successfully",
@@ -257,7 +264,7 @@ func (a *API) HandleUpdateRule(w http.ResponseWriter, r *http.Request) {
 // HandleDeleteRule deletes a WAF rule (Admin only)
 func (a *API) HandleDeleteRule(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete && r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -265,7 +272,7 @@ func (a *API) HandleDeleteRule(w http.ResponseWriter, r *http.Request) {
 		ID int `json:"id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
 
@@ -274,7 +281,7 @@ func (a *API) HandleDeleteRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Rule deleted successfully",
@@ -284,7 +291,7 @@ func (a *API) HandleDeleteRule(w http.ResponseWriter, r *http.Request) {
 // HandleTestRule tests a rule without applying it (dry-run)
 func (a *API) HandleTestRule(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -293,12 +300,12 @@ func (a *API) HandleTestRule(w http.ResponseWriter, r *http.Request) {
 		TestInput   string `json:"test_input"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
 
 	// Simplified rule testing - in production would compile and test against Coraza
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":     true,
 		"message":     "Rule syntax is valid",
@@ -313,7 +320,7 @@ func (a *API) HandleUsers(w http.ResponseWriter, r *http.Request) {
 		{"id": 1, "username": "admin", "email": "admin@obsidian.local", "role": "Admin", "enabled": true},
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	json.NewEncoder(w).Encode(users)
 }
 
@@ -324,6 +331,6 @@ func (a *API) HandleAuditLogs(w http.ResponseWriter, r *http.Request) {
 		{"id": 1, "action": "LOGIN", "resource": "/api/login", "timestamp": time.Now().Add(-1 * time.Hour).Format(time.RFC3339)},
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	json.NewEncoder(w).Encode(logs)
 }

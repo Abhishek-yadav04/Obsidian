@@ -122,9 +122,18 @@ export REDIS_URL="redis://localhost:6379"
 Open your browser and navigate to: **http://localhost:8082**
 
 **Default Credentials:**
+*Admin*
 - Username: `admin`
 - Password: `password`
 
+*Analyst*
+- Username: `Analyst`
+- Password: `password`
+  
+*Viewer*
+- Username: `Viewer`
+- Password: `password`
+  
 **Default Roles:**
 - **Admin**: Full access (rules, threats, users, audit logs)
 - **Analyst**: Read-only security data + report export

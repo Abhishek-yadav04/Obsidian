@@ -181,6 +181,9 @@ Open your browser and navigate to: **http://localhost:8082**
 │               (API Handlers, Static Files)                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
+<p align="center">
+  <img src="cmd/obsidian/docs/architecture.png" alt="Obsidian architecture diagram" width="1100"/>
+</p>
 
 ### Project Structure
 

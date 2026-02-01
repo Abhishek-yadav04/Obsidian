@@ -22,6 +22,10 @@
 
 ## 📋 Overview
 
+<p align="center">
+  <img src="cmd/obsidian/docs/architecture.svg" alt="Obsidian architecture diagram" width="1100"/>
+</p>
+
 **Obsidian Sentinel** is an enterprise-ready Web Application Firewall that provides comprehensive protection against advanced cyber threats. It combines the battle-tested Coraza WAF engine with cutting-edge enterprise features including GeoIP blocking, advanced rate limiting, threat intelligence, webhook alerting, and sophisticated analytics.
 
 ### Why Obsidian?
@@ -181,9 +185,6 @@ Open your browser and navigate to: **http://localhost:8082**
 │               (API Handlers, Static Files)                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
-<p align="center">
-  <img src="cmd/obsidian/docs/architecture.png" alt="Obsidian architecture diagram" width="1100"/>
-</p>
 
 ### Project Structure
 

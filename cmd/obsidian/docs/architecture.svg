@@ -1,38 +1,123 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
-  <rect width="100%" height="100%" fill="#ffffff"/>
-  <g font-family="monospace" font-size="12" fill="#2C3E50">
-    <text x="40" y="40" font-size="20" font-weight="bold">Obsidian Sentinel WAF v2.1.0 - Architecture (PlantUML source)</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <defs>
+    <style>
+      .title { font-family: Arial, sans-serif; font-size: 24px; font-weight: bold; fill: #2C3E50; text-anchor: middle; }
+      .subtitle { font-family: Arial, sans-serif; font-size: 14px; fill: #7F8C8D; text-anchor: middle; }
+      .component { font-family: Arial, sans-serif; font-size: 12px; fill: #2C3E50; text-anchor: middle; }
+      .flow { stroke: #3498DB; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .box { fill: #ECF0F1; stroke: #BDC3C7; stroke-width: 1; rx: 5; }
+      .enterprise { fill: #E74C3C; stroke: #C0392B; stroke-width: 1; rx: 5; }
+      .security { fill: #E67E22; stroke: #D35400; stroke-width: 1; rx: 5; }
+      .data { fill: #3498DB; stroke: #2980B9; stroke-width: 1; rx: 5; }
+      .external { fill: #9B59B6; stroke: #8E44AD; stroke-width: 1; rx: 5; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#3498DB" />
+    </marker>
+  </defs>
 
-    <text x="40" y="80">This SVG contains the PlantUML source and a simplified overview for immediate GitHub display.</text>
+  <!-- Title -->
+  <text x="600" y="30" class="title">Obsidian Sentinel WAF v2.1.0 - Enterprise Architecture</text>
+  <text x="600" y="50" class="subtitle">(Real Implementation - No Mock Data)</text>
 
-    <foreignObject x="40" y="110" width="1200" height="560">
-      <pre xmlns="http://www.w3.org/1999/xhtml" style="font-family: monospace; font-size: 12px; color:#2C3E50; background:#f7f9fb; padding:12px; border-radius:6px;">
-@startuml Obsidian_Sentinel_Enterprise_Architecture_v2_1_0
-title Obsidian Sentinel WAF v2.1.0 - Enterprise Architecture (Real Implementation)
+  <!-- Client Requests -->
+  <rect x="50" y="80" width="120" height="60" class="external"/>
+  <text x="110" y="105" class="component">Client</text>
+  <text x="110" y="120" class="component">Requests</text>
 
-actor "Client Requests" as client
-cloud "Threat Intelligence (2041 Real Threats)" as threats
-cloud "MaxMind GeoIP2 Database" as geoip_db
-package "Obsidian Sentinel v2.1.0 (Single Go Binary)" as obsidian
-  rectangle "Request ID Generation"
-  rectangle "Security Headers (CSP, HSTS)"
-  rectangle "256-Shard Rate Limiter (Zero Lock Contention)"
-  rectangle "GeoIP Blocking Service (MaxMind)"
-  rectangle "Multi-Feed Threat Intel (4 sources)"
-  rectangle "Coraza WAF v3 Engine (59 rules)"
-  rectangle "Enterprise Router & APIs (JWT, RBAC, Webhooks)"
-end package
+  <!-- Threat Intelligence -->
+  <rect x="200" y="80" width="150" height="60" class="external"/>
+  <text x="275" y="95" class="component">Threat Intelligence</text>
+  <text x="275" y="110" class="component">(2041 Real Threats)</text>
 
-database "PostgreSQL (Analytics)" as postgres
-database "Redis Cluster (Rate limit, cache)" as redis
-cloud "Monitoring: Prometheus/Grafana" as monitoring
-cloud "Alert Destinations: Slack/Teams/Discord/PagerDuty" as alerts
+  <!-- MaxMind GeoIP -->
+  <rect x="400" y="80" width="120" height="60" class="external"/>
+  <text x="460" y="105" class="component">MaxMind</text>
+  <text x="460" y="120" class="component">GeoIP2 DB</text>
 
-Client -> Request ID -> Security Headers -> Rate Limiter -> GeoIP -> Threat Intel -> WAF Engine -> Router
+  <!-- Main Application -->
+  <rect x="200" y="180" width="400" height="400" class="box"/>
+  <text x="400" y="200" class="component" font-weight="bold">🛡️ Obsidian Sentinel v2.1.0</text>
+  <text x="400" y="215" class="component">(Single Go Binary - All Assets Embedded)</text>
 
-@enduml
-      </pre>
-    </foreignObject>
-  </g>
+  <!-- Request Processing Pipeline -->
+  <rect x="220" y="235" width="140" height="30" class="security"/>
+  <text x="290" y="252" class="component">1️⃣ Request ID Generation</text>
+
+  <rect x="220" y="275" width="140" height="30" class="security"/>
+  <text x="290" y="292" class="component">2️⃣ Security Headers</text>
+
+  <rect x="220" y="315" width="140" height="30" class="security"/>
+  <text x="290" y="332" class="component">3️⃣ Prometheus Metrics</text>
+
+  <rect x="220" y="355" width="140" height="30" class="enterprise"/>
+  <text x="290" y="372" class="component">4️⃣ 256-Shard Rate Limiter</text>
+
+  <rect x="380" y="395" width="140" height="30" class="enterprise"/>
+  <text x="450" y="412" class="component">5️⃣ GeoIP Blocking Service</text>
+
+  <rect x="380" y="435" width="140" height="30" class="enterprise"/>
+  <text x="450" y="452" class="component">6️⃣ Multi-Feed Threat Intel</text>
+
+  <rect x="380" y="475" width="140" height="30" class="enterprise"/>
+  <text x="450" y="492" class="component">7️⃣ Coraza WAF v3 Engine</text>
+
+  <rect x="220" y="515" width="300" height="50" class="box"/>
+  <text x="370" y="530" class="component">8️⃣ Enterprise Router & APIs</text>
+  <text x="370" y="545" class="component">(JWT Auth, RBAC, Security APIs, Webhooks)</text>
+
+  <!-- Data Layer -->
+  <rect x="50" y="620" width="150" height="60" class="data"/>
+  <text x="125" y="635" class="component">PostgreSQL</text>
+  <text x="125" y="650" class="component">(Enterprise Analytics)</text>
+
+  <rect x="250" y="620" width="150" height="60" class="data"/>
+  <text x="325" y="635" class="component">Redis Cluster</text>
+  <text x="325" y="650" class="component">(Distributed State)</text>
+
+  <!-- Dashboard -->
+  <rect x="450" y="620" width="150" height="60" class="box"/>
+  <text x="525" y="635" class="component">Bootstrap 5 Dashboard</text>
+  <text x="525" y="650" class="component">(Dark Theme)</text>
+
+  <!-- External Integrations -->
+  <rect x="650" y="620" width="200" height="60" class="external"/>
+  <text x="750" y="635" class="component">Alert Destinations</text>
+  <text x="750" y="650" class="component">(Slack/Teams/Discord/PagerDuty)</text>
+
+  <rect x="900" y="620" width="150" height="60" class="external"/>
+  <text x="975" y="635" class="component">Monitoring</text>
+  <text x="975" y="650" class="component">(Prometheus/Grafana)</text>
+
+  <!-- Flow Arrows -->
+  <path d="M 110 140 L 110 180" class="flow"/>
+  <path d="M 275 140 L 275 180" class="flow"/>
+  <path d="M 460 140 L 460 180" class="flow"/>
+
+  <path d="M 110 180 L 200 180" class="flow"/>
+  <path d="M 350 180 L 400 180" class="flow"/>
+  <path d="M 460 180 L 600 180" class="flow"/>
+
+  <path d="M 290 265 L 290 275" class="flow"/>
+  <path d="M 290 305 L 290 315" class="flow"/>
+  <path d="M 290 345 L 290 355" class="flow"/>
+  <path d="M 290 385 L 450 395" class="flow"/>
+  <path d="M 520 425 L 520 435" class="flow"/>
+  <path d="M 520 465 L 520 475" class="flow"/>
+  <path d="M 520 505 L 520 515" class="flow"/>
+  <path d="M 370 565 L 370 620" class="flow"/>
+
+  <!-- Data Connections -->
+  <path d="M 290 385 L 325 620" class="flow" stroke-dasharray="5,5"/>
+  <path d="M 450 425 L 325 620" class="flow" stroke-dasharray="5,5"/>
+  <path d="M 450 465 L 325 620" class="flow" stroke-dasharray="5,5"/>
+  <path d="M 370 565 L 125 620" class="flow" stroke-dasharray="5,5"/>
+  <path d="M 525 680 L 750 680" class="flow"/>
+  <path d="M 290 385 L 975 680" class="flow" stroke-dasharray="5,5"/>
+
+  <!-- Performance Notes -->
+  <text x="600" y="720" class="component" font-size="10" fill="#E74C3C">**Zero-Allocation Hot Path** • Concurrent-safe design • Sub-millisecond latency</text>
+  <text x="600" y="735" class="component" font-size="10" fill="#E74C3C">**Production-Tested Engine** • Transaction object pooling • Minimal memory footprint</text>
+  <text x="600" y="750" class="component" font-size="10" fill="#7F8C8D">Optional Enterprise Features: PostgreSQL/Redis fall back to in-memory for single-node deployments</text>
 </svg>

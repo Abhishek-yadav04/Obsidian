@@ -787,22 +787,27 @@
       loginBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Authenticating...';
       
       try {
-        const response = await fetch('/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password })
-        });
+        // For GitHub Pages demo, simulate authentication
+        console.log('Demo mode: Simulating login for:', username);
         
-        const data = await response.json();
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
-        if (response.ok && data.token) {
-          // Store authentication data
-          // ALWAYS use localStorage to ensure app.js can find the token
-          localStorage.setItem('obsidian_token', data.token);
-          localStorage.setItem('obsidian_refresh_token', data.refresh_token || '');
-          localStorage.setItem('obsidian_user', JSON.stringify(data.user || { username }));
+        // Accept any non-empty credentials for demo
+        if (username && password) {
+          const mockUser = {
+            username: username,
+            name: username === 'admin' ? 'Security Administrator' : 'Security Analyst',
+            role: username === 'admin' ? 'Admin' : 'Analyst',
+            email: username + '@company.com'
+          };
           
-          // Also keep remember me preference
+          const mockToken = 'demo-token-' + Date.now();
+          
+          // Store authentication data
+          localStorage.setItem('obsidian_token', mockToken);
+          localStorage.setItem('obsidian_user', JSON.stringify(mockUser));
+          
           if (rememberMe) {
             localStorage.setItem('obsidian_remember', 'true');
           } else {
@@ -819,12 +824,12 @@
             globalThis.location.href = '/';
           }, 800);
         } else {
-          showError(data.error || 'Invalid credentials');
+          showError('Invalid credentials');
           resetButton();
         }
       } catch (err) {
         console.error('Login error:', err);
-        showError('Connection error. Please check if the server is running.');
+        showError('Demo mode: Authentication failed');
         resetButton();
       }
     });

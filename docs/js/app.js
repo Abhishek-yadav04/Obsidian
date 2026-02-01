@@ -31,15 +31,14 @@ const ObsidianApp = {
     charts: {},
     refreshInterval: null,
 
-    // Initialize the application
+    // Initialize the application (modified for demo)
     init() {
-        if (!this.token) {
-            globalThis.location.href = '/login.html';
-            return;
-        }
+        // For demo, skip authentication check and WebSocket
+        console.log('Demo mode: Initializing Obsidian WAF Dashboard');
+        
         this.setupNavigation();
         this.setupUserProfile();
-        this.connectWebSocket();
+        // Skip WebSocket: this.connectWebSocket();
         this.loadView('dashboard');
         this.startAutoRefresh();
         this.setupEventListeners();
@@ -127,7 +126,7 @@ const ObsidianApp = {
         }
     },
 
-    // API helper
+    // API helper with mock data fallback for demo
     async api(endpoint, options = {}) {
         const headers = {
             'Authorization': 'Bearer ' + this.token,
@@ -142,9 +141,97 @@ const ObsidianApp = {
             }
             return await res.json();
         } catch (e) {
-            console.error('API Error:', e);
-            return null;
+            console.warn('API unavailable, using demo data for:', endpoint);
+            // Return mock data for demo purposes
+            return this.getMockData(endpoint);
         }
+    },
+
+    // Mock data provider for GitHub Pages demo
+    getMockData(endpoint) {
+        const mockData = {
+            '/api/stats': {
+                total_requests: 15420,
+                blocked_requests: 234,
+                flagged_requests: 89,
+                safe_requests: 15097,
+                active_rules_count: 59,
+                geo_data: {
+                    'US': 4520, 'CN': 3210, 'RU': 2890, 'IN': 2100, 'BR': 1890,
+                    'DE': 1650, 'FR': 1420, 'JP': 1380, 'GB': 1200, 'KR': 980
+                }
+            },
+            '/api/logs': [
+                {
+                    id: 1,
+                    timestamp: new Date(Date.now() - 300000).toISOString(),
+                    ip: '192.168.1.100',
+                    method: 'POST',
+                    uri: '/api/login',
+                    status: 'Blocked',
+                    rule_id: 'OWASP-001',
+                    message: 'SQL Injection Attempt',
+                    country: 'CN',
+                    user_agent: 'curl/7.68.0'
+                },
+                {
+                    id: 2,
+                    timestamp: new Date(Date.now() - 600000).toISOString(),
+                    ip: '10.0.0.50',
+                    method: 'GET',
+                    uri: '/admin.php',
+                    status: 'Blocked',
+                    rule_id: 'OWASP-002',
+                    message: 'Directory Traversal',
+                    country: 'RU',
+                    user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                },
+                {
+                    id: 3,
+                    timestamp: new Date(Date.now() - 900000).toISOString(),
+                    ip: '172.16.0.25',
+                    method: 'POST',
+                    uri: '/contact',
+                    status: 'Flagged',
+                    rule_id: 'OWASP-003',
+                    message: 'XSS Attempt in form data',
+                    country: 'US',
+                    user_agent: 'Chrome/91.0.4472.124'
+                }
+            ],
+            '/api/metrics': {
+                memory_usage: 245,
+                cpu_usage: 12.5,
+                active_connections: 45,
+                response_time_avg: 23,
+                uptime_seconds: 345600
+            },
+            '/api/health': {
+                status: 'healthy',
+                version: 'v2.1.0',
+                database: 'connected',
+                redis: 'connected',
+                last_check: new Date().toISOString()
+            },
+            '/api/rules': [
+                { id: 1, name: 'SQL Injection Protection', severity: 'Critical', enabled: true },
+                { id: 2, name: 'XSS Prevention', severity: 'High', enabled: true },
+                { id: 3, name: 'Directory Traversal', severity: 'Critical', enabled: true },
+                { id: 4, name: 'Command Injection', severity: 'Critical', enabled: true },
+                { id: 5, name: 'File Upload Restrictions', severity: 'High', enabled: true }
+            ],
+            '/api/threats': {
+                total: 2041,
+                sources: ['AbuseIPDB', 'Spamhaus', 'FireHOL', 'ET Open'],
+                recent: [
+                    { ip: '185.220.101.1', threat_type: 'Tor Exit Node', severity: 'Medium' },
+                    { ip: '91.240.118.25', threat_type: 'Malware Distribution', severity: 'High' },
+                    { ip: '45.155.205.233', threat_type: 'DDoS Botnet', severity: 'Critical' }
+                ]
+            }
+        };
+
+        return mockData[endpoint] || null;
     },
 
     // Fetch dashboard data

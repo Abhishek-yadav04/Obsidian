@@ -456,16 +456,34 @@ This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENS
 - **Security**: See [SECURITY.md](SECURITY.md) for reporting vulnerabilities
 
 ---
+## 👨‍💻 Author
+
+<p align="center">
+  <img src="https://github.com/Abhishek-yadav04.png" width="100px" style="border-radius: 50%;" alt="Abhishek Yadav" />
+</p>
+
+<p align="center">
+  <b>Abhishek Yadav</b><br>
+  Computer Science Student
+</p>
+
+<p align="center">
+  <a href="https://github.com/Abhishek-yadav04">
+    <img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github" alt="GitHub" />
+  </a>
+</p>
+
+---
+
+<p align="center">
+  <b>⭐ Star this repo if you find it helpful!</b>
+</p>
 
 <p align="center">
   Made with ❤️ for the cybersecurity community
 </p>
 
-## Donations
 
-For donations, see [Donations site](https://owasp.org/donate/?reponame=www-project-coraza-web-application-firewall&title=OWASP+Coraza+Web+Application+Firewall)
-
-## Thanks to all the people who have contributed
 
 First and foremost, huge thanks to [Juan Pablo Tosso](https://twitter.com/jptosso) for starting this project, and building an amazing community around Coraza!
 

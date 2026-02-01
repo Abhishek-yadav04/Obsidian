@@ -1,123 +1,120 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+<svg width="1000" height="600" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <style>
-      .title { font-family: Arial, sans-serif; font-size: 24px; font-weight: bold; fill: #2C3E50; text-anchor: middle; }
-      .subtitle { font-family: Arial, sans-serif; font-size: 14px; fill: #7F8C8D; text-anchor: middle; }
-      .component { font-family: Arial, sans-serif; font-size: 12px; fill: #2C3E50; text-anchor: middle; }
-      .flow { stroke: #3498DB; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
-      .box { fill: #ECF0F1; stroke: #BDC3C7; stroke-width: 1; rx: 5; }
-      .enterprise { fill: #E74C3C; stroke: #C0392B; stroke-width: 1; rx: 5; }
-      .security { fill: #E67E22; stroke: #D35400; stroke-width: 1; rx: 5; }
-      .data { fill: #3498DB; stroke: #2980B9; stroke-width: 1; rx: 5; }
-      .external { fill: #9B59B6; stroke: #8E44AD; stroke-width: 1; rx: 5; }
-    </style>
-    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#3498DB" />
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#3498DB"/>
     </marker>
   </defs>
 
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="#ffffff" stroke="#e1e8ed" stroke-width="1"/>
+
   <!-- Title -->
-  <text x="600" y="30" class="title">Obsidian Sentinel WAF v2.1.0 - Enterprise Architecture</text>
-  <text x="600" y="50" class="subtitle">(Real Implementation - No Mock Data)</text>
+  <text x="500" y="30" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#2C3E50">
+    Obsidian Sentinel WAF v2.1.0 - Enterprise Architecture
+  </text>
+  <text x="500" y="50" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#7F8C8D">
+    Real Implementation - No Mock Data
+  </text>
 
   <!-- Client Requests -->
-  <rect x="50" y="80" width="120" height="60" class="external"/>
-  <text x="110" y="105" class="component">Client</text>
-  <text x="110" y="120" class="component">Requests</text>
+  <rect x="50" y="80" width="100" height="50" fill="#3498DB" stroke="#2980B9" stroke-width="2" rx="5"/>
+  <text x="100" y="105" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white" font-weight="bold">Client</text>
+  <text x="100" y="118" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white">Requests</text>
 
   <!-- Threat Intelligence -->
-  <rect x="200" y="80" width="150" height="60" class="external"/>
-  <text x="275" y="95" class="component">Threat Intelligence</text>
-  <text x="275" y="110" class="component">(2041 Real Threats)</text>
+  <rect x="200" y="80" width="120" height="50" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" rx="5"/>
+  <text x="260" y="95" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="white">Threat Intel</text>
+  <text x="260" y="108" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="white">2041 Threats</text>
+  <text x="260" y="121" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="white">4 Sources</text>
 
   <!-- MaxMind GeoIP -->
-  <rect x="400" y="80" width="120" height="60" class="external"/>
-  <text x="460" y="105" class="component">MaxMind</text>
-  <text x="460" y="120" class="component">GeoIP2 DB</text>
+  <rect x="350" y="80" width="100" height="50" fill="#E67E22" stroke="#D35400" stroke-width="2" rx="5"/>
+  <text x="400" y="100" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="white" font-weight="bold">MaxMind</text>
+  <text x="400" y="113" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="white">GeoIP2 DB</text>
 
   <!-- Main Application -->
-  <rect x="200" y="180" width="400" height="400" class="box"/>
-  <text x="400" y="200" class="component" font-weight="bold">🛡️ Obsidian Sentinel v2.1.0</text>
-  <text x="400" y="215" class="component">(Single Go Binary - All Assets Embedded)</text>
+  <rect x="200" y="160" width="350" height="300" fill="#ECF0F1" stroke="#BDC3C7" stroke-width="2" rx="10"/>
+  <text x="375" y="180" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#2C3E50" font-weight="bold">
+    🛡️ Obsidian Sentinel v2.1.0
+  </text>
+  <text x="375" y="195" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#7F8C8D">
+    Single Go Binary - All Assets Embedded
+  </text>
 
-  <!-- Request Processing Pipeline -->
-  <rect x="220" y="235" width="140" height="30" class="security"/>
-  <text x="290" y="252" class="component">1️⃣ Request ID Generation</text>
+  <!-- Security Pipeline -->
+  <rect x="220" y="215" width="120" height="25" fill="#E74C3C" stroke="#C0392B" stroke-width="1" rx="3"/>
+  <text x="280" y="230" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="white">1️⃣ Request ID Generation</text>
 
-  <rect x="220" y="275" width="140" height="30" class="security"/>
-  <text x="290" y="292" class="component">2️⃣ Security Headers</text>
+  <rect x="220" y="245" width="120" height="25" fill="#E74C3C" stroke="#C0392B" stroke-width="1" rx="3"/>
+  <text x="280" y="260" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="white">2️⃣ Security Headers</text>
 
-  <rect x="220" y="315" width="140" height="30" class="security"/>
-  <text x="290" y="332" class="component">3️⃣ Prometheus Metrics</text>
+  <rect x="220" y="275" width="120" height="25" fill="#E74C3C" stroke="#C0392B" stroke-width="1" rx="3"/>
+  <text x="280" y="290" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="white">3️⃣ Prometheus Metrics</text>
 
-  <rect x="220" y="355" width="140" height="30" class="enterprise"/>
-  <text x="290" y="372" class="component">4️⃣ 256-Shard Rate Limiter</text>
+  <rect x="220" y="305" width="120" height="25" fill="#E74C3C" stroke="#C0392B" stroke-width="1" rx="3"/>
+  <text x="280" y="320" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="white">4️⃣ 256-Shard Rate Limiter</text>
 
-  <rect x="380" y="395" width="140" height="30" class="enterprise"/>
-  <text x="450" y="412" class="component">5️⃣ GeoIP Blocking Service</text>
+  <rect x="370" y="335" width="120" height="25" fill="#E74C3C" stroke="#C0392B" stroke-width="1" rx="3"/>
+  <text x="430" y="350" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="white">5️⃣ GeoIP Blocking Service</text>
 
-  <rect x="380" y="435" width="140" height="30" class="enterprise"/>
-  <text x="450" y="452" class="component">6️⃣ Multi-Feed Threat Intel</text>
+  <rect x="370" y="365" width="120" height="25" fill="#E74C3C" stroke="#C0392B" stroke-width="1" rx="3"/>
+  <text x="430" y="380" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="white">6️⃣ Threat Intel (4 feeds)</text>
 
-  <rect x="380" y="475" width="140" height="30" class="enterprise"/>
-  <text x="450" y="492" class="component">7️⃣ Coraza WAF v3 Engine</text>
+  <rect x="370" y="395" width="120" height="25" fill="#E74C3C" stroke="#C0392B" stroke-width="1" rx="3"/>
+  <text x="430" y="410" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="white">7️⃣ Coraza WAF (59 rules)</text>
 
-  <rect x="220" y="515" width="300" height="50" class="box"/>
-  <text x="370" y="530" class="component">8️⃣ Enterprise Router & APIs</text>
-  <text x="370" y="545" class="component">(JWT Auth, RBAC, Security APIs, Webhooks)</text>
+  <!-- API Layer -->
+  <rect x="240" y="430" width="260" height="25" fill="#2980B9" stroke="#21618C" stroke-width="1" rx="3"/>
+  <text x="370" y="445" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="white">
+    8️⃣ Enterprise APIs (JWT, RBAC, Webhooks)
+  </text>
 
   <!-- Data Layer -->
-  <rect x="50" y="620" width="150" height="60" class="data"/>
-  <text x="125" y="635" class="component">PostgreSQL</text>
-  <text x="125" y="650" class="component">(Enterprise Analytics)</text>
+  <rect x="100" y="480" width="120" height="50" fill="#3498DB" stroke="#2980B9" stroke-width="2" rx="5"/>
+  <text x="160" y="495" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white" font-weight="bold">PostgreSQL</text>
+  <text x="160" y="510" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="white">Analytics & Audit</text>
 
-  <rect x="250" y="620" width="150" height="60" class="data"/>
-  <text x="325" y="635" class="component">Redis Cluster</text>
-  <text x="325" y="650" class="component">(Distributed State)</text>
+  <rect x="250" y="480" width="120" height="50" fill="#E74C3C" stroke="#C0392B" stroke-width="2" rx="5"/>
+  <text x="310" y="495" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white" font-weight="bold">Redis Cluster</text>
+  <text x="310" y="510" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="white">Rate Limits & Cache</text>
 
   <!-- Dashboard -->
-  <rect x="450" y="620" width="150" height="60" class="box"/>
-  <text x="525" y="635" class="component">Bootstrap 5 Dashboard</text>
-  <text x="525" y="650" class="component">(Dark Theme)</text>
+  <rect x="400" y="480" width="120" height="50" fill="#27AE60" stroke="#229954" stroke-width="2" rx="5"/>
+  <text x="460" y="495" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white" font-weight="bold">Bootstrap 5 UI</text>
+  <text x="460" y="510" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="white">Real-time Dashboard</text>
 
-  <!-- External Integrations -->
-  <rect x="650" y="620" width="200" height="60" class="external"/>
-  <text x="750" y="635" class="component">Alert Destinations</text>
-  <text x="750" y="650" class="component">(Slack/Teams/Discord/PagerDuty)</text>
-
-  <rect x="900" y="620" width="150" height="60" class="external"/>
-  <text x="975" y="635" class="component">Monitoring</text>
-  <text x="975" y="650" class="component">(Prometheus/Grafana)</text>
+  <!-- External Services -->
+  <rect x="650" y="480" width="150" height="50" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" rx="5"/>
+  <text x="725" y="495" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="white" font-weight="bold">Alert Destinations</text>
+  <text x="725" y="510" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="white">Slack/Teams/Discord/PagerDuty</text>
 
   <!-- Flow Arrows -->
-  <path d="M 110 140 L 110 180" class="flow"/>
-  <path d="M 275 140 L 275 180" class="flow"/>
-  <path d="M 460 140 L 460 180" class="flow"/>
+  <path d="M 100 130 L 100 160" stroke="#3498DB" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 260 130 L 260 160" stroke="#3498DB" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 400 130 L 400 160" stroke="#3498DB" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
 
-  <path d="M 110 180 L 200 180" class="flow"/>
-  <path d="M 350 180 L 400 180" class="flow"/>
-  <path d="M 460 180 L 600 180" class="flow"/>
-
-  <path d="M 290 265 L 290 275" class="flow"/>
-  <path d="M 290 305 L 290 315" class="flow"/>
-  <path d="M 290 345 L 290 355" class="flow"/>
-  <path d="M 290 385 L 450 395" class="flow"/>
-  <path d="M 520 425 L 520 435" class="flow"/>
-  <path d="M 520 465 L 520 475" class="flow"/>
-  <path d="M 520 505 L 520 515" class="flow"/>
-  <path d="M 370 565 L 370 620" class="flow"/>
+  <path d="M 280 240 L 280 245" stroke="#3498DB" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 280 265 L 280 275" stroke="#3498DB" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 280 295 L 280 305" stroke="#3498DB" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 280 325 L 430 335" stroke="#3498DB" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 430 360 L 430 365" stroke="#3498DB" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 430 390 L 430 395" stroke="#3498DB" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 430 420 L 430 430" stroke="#3498DB" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 370 455 L 370 480" stroke="#3498DB" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
 
   <!-- Data Connections -->
-  <path d="M 290 385 L 325 620" class="flow" stroke-dasharray="5,5"/>
-  <path d="M 450 425 L 325 620" class="flow" stroke-dasharray="5,5"/>
-  <path d="M 450 465 L 325 620" class="flow" stroke-dasharray="5,5"/>
-  <path d="M 370 565 L 125 620" class="flow" stroke-dasharray="5,5"/>
-  <path d="M 525 680 L 750 680" class="flow"/>
-  <path d="M 290 385 L 975 680" class="flow" stroke-dasharray="5,5"/>
+  <path d="M 280 330 L 310 480" stroke="#E74C3C" stroke-width="2" stroke-dasharray="5,5" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 430 360 L 310 480" stroke="#E74C3C" stroke-width="2" stroke-dasharray="5,5" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 430 390 L 310 480" stroke="#E74C3C" stroke-width="2" stroke-dasharray="5,5" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 370 455 L 160 480" stroke="#E74C3C" stroke-width="2" stroke-dasharray="5,5" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 460 530 L 725 530" stroke="#27AE60" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
 
   <!-- Performance Notes -->
-  <text x="600" y="720" class="component" font-size="10" fill="#E74C3C">**Zero-Allocation Hot Path** • Concurrent-safe design • Sub-millisecond latency</text>
-  <text x="600" y="735" class="component" font-size="10" fill="#E74C3C">**Production-Tested Engine** • Transaction object pooling • Minimal memory footprint</text>
-  <text x="600" y="750" class="component" font-size="10" fill="#7F8C8D">Optional Enterprise Features: PostgreSQL/Redis fall back to in-memory for single-node deployments</text>
+  <text x="500" y="570" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#E74C3C" font-weight="bold">
+    Zero-Allocation Hot Path • Concurrent-Safe Design • Sub-millisecond Latency
+  </text>
+  <text x="500" y="585" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#7F8C8D">
+    Enterprise Features: PostgreSQL/Redis optional • Single Binary Deployment • Production-Ready
+  </text>
 </svg>

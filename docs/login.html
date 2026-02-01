@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Obsidian WAF - Enterprise Web Application Firewall">
+  <title>Obsidian WAF - Secure Login</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0d1117;
+      --bg-card: #161b22;
+      --border-color: #30363d;
+      --accent-red: #f43f5e;
+      --accent-red-hover: #e11d48;
+      --text-main: #e6edf3;
+      --text-muted: #8b949e;
+    }
+    
+    * { box-sizing: border-box; }
+    
+    body {
+      background: var(--bg-dark);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    /* Animated Particle Background */
+    .particles {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+    }
+    
+    .particle {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      background: var(--accent-red);
+      border-radius: 50%;
+      opacity: 0;
+      box-shadow: 0 0 10px var(--accent-red), 0 0 20px var(--accent-red);
+      animation: float 12s infinite linear;
+    }
+    
+    @keyframes float {
+      0% { 
+        transform: translateY(100vh) translateX(0) rotate(0deg); 
+        opacity: 0; 
+      }
+      5% { opacity: 0.6; }
+      50% { 
+        transform: translateY(50vh) translateX(20px) rotate(360deg); 
+        opacity: 0.8;
+      }
+      95% { opacity: 0.6; }
+      100% { 
+        transform: translateY(-10vh) translateX(-20px) rotate(720deg); 
+        opacity: 0; 
+      }
+    }
+    
+    /* Additional glow effect for particles */
+    .particle:nth-child(odd) {
+      background: #ff6b6b;
+      box-shadow: 0 0 15px #ff6b6b, 0 0 30px #ff6b6b;
+    }
+    
+    .particle:nth-child(3n) {
+      width: 8px;
+      height: 8px;
+      animation-duration: 18s;
+    }
+    
+    .particle:nth-child(5n) {
+      width: 4px;
+      height: 4px;
+      animation-duration: 8s;
+    }
+    
+    /* Login Container */
+    .login-container {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 520px;
+      padding: 1.5rem;
+    }
+    
+    .login-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 3rem;
+      box-shadow: 0 20px 80px rgba(0,0,0,0.6), 0 0 40px rgba(244,63,94,0.1);
+      backdrop-filter: blur(10px);
+      animation: cardAppear 0.6s ease-out;
+    }
+    
+    @keyframes cardAppear {
+      0% {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+    
+    /* Brand Section */
+    .brand-section {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    
+    .logo-container {
+      display: inline-block;
+      padding: 16px;
+      background: linear-gradient(135deg, rgba(244,63,94,0.1) 0%, rgba(244,63,94,0.05) 100%);
+      border-radius: 16px;
+      margin-bottom: 1rem;
+      animation: pulse-glow 3s infinite ease-in-out;
+    }
+    
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(244,63,94,0); }
+      50% { box-shadow: 0 0 30px 10px rgba(244,63,94,0.15); }
+    }
+    
+    .logo-container img {
+      height: 72px;
+      display: block;
+      transition: transform 0.3s ease;
+    }
+    
+    .logo-container:hover img {
+      transform: scale(1.1);
+    }
+    
+    .brand-title {
+      color: var(--text-main);
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+    
+    .brand-title span {
+      color: var(--accent-red);
+    }
+    
+    .brand-subtitle {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+    
+    /* Security Badge */
+    .security-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16,185,129,0.1);
+      color: #10b981;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-top: 0.75rem;
+    }
+    
+    .security-badge i {
+      font-size: 0.7rem;
+    }
+    
+    /* Form Styles */
+    .form-label {
+      color: var(--text-main);
+      font-weight: 500;
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .form-control {
+      background: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 0.9rem 1.2rem;
+      border-radius: 10px;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+    }
+    
+    .form-control:focus {
+      background: var(--bg-dark);
+      border-color: var(--accent-red);
+      color: var(--text-main);
+      box-shadow: 0 0 0 4px rgba(244,63,94,0.2), 0 0 20px rgba(244,63,94,0.1);
+    }
+    
+    .form-control::placeholder {
+      color: var(--text-muted);
+    }
+    
+    /* Password Input Group */
+    .password-group {
+      position: relative;
+    }
+    
+    .password-toggle {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      transition: color 0.2s;
+    }
+    
+    .password-toggle:hover {
+      color: var(--accent-red);
+    }
+    
+    /* Remember Me & Forgot */
+    .form-options {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    
+    .form-check-input {
+      background-color: var(--bg-dark);
+      border-color: var(--border-color);
+    }
+    
+    .form-check-input:checked {
+      background-color: var(--accent-red);
+      border-color: var(--accent-red);
+    }
+    
+    .form-check-label {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+    
+    .forgot-link {
+      color: var(--accent-red);
+      font-size: 0.875rem;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    
+    .forgot-link:hover {
+      opacity: 0.8;
+      color: var(--accent-red);
+    }
+    
+    /* Submit Button */
+    .btn-login {
+      width: 100%;
+      padding: 1rem 1.5rem;
+      background: linear-gradient(135deg, var(--accent-red) 0%, var(--accent-red-hover) 100%);
+      border: none;
+      border-radius: 10px;
+      color: white;
+      font-weight: 600;
+      font-size: 1.1rem;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .btn-login::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      transition: left 0.5s ease;
+    }
+    
+    .btn-login:hover::before {
+      left: 100%;
+    }
+    
+    .btn-login:hover:not(:disabled) {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 30px rgba(244,63,94,0.4), 0 0 20px rgba(244,63,94,0.2);
+      background: linear-gradient(135deg, var(--accent-red-hover) 0%, #be123c 100%);
+    }
+    
+    .btn-login:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+    
+    .btn-login .spinner-border {
+      width: 1rem;
+      height: 1rem;
+    }
+    
+    /* Divider */
+    .divider {
+      display: flex;
+      align-items: center;
+      margin: 1.5rem 0;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+    
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border-color);
+    }
+    
+    .divider span {
+      padding: 0 1rem;
+    }
+    
+    /* SSO Buttons */
+    .sso-buttons {
+      display: flex;
+      gap: 0.75rem;
+    }
+    
+    .btn-sso {
+      flex: 1;
+      padding: 0.75rem;
+      background: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    
+    .btn-sso:hover {
+      border-color: var(--accent-red);
+      color: var(--text-main);
+      background: rgba(244,63,94,0.05);
+    }
+    
+    /* Alert Messages */
+    .alert-message {
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.875rem;
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .alert-error {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.2);
+      color: #ef4444;
+    }
+    
+    .alert-success {
+      background: rgba(16,185,129,0.1);
+      border: 1px solid rgba(16,185,129,0.2);
+      color: #10b981;
+    }
+    
+    /* Footer */
+    .login-footer {
+      text-align: center;
+      margin-top: 1.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border-color);
+    }
+    
+    .login-footer p {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      margin: 0;
+    }
+    
+    .login-footer a {
+      color: var(--accent-red);
+      text-decoration: none;
+    }
+    
+    /* Version Badge */
+    .version-badge {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      z-index: 100;
+    }
+    
+    /* Input Icons */
+    .input-icon-group {
+      position: relative;
+    }
+    
+    .input-icon-group i {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    
+    .input-icon-group .form-control {
+      padding-left: 42px;
+    }
+    
+    /* ============================================
+       MOBILE RESPONSIVE STYLES
+       ============================================ */
+    
+    /* Tablets and below */
+    @media (max-width: 768px) {
+      body {
+        padding: 1rem;
+        overflow-y: auto;
+      }
+      
+      .login-container {
+        max-width: 100%;
+        padding: 0.5rem;
+      }
+      
+      .login-card {
+        padding: 1.5rem;
+        border-radius: 10px;
+      }
+      
+      .brand-section {
+        margin-bottom: 1.5rem;
+      }
+      
+      .logo-container {
+        padding: 12px;
+      }
+      
+      .logo-container img {
+        height: 56px;
+      }
+      
+      .brand-title {
+        font-size: 1.5rem;
+      }
+      
+      .brand-subtitle {
+        font-size: 0.8rem;
+      }
+      
+      .security-badge {
+        font-size: 0.7rem;
+        padding: 3px 10px;
+      }
+      
+      .form-label {
+        font-size: 0.8rem;
+      }
+      
+      .form-control {
+        padding: 0.65rem 0.9rem;
+        font-size: 0.9rem;
+      }
+      
+      .input-icon-group .form-control {
+        padding-left: 38px;
+      }
+      
+      .btn-login {
+        padding: 0.75rem;
+        font-size: 0.95rem;
+      }
+      
+      .sso-buttons {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      
+      .btn-sso {
+        padding: 0.65rem;
+      }
+      
+      .version-badge {
+        bottom: 0.5rem;
+        right: 0.5rem;
+        padding: 0.4rem 0.8rem;
+        font-size: 0.7rem;
+      }
+      
+      .divider {
+        margin: 1.25rem 0;
+      }
+      
+      .login-footer {
+        margin-top: 1rem;
+        padding-top: 1rem;
+      }
+      
+      .login-footer p {
+        font-size: 0.75rem;
+      }
+    }
+    
+    /* Small phones */
+    @media (max-width: 480px) {
+      body {
+        align-items: flex-start;
+        padding-top: 2rem;
+      }
+      
+      .login-card {
+        padding: 1.25rem;
+      }
+      
+      .logo-container img {
+        height: 48px;
+      }
+      
+      .brand-title {
+        font-size: 1.35rem;
+      }
+      
+      .form-options {
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: flex-start;
+      }
+      
+      .forgot-link {
+        align-self: flex-end;
+      }
+      
+      .particles {
+        display: none; /* Disable particles on very small screens for performance */
+      }
+    }
+    
+    /* Landscape mode on phones */
+    @media (max-height: 500px) and (orientation: landscape) {
+      body {
+        overflow-y: auto;
+        align-items: flex-start;
+        padding: 1rem;
+      }
+      
+      .login-card {
+        margin: 1rem auto;
+      }
+      
+      .brand-section {
+        margin-bottom: 1rem;
+      }
+      
+      .logo-container {
+        padding: 8px;
+      }
+      
+      .logo-container img {
+        height: 40px;
+      }
+      
+      .particles {
+        display: none;
+      }
+    }
+    
+    /* High DPI / Retina displays */
+    @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+      .login-card {
+        border-width: 0.5px;
+      }
+    }
+    
+    /* Prefer reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      .particle {
+        animation: none;
+      }
+      
+      .logo-container {
+        animation: none;
+      }
+      
+      .btn-login:hover:not(:disabled) {
+        transform: none;
+      }
+    }
+    
+    /* Dark mode preference (already dark, but ensure consistency) */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Animated Background Particles -->
+  <div class="particles" id="particles"></div>
+  
+  <div class="login-container">
+    <div class="login-card">
+      <!-- Brand Section -->
+      <div class="brand-section">
+        <div class="logo-container">
+          <img src="assets/logo.svg" alt="Obsidian WAF" onerror="this.style.display='none'">
+        </div>
+        <h1 class="brand-title"><span>Obsidian</span> WAF</h1>
+        <p class="brand-subtitle">Enterprise Web Application Firewall</p>
+        <div class="security-badge">
+          <i class="fas fa-shield-halved"></i>
+          256-bit TLS Encrypted
+        </div>
+      </div>
+      
+      <!-- Alert Messages -->
+      <div class="alert-message alert-error" id="errorMsg">
+        <i class="fas fa-exclamation-circle"></i>
+        <span id="errorText"></span>
+      </div>
+      <div class="alert-message alert-success" id="successMsg">
+        <i class="fas fa-check-circle"></i>
+        <span>Authentication successful!</span>
+      </div>
+      
+      <!-- Login Form -->
+      <form id="loginForm" autocomplete="off">
+        <div class="mb-3">
+          <label for="username" class="form-label">Username</label>
+          <div class="input-icon-group">
+            <i class="fas fa-user"></i>
+            <input type="text" 
+                   class="form-control" 
+                   id="username" 
+                   placeholder="Enter your username"
+                   autocomplete="username"
+                   required>
+          </div>
+        </div>
+        
+        <div class="mb-3">
+          <label for="password" class="form-label">Password</label>
+          <div class="input-icon-group password-group">
+            <i class="fas fa-lock"></i>
+            <input type="password" 
+                   class="form-control" 
+                   id="password" 
+                   placeholder="Enter your password"
+                   autocomplete="current-password"
+                   required>
+            <button type="button" class="password-toggle" id="togglePassword" aria-label="Toggle password visibility">
+              <i class="fas fa-eye"></i>
+            </button>
+          </div>
+        </div>
+        
+        <div class="form-options">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="rememberMe">
+            <label class="form-check-label" for="rememberMe">Remember me</label>
+          </div>
+          <a href="#" class="forgot-link" onclick="showForgotPassword(event)">Forgot password?</a>
+        </div>
+        
+        <button type="submit" class="btn btn-login" id="loginBtn">
+          <i class="fas fa-sign-in-alt"></i>
+          <span>Sign In</span>
+        </button>
+      </form>
+      
+      <!-- SSO Section -->
+      <div class="divider"><span>or continue with</span></div>
+      <div class="sso-buttons">
+        <button type="button" class="btn-sso" onclick="ssoLogin('ldap')" title="LDAP Authentication">
+          <i class="fas fa-server"></i> LDAP
+        </button>
+        <button type="button" class="btn-sso" onclick="ssoLogin('saml')" title="SAML Single Sign-On">
+          <i class="fas fa-key"></i> SAML
+        </button>
+      </div>
+      
+      <!-- Footer -->
+      <div class="login-footer">
+        <p>Protected by Obsidian WAF v2.0 • <a href="https://github.com/Abhishek-yadav04/Obsidian" target="_blank">Documentation</a></p>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Version Badge -->
+  <div class="version-badge">
+    <i class="fas fa-code-branch"></i> v2.0.0
+  </div>
+
+  <script>
+    // Create animated particles with enhanced visibility
+    (function initParticles() {
+      const container = document.getElementById('particles');
+      if (!container) return;
+      
+      const particleCount = 60;
+      
+      for (let i = 0; i < particleCount; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.bottom = '-20px';
+        particle.style.animationDelay = (Math.random() * 12) + 's';
+        particle.style.animationDuration = (8 + Math.random() * 12) + 's';
+        // Vary particle sizes
+        const size = 4 + Math.random() * 6;
+        particle.style.width = size + 'px';
+        particle.style.height = size + 'px';
+        container.appendChild(particle);
+      }
+      
+      console.log('Obsidian particles initialized:', particleCount);
+    })();
+    
+    // Password visibility toggle
+    document.getElementById('togglePassword').addEventListener('click', function() {
+      const passwordInput = document.getElementById('password');
+      const icon = this.querySelector('i');
+      
+      if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        icon.className = 'fas fa-eye-slash';
+      } else {
+        passwordInput.type = 'password';
+        icon.className = 'fas fa-eye';
+      }
+    });
+    
+    // Form submission handler
+    document.getElementById('loginForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const errorMsg = document.getElementById('errorMsg');
+      const successMsg = document.getElementById('successMsg');
+      const loginBtn = document.getElementById('loginBtn');
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const rememberMe = document.getElementById('rememberMe').checked;
+      
+      // Reset alerts
+      errorMsg.style.display = 'none';
+      successMsg.style.display = 'none';
+      
+      // Validate input
+      if (!username || !password) {
+        showError('Please enter both username and password');
+        return;
+      }
+      
+      // Show loading state
+      loginBtn.disabled = true;
+      loginBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Authenticating...';
+      
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.token) {
+          // Store authentication data
+          // ALWAYS use localStorage to ensure app.js can find the token
+          localStorage.setItem('obsidian_token', data.token);
+          localStorage.setItem('obsidian_refresh_token', data.refresh_token || '');
+          localStorage.setItem('obsidian_user', JSON.stringify(data.user || { username }));
+          
+          // Also keep remember me preference
+          if (rememberMe) {
+            localStorage.setItem('obsidian_remember', 'true');
+          } else {
+            localStorage.removeItem('obsidian_remember');
+          }
+          
+          // Show success
+          successMsg.style.display = 'flex';
+          loginBtn.innerHTML = '<i class="fas fa-check"></i> Success!';
+          loginBtn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+          
+          // Redirect after brief delay
+          setTimeout(function() {
+            globalThis.location.href = '/';
+          }, 800);
+        } else {
+          showError(data.error || 'Invalid credentials');
+          resetButton();
+        }
+      } catch (err) {
+        console.error('Login error:', err);
+        showError('Connection error. Please check if the server is running.');
+        resetButton();
+      }
+    });
+    
+    function showError(message) {
+      const errorMsg = document.getElementById('errorMsg');
+      document.getElementById('errorText').textContent = message;
+      errorMsg.style.display = 'flex';
+    }
+    
+    function resetButton() {
+      const loginBtn = document.getElementById('loginBtn');
+      loginBtn.disabled = false;
+      loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> <span>Sign In</span>';
+    }
+    
+    // SSO Login handlers
+    function ssoLogin(provider) {
+      const errorMsg = document.getElementById('errorMsg');
+      document.getElementById('errorText').textContent = `${provider.toUpperCase()} integration is not configured. Contact your administrator.`;
+      errorMsg.style.display = 'flex';
+    }
+    
+    // Forgot password handler
+    function showForgotPassword(e) {
+      e.preventDefault();
+      const errorMsg = document.getElementById('errorMsg');
+      document.getElementById('errorText').textContent = 'Password reset requires administrator assistance. Contact your security team.';
+      errorMsg.style.display = 'flex';
+    }
+    
+    // Auto-focus username field
+    document.getElementById('username').focus();
+    
+    // Check for remembered session
+    if (localStorage.getItem('obsidian_token') && localStorage.getItem('obsidian_remember') === 'true') {
+      globalThis.location.href = '/';
+    }
+  </script>
+</body>
+</html>

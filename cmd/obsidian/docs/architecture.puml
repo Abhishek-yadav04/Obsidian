@@ -1,0 +1,91 @@
+@startuml Obsidian_Sentinel_Enterprise_Architecture_v2_1_0
+' Obsidian Sentinel v2.1.0 PlantUML
+' Real implementation (no mock data)
+!theme plain
+
+title Obsidian Sentinel WAF v2.1.0 - Enterprise Architecture (Real Implementation)
+
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontColor #2C3E50
+skinparam rectangleFontColor #2C3E50
+skinparam componentFontColor #2C3E50
+skinparam cloudFontColor #2C3E50
+skinparam databaseFontColor #2C3E50
+skinparam rectangleBackgroundColor #ECF0F1
+skinparam cloudBackgroundColor #E8F6F3
+skinparam databaseBackgroundColor #EBF5FB
+
+actor "Client Requests" as client
+cloud "Threat Intelligence\n(2041 Real Threats)" as threats {
+  rectangle "Spamhaus DROP\n(800+ networks)" as spamhaus
+  rectangle "Emerging Threats\n(1000+ IPs)" as emerging
+  rectangle "Firehol Level 1\n(200+ threats)" as firehol
+  rectangle "Custom Feeds\n(User-defined)" as custom
+}
+
+cloud "MaxMind GeoIP2\nDatabase" as geoip_db
+
+package "Obsidian Sentinel v2.1.0\n(Single Go Binary - All Assets Embedded)" as obsidian {
+  rectangle "Request ID\nGeneration" as req_id #F8C471
+  rectangle "Security Headers\n(CSP, HSTS, X-Frame)" as headers #F8C471
+  rectangle "Prometheus Metrics\nCollection" as metrics #F8C471
+
+  rectangle "256-Shard Rate Limiter\n(Zero Lock Contention)" as rate_limit #E74C3C
+  rectangle "GeoIP Blocking Service\n(Country-Based Protection)" as geoip #E67E22
+  rectangle "Multi-Feed Threat Intel\n(4 Active Sources)" as threat_intel #8E44AD
+  rectangle "Coraza WAF v3 Engine\n(59 Production Rules)" as waf_core #C0392B
+
+  rectangle "Enterprise Router & APIs" as router #2980B9 {
+    rectangle "JWT Authentication\n(HMAC-SHA256)" as auth
+    rectangle "RBAC Authorization\n(Admin/Analyst/Viewer)" as rbac
+    rectangle "Security APIs\n(Rules, Threats, Logs)" as security_api
+    rectangle "Analytics APIs\n(Reports, Metrics)" as analytics_api
+    rectangle "GeoIP Management\n(Block/Allow Countries)" as geo_api
+    rectangle "Webhook Alerts\n(Slack/Teams/Discord)" as webhook_api
+  }
+}
+
+database "PostgreSQL\n(Enterprise Analytics)" as postgres #3498DB
+database "Redis Cluster\n(Distributed State)" as redis #E74C3C
+
+rectangle "Bootstrap 5 Dashboard\n(Dark Theme)" as dashboard #27AE60 {
+  rectangle "WebSocket Real-Time\nUpdates" as websocket
+  rectangle "Chart.js Analytics\nVisualization" as charts
+  rectangle "Mobile Responsive\nInterface" as mobile
+}
+
+cloud "Alert Destinations" as alerts {
+  rectangle "Slack Channels" as slack
+  rectangle "Microsoft Teams" as teams
+  rectangle "Discord Servers" as discord
+  rectangle "PagerDuty" as pagerduty
+}
+
+cloud "Monitoring & Observability" as monitoring {
+  rectangle "Prometheus\n(/metrics endpoint)" as prometheus
+  rectangle "Grafana Dashboards" as grafana
+}
+
+' Flow
+client --> req_id : HTTPS Request
+req_id --> headers : UUID Generation
+headers --> metrics : Security Headers
+metrics --> rate_limit : Metrics Collection
+rate_limit --> geoip : Rate Check (256 shards)
+geoip --> threat_intel : GeoIP Lookup
+threat_intel --> waf_core : Threat Check (2041 threats)
+waf_core --> router : WAF Analysis (59 rules)
+
+' Data
+rate_limit <--> redis : Distributed Counters
+geoip <--> geoip_db : IP Geolocation
+geoip <--> redis : Location Cache
+threat_intel <--> threats : Feed Updates (4hr cycle)
+threat_intel <--> redis : Threat Cache
+router <--> postgres : Analytics Storage
+auth <--> redis : Session Management
+webhook_api --> alerts : Real-time Alerts
+metrics --> monitoring : Prometheus Export
+router --> dashboard : WebSocket Updates
+
+@enduml

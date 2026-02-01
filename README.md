@@ -1,12 +1,12 @@
-# 🛡️ OBSIDIAN Sentinel WAF v2.0.0
+# 🛡️ OBSIDIAN Sentinel WAF v2.1.0 Enterprise Edition
 
 <p align="center">
   <img src="cmd/obsidian/ui/assets/logo.svg" alt="Obsidian Sentinel WAF" width="200"/>
 </p>
 
 <p align="center">
-  <strong>Enterprise-Grade Web Application Firewall</strong><br/>
-  Built on Coraza v3 Engine | Real-Time Protection | Zero-Trust Architecture
+  <strong>Enterprise-Grade Web Application Firewall with Advanced Security Features</strong><br/>
+  Built on Coraza v3 Engine | Real-Time Protection | Zero-Trust Architecture | GeoIP Blocking | Advanced Analytics
 </p>
 
 <p align="center">
@@ -22,41 +22,49 @@
 
 ## 📋 Overview
 
-**Obsidian Sentinel** is a production-ready Web Application Firewall that provides real-time protection against OWASP Top 10 threats. It combines the battle-tested Coraza WAF engine with enterprise features including threat intelligence, rate limiting, and comprehensive audit logging.
+**Obsidian Sentinel** is an enterprise-ready Web Application Firewall that provides comprehensive protection against advanced cyber threats. It combines the battle-tested Coraza WAF engine with cutting-edge enterprise features including GeoIP blocking, advanced rate limiting, threat intelligence, webhook alerting, and sophisticated analytics.
 
 ### Why Obsidian?
 
-- **🔒 Zero-Trust Security**: HMAC-SHA256 JWT authentication, CSRF protection, and cryptographic token validation
-- **⚡ High Performance**: Concurrent-safe design with minimal allocation on hot paths
-- **📊 Real-Time Monitoring**: WebSocket-based live dashboard with instant threat visibility
-- **🌐 Threat Intelligence**: Integrates with Spamhaus, Emerging Threats, and custom blocklists
-- **📱 Modern UI**: Responsive Bootstrap 5 dashboard with Chart.js visualizations
-- **📦 Single Binary**: All assets embedded - no external dependencies required
+- **🔒 Zero-Trust Security**: HMAC-SHA256 JWT authentication, RBAC, CSRF protection, and cryptographic token validation
+- **⚡ High Performance**: Concurrent-safe design with minimal allocation on hot paths (256-shard rate limiter)
+- **📊 Real-Time Monitoring**: WebSocket-based live dashboard with Chart.js visualizations and instant threat visibility
+- **🌐 Advanced Threat Intelligence**: Integrates with Spamhaus, Emerging Threats, Firehol, and custom feeds (2000+ threats)
+- **🗺️ GeoIP Protection**: Country-based blocking with MaxMind database support and risk assessment
+- **🚨 Smart Alerting**: Webhook integrations for Slack, Teams, Discord, PagerDuty with severity filtering
+- **📈 Enterprise Analytics**: PostgreSQL integration, comprehensive audit logging, and executive reporting
+- **📱 Modern UI**: Responsive Bootstrap 5 dark theme dashboard with mobile support
+- **📦 Single Binary**: All assets embedded - Redis/PostgreSQL optional for enterprise features
 
 ---
 
 ## ✨ Features
 
-### Security Features
+### Core Security Features
 | Feature | Description |
 |---------|-------------|
-| **55+ WAF Rules** | Protection against XSS, SQLi, RCE, LFI, RFI, SSRF, XXE, SSTI |
-| **JWT Authentication** | HMAC-SHA256 signed tokens with configurable expiration |
-| **RBAC** | Role-based access control (Admin, Analyst, Viewer) |
-| **Rate Limiting** | Sliding window algorithm with configurable thresholds |
-| **Threat Intelligence** | Real-time IP reputation checking from multiple feeds |
+| **59+ Advanced WAF Rules** | Protection against XSS, SQLi, RCE, LFI, RFI, SSRF, XXE, SSTI, LDAP injection |
+| **JWT Authentication** | HMAC-SHA256 signed tokens with configurable expiration and refresh |
+| **Advanced RBAC** | Role-based access control (Admin, Analyst, Viewer) with granular permissions |
+| **256-Shard Rate Limiting** | High-performance sliding window with Redis clustering support |
+| **Multi-Feed Threat Intel** | Real-time protection from Spamhaus, Emerging Threats, Firehol (2000+ threats) |
+| **GeoIP Blocking** | Country-based protection with MaxMind database and risk scoring |
 | **CSRF Protection** | Token-based cross-site request forgery prevention |
-| **Security Headers** | CSP, X-Frame-Options, X-Content-Type-Options |
+| **Security Headers** | CSP, HSTS, X-Frame-Options, X-Content-Type-Options |
 
 ### Enterprise Features
 | Feature | Description |
 |---------|-------------|
-| **PDF Reports** | Generate executive security reports |
-| **Audit Logging** | Complete audit trail of all security events |
-| **WebSocket Updates** | Real-time dashboard without polling |
-| **Multi-User Support** | Admin, Analyst, and Viewer roles |
-| **Graceful Shutdown** | Proper cleanup on SIGTERM/SIGINT |
-| **Health Endpoints** | Kubernetes-ready health checks |
+| **PostgreSQL Integration** | Enterprise-grade data persistence and analytics |
+| **Redis Clustering** | Distributed rate limiting and session management |
+| **Webhook Alerting** | Real-time notifications to Slack, Teams, Discord, PagerDuty |
+| **Executive Reporting** | PDF/Excel reports with charts and threat analysis |
+| **Comprehensive Audit** | Complete security event trail with PostgreSQL storage |
+| **WebSocket Real-Time** | Live dashboard updates without polling overhead |
+| **Advanced Analytics** | Request patterns, geo-distribution, threat correlation |
+| **Multi-Tenant Support** | Admin, Security Analyst, and Read-Only Viewer roles |
+| **Health & Metrics** | Prometheus-compatible metrics and Kubernetes-ready health checks |
+| **Request ID Tracing** | End-to-end request tracking for incident response |
 
 ### Attack Categories Protected
 - Cross-Site Scripting (XSS)
@@ -78,6 +86,10 @@
 ### Prerequisites
 - Go 1.22+ (or TinyGo for WASM builds)
 - Windows, Linux, or macOS
+- **Optional for Enterprise Features:**
+  - PostgreSQL 12+ (for advanced analytics and audit logging)
+  - Redis 6+ (for distributed rate limiting and clustering)
+  - MaxMind GeoIP2 database (for country-based blocking)
 
 ### Build and Run
 
@@ -86,15 +98,23 @@
 git clone https://github.com/Abhishek-yadav04/Obsidian.git
 cd obsidian
 
+# Install dependencies
+go mod tidy
+
 # Build the application
 cd cmd/obsidian
 go build -o obsidian.exe .
 
-# Run with default settings
+# Run with default settings (in-memory mode)
 ./obsidian.exe -port 8082
 
-# Run in development mode
+# Run in development mode with debug logging
 ./obsidian.exe -port 8082 -dev
+
+# Run with PostgreSQL and Redis (Enterprise mode)
+export DATABASE_URL="postgres://user:pass@localhost/obsidian"
+export REDIS_URL="redis://localhost:6379"
+./obsidian.exe -port 8082
 ```
 
 ### Access the Dashboard
@@ -156,23 +176,35 @@ Open your browser and navigate to: **http://localhost:8082**
 
 ```
 obsidian/
-├── cmd/obsidian/           # Main application entry point
-│   ├── main.go             # Server initialization
-│   └── ui/                 # Embedded frontend assets
-│       ├── index.html      # Dashboard
-│       ├── login.html      # Authentication page
-│       ├── js/app.js       # Frontend logic
-│       └── css/styles.css  # Styling
-├── internal/app/           # Core application packages
-│   ├── api/                # REST API handlers
-│   ├── auth/               # JWT authentication
-│   ├── model/              # Data models
-│   ├── ratelimit/          # Rate limiting
-│   ├── report/             # PDF/text reports
-│   ├── store/              # Data persistence
-│   ├── threat/             # Threat intelligence
-│   └── waf/                # WAF rules engine
-└── configs/                # Configuration files
+├── cmd/obsidian/               # Main application entry point
+│   ├── main.go                 # Server initialization and routing
+│   └── ui/                     # Embedded frontend assets
+│       ├── index.html          # Main dashboard (dark theme)
+│       ├── login.html          # Authentication page
+│       ├── js/app.js           # Frontend application logic
+│       ├── css/styles.css      # Enterprise dark theme styling
+│       └── assets/             # Static assets (logo, icons)
+├── internal/app/               # Core application packages
+│   ├── alerts/                 # Webhook alert management
+│   ├── auth/                   # JWT authentication & RBAC
+│   ├── geoip/                  # Geographic IP blocking service
+│   ├── logging/                # Structured logging (Zap)
+│   ├── metrics/                # Prometheus-compatible metrics
+│   ├── ratelimit/              # 256-shard rate limiter
+│   ├── report/                 # PDF/Excel report generation
+│   ├── security/               # Security middleware & headers
+│   ├── store/                  # Data persistence (PostgreSQL/memory)
+│   ├── threatintel/            # Threat intelligence feeds
+│   └── tracing/                # Request ID tracing
+├── migrations/                 # Database migration scripts
+│   ├── 000001_initial_schema.up.sql
+│   └── 000001_initial_schema.down.sql
+├── configs/                    # Configuration files
+│   └── config.yaml             # Default configuration
+└── testing/                    # Test suites and benchmarks
+    ├── e2e/                    # End-to-end integration tests
+    ├── performance/            # Load testing scenarios
+    └── testdata/               # Test fixtures and data
 ```
 
 ---
@@ -185,8 +217,13 @@ obsidian/
 |----------|-------------|---------|
 | `OBSIDIAN_JWT_SECRET` | JWT signing secret (min 32 chars) | Random on startup |
 | `OBSIDIAN_ALLOWED_ORIGINS` | Comma-separated WebSocket origins | localhost:8082 |
-| `OBSIDIAN_DATA_PATH` | Path for persistent storage | `./data.json` |
-| `OBSIDIAN_THREAT_PATH` | Path for threat intelligence data | `./threats.json` |
+| `DATABASE_URL` | PostgreSQL connection string | In-memory mode |
+| `REDIS_URL` | Redis connection string | In-memory rate limiting |
+| `GEOIP_DATABASE_PATH` | Path to MaxMind GeoIP2 database | Disabled |
+| `THREAT_FEEDS_ENABLED` | Enable threat intelligence feeds | true |
+| `ALERT_WEBHOOKS_ENABLED` | Enable webhook alerting | true |
+| `RATE_LIMIT_REDIS` | Use Redis for distributed rate limiting | false |
+| `LOG_LEVEL` | Logging level (debug, info, warn, error) | info |
 
 ### Command Line Flags
 
@@ -206,6 +243,18 @@ export OBSIDIAN_JWT_SECRET="your-secure-random-secret-at-least-32-characters"
 
 # Set allowed origins for WebSocket
 export OBSIDIAN_ALLOWED_ORIGINS="https://your-domain.com,https://www.your-domain.com"
+
+# Configure PostgreSQL for enterprise features
+export DATABASE_URL="postgres://obsidian:secure_password@localhost:5432/obsidian_prod?sslmode=require"
+
+# Configure Redis for distributed rate limiting
+export REDIS_URL="redis://localhost:6379/0"
+
+# Enable GeoIP blocking
+export GEOIP_DATABASE_PATH="/opt/maxmind/GeoLite2-Country.mmdb"
+
+# Production logging
+export LOG_LEVEL="warn"
 
 # Run the application
 ./obsidian.exe -port 8082
@@ -244,32 +293,65 @@ Authenticate and receive JWT token.
 
 ### Protected Endpoints (Require Bearer Token)
 
+#### Core Security APIs
 | Endpoint | Method | Description | Required Role |
 |----------|--------|-------------|---------------|
-| `/api/stats` | GET | Dashboard statistics | Viewer |
-| `/api/logs` | GET | Security event logs | Viewer |
-| `/api/rules` | GET | WAF rules list | Viewer |
-| `/api/rules/create` | POST | Create new rule | Admin |
-| `/api/rules/update` | PUT | Update rule | Admin |
-| `/api/rules/delete` | POST | Delete rule | Admin |
-| `/api/threats` | GET | Threat intelligence data | Viewer |
+| `/api/stats` | GET | Dashboard statistics with geo data | Viewer |
+| `/api/logs` | GET | Security event logs with pagination | Viewer |
+| `/api/rules` | GET | WAF rules list (59 rules) | Viewer |
+| `/api/rules/create` | POST | Create new WAF rule | Admin |
+| `/api/rules/update` | PUT | Update existing rule | Admin |
+| `/api/rules/delete` | DELETE | Delete rule by ID | Admin |
+| `/api/threats` | GET | Threat intelligence data (2000+ threats) | Viewer |
 | `/api/threats/block` | POST | Block IP address | Admin |
-| `/api/metrics` | GET | System metrics | Viewer |
-| `/api/export` | GET | Export report | Viewer |
+
+#### Enterprise Analytics APIs
+| Endpoint | Method | Description | Required Role |
+|----------|--------|-------------|---------------|
+| `/api/metrics` | GET | System and security metrics | Viewer |
+| `/api/geoip/lookup` | GET | GeoIP lookup for any IP | Viewer |
+| `/api/geoip/blocked` | GET/POST/DELETE | Manage blocked countries | Admin |
+| `/api/geoip/metrics` | GET | GeoIP service statistics | Viewer |
+| `/api/ratelimit/blacklist` | POST/DELETE | Manage IP blacklist | Admin |
+| `/api/ratelimit/whitelist` | POST/DELETE | Manage IP whitelist | Admin |
+
+#### Alert and Integration APIs
+| Endpoint | Method | Description | Required Role |
+|----------|--------|-------------|---------------|
+| `/api/alerts/webhooks` | GET/POST/DELETE | Manage webhook integrations | Admin |
+| `/api/alerts/webhooks/test` | POST | Test webhook configuration | Admin |
+| `/api/export` | GET | Export security reports (PDF/Excel) | Analyst |
 | `/api/admin/users` | GET | User management | Admin |
-| `/api/admin/audit` | GET | Audit logs | Admin |
+| `/api/admin/audit` | GET | Comprehensive audit logs | Admin |
 
 ### Health Check
 
 #### GET /api/health
-Returns system health status.
+Returns comprehensive system health status.
 
 ```json
 {
   "status": "healthy",
   "uptime": "2h30m15s",
-  "version": "2.0.0",
-  "name": "Obsidian Sentinel WAF"
+  "version": "2.1.0",
+  "edition": "Enterprise",
+  "name": "Obsidian Sentinel WAF",
+  "features": {
+    "waf_engine": true,
+    "threat_intelligence": true,
+    "rate_limiting": true,
+    "geoip_blocking": true,
+    "webhook_alerts": true,
+    "postgresql": true,
+    "redis": true,
+    "advanced_analytics": true
+  },
+  "stats": {
+    "total_requests": 15432,
+    "blocked_requests": 127,
+    "active_threats": 2041,
+    "blocked_countries": 3
+  }
 }
 ```
 
@@ -280,21 +362,37 @@ Returns system health status.
 ### JWT Token Security
 - Tokens signed with HMAC-SHA256
 - Configurable expiration (default: 15 minutes)
+- Refresh token rotation
 - Secrets stored in environment variables
 - Constant-time signature comparison
+- Role-based claims validation
 
-### Rate Limiting
-- Sliding window algorithm
-- Per-IP tracking
+### Advanced Rate Limiting
+- 256-shard sliding window algorithm
+- Redis-backed distributed limiting
+- Per-IP and per-endpoint tracking
 - Configurable limits:
-  - 100 requests/minute general
+  - 200 requests/minute general
   - 5 login attempts/minute
+  - Custom thresholds per endpoint
+- Whitelist/blacklist IP management
+- Geographic rate limiting
 
 ### Threat Intelligence Sources
-- Spamhaus DROP/EDROP
-- Emerging Threats
-- Firehol Level 1
-- Custom blocklists
+- **Spamhaus DROP/EDROP** - 800+ malicious networks
+- **Emerging Threats** - 1000+ compromised IPs
+- **Firehol Level 1** - 200+ high-confidence threats
+- **Custom feeds** - User-defined blocklists
+- **GeoIP risk scoring** - Country-based threat assessment
+- **Real-time updates** - Feeds refreshed every 4 hours
+
+### GeoIP Security
+- MaxMind GeoIP2 database integration
+- Country-based blocking/allowing
+- Risk score calculation
+- VPN/Proxy/Tor detection
+- Threat score based on geography
+- Custom country rules with reasons
 
 ### Security Headers
 ```
@@ -311,6 +409,7 @@ Content-Security-Policy: default-src 'self'; ...
 
 ### Docker (Recommended)
 
+#### Simple Deployment
 ```dockerfile
 FROM golang:1.22-alpine AS builder
 WORKDIR /app
@@ -318,10 +417,51 @@ COPY . .
 RUN cd cmd/obsidian && go build -o obsidian .
 
 FROM alpine:latest
+RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /app/cmd/obsidian/obsidian .
 EXPOSE 8082
 CMD ["./obsidian", "-port", "8082"]
+```
+
+#### Enterprise Deployment with PostgreSQL and Redis
+```yaml
+version: '3.8'
+services:
+  obsidian:
+    build: .
+    ports:
+      - "8082:8082"
+    environment:
+      - DATABASE_URL=postgres://obsidian:secure_pass@postgres:5432/obsidian
+      - REDIS_URL=redis://redis:6379/0
+      - OBSIDIAN_JWT_SECRET=your-super-secure-secret-key-here
+      - GEOIP_DATABASE_PATH=/data/GeoLite2-Country.mmdb
+    volumes:
+      - ./geoip:/data
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=obsidian
+      - POSTGRES_USER=obsidian
+      - POSTGRES_PASSWORD=secure_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
 ```
 
 ### Kubernetes
@@ -331,6 +471,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: obsidian-waf
+  namespace: security
 spec:
   replicas: 3
   selector:
@@ -343,7 +484,7 @@ spec:
     spec:
       containers:
       - name: obsidian
-        image: obsidian:2.0.0
+        image: obsidian:2.1.0
         ports:
         - containerPort: 8082
         env:
@@ -352,12 +493,54 @@ spec:
             secretKeyRef:
               name: obsidian-secrets
               key: jwt-secret
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: obsidian-secrets
+              key: database-url
+        - name: REDIS_URL
+          value: "redis://obsidian-redis:6379/0"
+        - name: GEOIP_DATABASE_PATH
+          value: "/data/GeoLite2-Country.mmdb"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
         livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8082
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
           httpGet:
             path: /api/health
             port: 8082
           initialDelaySeconds: 5
           periodSeconds: 10
+        volumeMounts:
+        - name: geoip-data
+          mountPath: /data
+      volumes:
+      - name: geoip-data
+        configMap:
+          name: geoip-database
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: obsidian-waf-service
+spec:
+  selector:
+    app: obsidian-waf
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8082
+  type: LoadBalancer
 ```
 
 ### Systemd Service
@@ -410,15 +593,43 @@ curl -X GET "http://localhost:8082/api/test?id=1' OR '1'='1"
 
 ### Metrics Endpoint
 
-`GET /api/metrics` returns:
+`GET /api/metrics` returns comprehensive system metrics:
 ```json
 {
-  "total_requests": 15432,
-  "blocked_requests": 127,
-  "uptime_seconds": 86400,
-  "memory_alloc_mb": 45,
-  "memory_sys_mb": 72,
-  "goroutines": 15
+  "total_requests": 25432,
+  "blocked_requests": 327,
+  "uptime_seconds": 172800,
+  "memory_alloc_mb": 65,
+  "memory_sys_mb": 128,
+  "goroutines": 23,
+  "rate_limiter": {
+    "active_visitors": 15,
+    "blacklist_count": 5,
+    "whitelist_count": 10,
+    "rate_limited_ips": 3,
+    "requests_per_minute": 200,
+    "shards": 256,
+    "total_allowed": 25105,
+    "total_blocked": 327
+  },
+  "threat_intel": {
+    "total_threats": 2041,
+    "feeds_active": 4,
+    "last_update": "2026-02-01T14:30:00Z",
+    "blocked_today": 127,
+    "high_risk_count": 1205
+  },
+  "geoip": {
+    "blocked_countries": 3,
+    "total_lookups": 15432,
+    "cache_hits": 12890,
+    "cache_misses": 2542
+  },
+  "webhooks": {
+    "active_webhooks": 2,
+    "alerts_sent_today": 15,
+    "alerts_failed": 1
+  }
 }
 ```
 

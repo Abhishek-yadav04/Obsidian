@@ -329,11 +329,6 @@ func (rl *RateLimiter) RemoveFromBlacklist(ip string) {
 	rl.blacklist.Delete(ip)
 }
 
-// RemoveFromWhitelist removes an IP from the whitelist
-func (rl *RateLimiter) RemoveFromWhitelist(ip string) {
-	rl.whitelist.Delete(ip)
-}
-
 // Reset clears rate limit state for an IP or all IPs if empty string
 func (rl *RateLimiter) Reset(ip string) {
 	if ip == "" {
@@ -369,54 +364,39 @@ func (rl *RateLimiter) Unblock(ip string) {
 
 // GetStats returns rate limiter statistics
 func (rl *RateLimiter) GetStats() map[string]interface{} {
-	var whitelistIPs []string
-	rl.whitelist.Range(func(key, _ interface{}) bool {
-		if ip, ok := key.(string); ok {
-			whitelistIPs = append(whitelistIPs, ip)
-		}
+	whitelistCount := 0
+	rl.whitelist.Range(func(_, _ interface{}) bool {
+		whitelistCount++
 		return true
 	})
 
-	var blacklistIPs []string
-	rl.blacklist.Range(func(key, _ interface{}) bool {
-		if ip, ok := key.(string); ok {
-			blacklistIPs = append(blacklistIPs, ip)
-		}
+	blacklistCount := 0
+	rl.blacklist.Range(func(_, _ interface{}) bool {
+		blacklistCount++
 		return true
 	})
 
 	blockedCount := int64(0)
-	rateLimitedIPs := 0
 	for _, sh := range rl.shards {
 		sh.mu.RLock()
 		for _, v := range sh.visitors {
 			if v.blocked.Load() {
 				blockedCount++
 			}
-			// Count IPs that are near or at rate limit
-			if len(v.timestamps) > rl.config.RequestsPerMinute/2 {
-				rateLimitedIPs++
-			}
 		}
 		sh.mu.RUnlock()
 	}
 
 	return map[string]interface{}{
-		"active_visitors":     rl.totalVisitors.Load(),
-		"blocked_ips":         blockedCount,
-		"rate_limited_ips":    rateLimitedIPs,
-		"whitelist_count":     len(whitelistIPs),
-		"blacklist_count":     len(blacklistIPs),
-		"whitelisted_count":   len(whitelistIPs),
-		"blacklisted_count":   len(blacklistIPs),
-		"whitelist":           whitelistIPs,
-		"blacklist":           blacklistIPs,
-		"requests_per_minute": rl.config.RequestsPerMinute,
-		"rate_limit":          rl.config.RequestsPerMinute,
-		"window_seconds":      60,
-		"total_allowed":       rl.totalAllowed.Load(),
-		"total_blocked":       rl.totalBlocked.Load(),
-		"shards":              NumShards,
+		"active_visitors": rl.totalVisitors.Load(),
+		"blocked_ips":     blockedCount,
+		"whitelist_count": whitelistCount,
+		"blacklist_count": blacklistCount,
+		"rate_limit":      rl.config.RequestsPerMinute,
+		"window_seconds":  60,
+		"total_allowed":   rl.totalAllowed.Load(),
+		"total_blocked":   rl.totalBlocked.Load(),
+		"shards":          NumShards,
 	}
 }
 

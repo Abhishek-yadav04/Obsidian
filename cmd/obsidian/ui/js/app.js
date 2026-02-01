@@ -86,6 +86,9 @@ const ObsidianApp = {
             rules: 'Rules Management',
             admin: 'Admin Panel',
             threats: 'Threat Intelligence',
+            geoip: 'GeoIP Blocking',
+            ratelimit: 'Rate Limiting',
+            alerts: 'Alert Webhooks',
             settings: 'Settings'
         };
         document.getElementById('pageTitle').innerText = titles[view] || 'Dashboard';
@@ -111,6 +114,15 @@ const ObsidianApp = {
                 break;
             case 'threats':
                 await this.fetchThreatIntelligence();
+                break;
+            case 'geoip':
+                await this.fetchGeoIPData();
+                break;
+            case 'ratelimit':
+                await this.fetchRateLimitData();
+                break;
+            case 'alerts':
+                await this.fetchAlertsData();
                 break;
         }
     },
@@ -671,6 +683,381 @@ const ObsidianApp = {
             body: JSON.stringify({ ip })
         });
         this.showToast(data?.success ? 'Success' : 'Error', data?.message || 'IP blocked');
+    },
+
+    // ============================================
+    // GEOIP MANAGEMENT
+    // ============================================
+    async fetchGeoIPData() {
+        const [metrics, blocked] = await Promise.all([
+            this.api('/api/geoip/metrics'),
+            this.api('/api/geoip/blocked')
+        ]);
+
+        if (metrics) {
+            // API returns total_lookups, cache_hits, cache_misses
+            // blocked_countries comes from the blocked API response
+            const blockedCount = blocked?.blocked_countries || blocked?.countries?.length || 0;
+            document.getElementById('geoip-blocked-count').innerText = blockedCount;
+            document.getElementById('geoip-blocked-today').innerText = metrics.total_lookups || 0;
+            document.getElementById('geoip-status').innerText = 'Active';
+            
+            // Render top countries from blocked data
+            const topCountries = document.getElementById('geoip-top-countries');
+            const countries = blocked?.countries || [];
+            if (topCountries && countries.length > 0) {
+                topCountries.innerHTML = countries.slice(0, 5).map(c => `
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span><i class="fas fa-flag me-2"></i>${c.name || c.code}</span>
+                        <span class="badge bg-danger">${c.blocked_count || 0} blocked</span>
+                    </div>
+                `).join('');
+            } else {
+                topCountries.innerHTML = '<div class="text-muted text-center">No blocked countries</div>';
+            }
+        }
+
+        const tbody = document.getElementById('geoip-blocked-tbody');
+        if (tbody && blocked) {
+            // API returns {countries: []} with code/name fields
+            const countries = blocked.countries || blocked || [];
+            if (countries.length > 0) {
+                tbody.innerHTML = countries.map(c => `
+                    <tr>
+                        <td>${c.name || c.country_name || c.code}</td>
+                        <td class="font-monospace">${c.code || c.country_code}</td>
+                        <td>${c.blocked_count || 0}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-success" onclick="ObsidianApp.unblockCountry('${c.code || c.country_code}')" title="Unblock">
+                                <i class="fas fa-unlock"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No countries blocked</td></tr>';
+            }
+        }
+    },
+
+    openGeoIPModal() {
+        const modal = new bootstrap.Modal(document.getElementById('geoipModal'));
+        document.getElementById('geoipCountryCode').value = '';
+        document.getElementById('geoipReason').value = '';
+        modal.show();
+    },
+
+    async blockCountry() {
+        const code = document.getElementById('geoipCountryCode').value.toUpperCase();
+        const reason = document.getElementById('geoipReason').value;
+        
+        if (!code || code.length !== 2) {
+            this.showToast('Error', 'Please enter a valid 2-letter country code', true);
+            return;
+        }
+
+        const data = await this.api('/api/geoip/blocked', {
+            method: 'POST',
+            body: JSON.stringify({ country_code: code, reason })
+        });
+
+        if (data?.success) {
+            this.showToast('Success', `Country ${code} blocked`);
+            bootstrap.Modal.getInstance(document.getElementById('geoipModal')).hide();
+            this.fetchGeoIPData();
+        } else {
+            this.showToast('Error', data?.message || 'Failed to block country', true);
+        }
+    },
+
+    async unblockCountry(code) {
+        if (!confirm(`Unblock country ${code}?`)) return;
+        
+        const data = await this.api(`/api/geoip/blocked?code=${encodeURIComponent(code)}`, {
+            method: 'DELETE'
+        });
+
+        if (data?.success) {
+            this.showToast('Success', `Country ${code} unblocked`);
+            this.fetchGeoIPData();
+        } else {
+            this.showToast('Error', data?.message || 'Failed to unblock', true);
+        }
+    },
+
+    async lookupIP() {
+        const ip = document.getElementById('geoip-lookup-ip').value;
+        if (!ip) {
+            this.showToast('Error', 'Please enter an IP address', true);
+            return;
+        }
+
+        const data = await this.api(`/api/geoip/lookup?ip=${encodeURIComponent(ip)}`);
+        const resultDiv = document.getElementById('geoip-lookup-result');
+        
+        if (data && !data.error) {
+            document.getElementById('lookup-country').innerText = data.country_name || 'Unknown';
+            document.getElementById('lookup-code').innerText = data.country_code || '-';
+            document.getElementById('lookup-blocked').innerHTML = data.is_blocked 
+                ? '<span class="badge bg-danger">Yes</span>' 
+                : '<span class="badge bg-success">No</span>';
+            document.getElementById('lookup-risk').innerHTML = data.risk_level 
+                ? `<span class="badge bg-${data.risk_level === 'high' ? 'danger' : 'warning'}">${data.risk_level}</span>`
+                : '<span class="badge bg-secondary">Unknown</span>';
+            resultDiv.classList.remove('d-none');
+        } else {
+            this.showToast('Error', data?.error || 'IP lookup failed', true);
+            resultDiv.classList.add('d-none');
+        }
+    },
+
+    // ============================================
+    // RATE LIMITING MANAGEMENT
+    // ============================================
+    async fetchRateLimitData() {
+        const data = await this.api('/api/metrics');
+        
+        if (data?.rate_limiter) {
+            const rl = data.rate_limiter;
+            document.getElementById('ratelimit-limited-count').innerText = rl.rate_limited_ips || 0;
+            document.getElementById('ratelimit-blacklist-count').innerText = rl.blacklisted_count || 0;
+            document.getElementById('ratelimit-whitelist-count').innerText = rl.whitelisted_count || 0;
+            document.getElementById('ratelimit-limit').innerText = rl.requests_per_minute || 200;
+
+            // Render blacklist
+            const blacklistTbody = document.getElementById('blacklist-tbody');
+            if (blacklistTbody && rl.blacklist) {
+                if (rl.blacklist.length > 0) {
+                    blacklistTbody.innerHTML = rl.blacklist.map(ip => `
+                        <tr>
+                            <td class="font-monospace">${ip}</td>
+                            <td class="small text-muted">-</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-success" onclick="ObsidianApp.removeFromBlacklist('${ip}')" title="Remove">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('');
+                } else {
+                    blacklistTbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No blacklisted IPs</td></tr>';
+                }
+            }
+
+            // Render whitelist
+            const whitelistTbody = document.getElementById('whitelist-tbody');
+            if (whitelistTbody && rl.whitelist) {
+                if (rl.whitelist.length > 0) {
+                    whitelistTbody.innerHTML = rl.whitelist.map(ip => `
+                        <tr>
+                            <td class="font-monospace">${ip}</td>
+                            <td class="small text-muted">-</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.removeFromWhitelist('${ip}')" title="Remove">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('');
+                } else {
+                    whitelistTbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No whitelisted IPs</td></tr>';
+                }
+            }
+        }
+    },
+
+    async blacklistIP() {
+        const ip = document.getElementById('blacklist-ip-input').value;
+        if (!ip) {
+            this.showToast('Error', 'Please enter an IP address', true);
+            return;
+        }
+
+        const data = await this.api('/api/ratelimit/blacklist', {
+            method: 'POST',
+            body: JSON.stringify({ ip })
+        });
+
+        if (data?.success) {
+            document.getElementById('blacklist-ip-input').value = '';
+            this.showToast('Success', `IP ${ip} blacklisted`);
+            this.fetchRateLimitData();
+        } else {
+            this.showToast('Error', data?.message || 'Failed to blacklist IP', true);
+        }
+    },
+
+    async whitelistIP() {
+        const ip = document.getElementById('whitelist-ip-input').value;
+        if (!ip) {
+            this.showToast('Error', 'Please enter an IP address', true);
+            return;
+        }
+
+        const data = await this.api('/api/ratelimit/whitelist', {
+            method: 'POST',
+            body: JSON.stringify({ ip })
+        });
+
+        if (data?.success) {
+            document.getElementById('whitelist-ip-input').value = '';
+            this.showToast('Success', `IP ${ip} whitelisted`);
+            this.fetchRateLimitData();
+        } else {
+            this.showToast('Error', data?.message || 'Failed to whitelist IP', true);
+        }
+    },
+
+    async removeFromBlacklist(ip) {
+        const data = await this.api('/api/ratelimit/blacklist', {
+            method: 'DELETE',
+            body: JSON.stringify({ ip })
+        });
+        if (data?.success) {
+            this.showToast('Success', `IP ${ip} removed from blacklist`);
+            this.fetchRateLimitData();
+        }
+    },
+
+    async removeFromWhitelist(ip) {
+        const data = await this.api('/api/ratelimit/whitelist', {
+            method: 'DELETE',
+            body: JSON.stringify({ ip })
+        });
+        if (data?.success) {
+            this.showToast('Success', `IP ${ip} removed from whitelist`);
+            this.fetchRateLimitData();
+        }
+    },
+
+    // ============================================
+    // ALERT WEBHOOKS MANAGEMENT
+    // ============================================
+    async fetchAlertsData() {
+        const rawData = await this.api('/api/alerts/webhooks');
+        
+        // API returns array directly, normalize to object structure
+        const webhooks = Array.isArray(rawData) ? rawData : (rawData?.webhooks || rawData || []);
+        
+        if (webhooks) {
+            const enabledWebhooks = webhooks.filter(w => w.enabled);
+            document.getElementById('webhooks-active-count').innerText = enabledWebhooks.length || 0;
+            document.getElementById('alerts-sent-today').innerText = rawData?.alerts_sent_today || 0;
+            document.getElementById('alerts-failed').innerText = rawData?.alerts_failed || 0;
+
+            // Update webhook select dropdown for testing
+            const select = document.getElementById('test-webhook-select');
+            if (select) {
+                select.innerHTML = '<option value="">Select webhook...</option>' + 
+                    webhooks.map(w => `<option value="${w.name}">${w.name} (${w.type || 'generic'})</option>`).join('');
+            }
+
+            // Render webhooks table
+            const tbody = document.getElementById('webhooks-tbody');
+            if (tbody) {
+                if (webhooks.length > 0) {
+                    tbody.innerHTML = webhooks.map(w => {
+                        const typeIcons = {
+                            slack: '<i class="fab fa-slack text-info"></i>',
+                            teams: '<i class="fab fa-microsoft text-primary"></i>',
+                            discord: '<i class="fab fa-discord text-info"></i>',
+                            pagerduty: '<i class="fas fa-pager text-success"></i>',
+                            generic: '<i class="fas fa-globe text-secondary"></i>'
+                        };
+                        const urlDisplay = w.url || '***';
+                        const truncatedUrl = urlDisplay.length > 40 ? urlDisplay.substring(0, 40) + '...' : urlDisplay;
+                        
+                        return `
+                            <tr>
+                                <td>${w.name}</td>
+                                <td>${typeIcons[w.type] || '<i class="fas fa-globe text-secondary"></i>'} ${w.type || 'generic'}</td>
+                                <td class="font-monospace small">${truncatedUrl}</td>
+                                <td><span class="badge bg-${w.min_severity === 'critical' ? 'danger' : w.min_severity === 'error' ? 'warning' : 'info'}">${w.min_severity || 'all'}</span></td>
+                                <td>${w.enabled ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Disabled</span>'}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.deleteWebhook('${w.name}')" title="Delete">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No webhooks configured</td></tr>';
+                }
+            }
+        }
+    },
+
+    openWebhookModal() {
+        const modal = new bootstrap.Modal(document.getElementById('webhookModal'));
+        document.getElementById('webhookName').value = '';
+        document.getElementById('webhookType').value = 'slack';
+        document.getElementById('webhookUrl').value = '';
+        document.getElementById('webhookSeverity').value = 'error';
+        document.getElementById('webhookEnabled').checked = true;
+        modal.show();
+    },
+
+    async saveWebhook() {
+        const webhook = {
+            name: document.getElementById('webhookName').value,
+            type: document.getElementById('webhookType').value,
+            url: document.getElementById('webhookUrl').value,
+            severity: document.getElementById('webhookSeverity').value,
+            enabled: document.getElementById('webhookEnabled').checked
+        };
+
+        if (!webhook.name || !webhook.url) {
+            this.showToast('Error', 'Name and URL are required', true);
+            return;
+        }
+
+        const data = await this.api('/api/alerts/webhooks', {
+            method: 'POST',
+            body: JSON.stringify(webhook)
+        });
+
+        if (data?.success) {
+            this.showToast('Success', 'Webhook added');
+            bootstrap.Modal.getInstance(document.getElementById('webhookModal')).hide();
+            this.fetchAlertsData();
+        } else {
+            this.showToast('Error', data?.message || 'Failed to add webhook', true);
+        }
+    },
+
+    async deleteWebhook(name) {
+        if (!confirm('Delete this webhook?')) return;
+        
+        const data = await this.api(`/api/alerts/webhooks?name=${encodeURIComponent(name)}`, {
+            method: 'DELETE'
+        });
+
+        if (data?.success) {
+            this.showToast('Success', 'Webhook deleted');
+            this.fetchAlertsData();
+        } else {
+            this.showToast('Error', data?.message || 'Failed to delete webhook', true);
+        }
+    },
+
+    async testWebhook() {
+        const name = document.getElementById('test-webhook-select').value;
+        if (!name) {
+            this.showToast('Error', 'Please select a webhook', true);
+            return;
+        }
+
+        const data = await this.api(`/api/alerts/webhooks/test?name=${encodeURIComponent(name)}`, {
+            method: 'POST'
+        });
+
+        if (data?.success) {
+            this.showToast('Success', 'Test alert sent!');
+        } else {
+            this.showToast('Error', data?.message || 'Test failed', true);
+        }
     },
 
     // WebSocket connection

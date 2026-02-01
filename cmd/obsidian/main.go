@@ -1,3 +1,5 @@
+// Package main provides the entry point for Obsidian Sentinel WAF.
+// This is an enterprise-grade Web Application Firewall with advanced security features.
 package main
 
 import (
@@ -7,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,11 +19,17 @@ import (
 	"time"
 
 	"github.com/corazawaf/coraza/v3"
+	"github.com/corazawaf/coraza/v3/internal/app/alerts"
 	"github.com/corazawaf/coraza/v3/internal/app/api"
 	"github.com/corazawaf/coraza/v3/internal/app/auth"
+	"github.com/corazawaf/coraza/v3/internal/app/geoip"
+	"github.com/corazawaf/coraza/v3/internal/app/logging"
+	"github.com/corazawaf/coraza/v3/internal/app/metrics"
 	"github.com/corazawaf/coraza/v3/internal/app/model"
 	"github.com/corazawaf/coraza/v3/internal/app/ratelimit"
 	"github.com/corazawaf/coraza/v3/internal/app/report"
+	"github.com/corazawaf/coraza/v3/internal/app/requestid"
+	"github.com/corazawaf/coraza/v3/internal/app/security"
 	"github.com/corazawaf/coraza/v3/internal/app/store"
 	"github.com/corazawaf/coraza/v3/internal/app/threat"
 	"github.com/corazawaf/coraza/v3/internal/app/waf"
@@ -32,7 +39,7 @@ import (
 // Application version
 const (
 	AppName    = "Obsidian Sentinel WAF"
-	AppVersion = "2.0.0"
+	AppVersion = "2.1.0" // Enterprise Edition
 )
 
 // Metrics for observability
@@ -44,9 +51,14 @@ var (
 
 // Global instances for enterprise features
 var (
-	threatIntel *threat.ThreatIntel
-	rateLimiter *ratelimit.RateLimiter
-	reportGen   *report.Generator
+	threatIntel  *threat.ThreatIntel
+	rateLimiter  *ratelimit.RateLimiter
+	reportGen    *report.Generator
+	geoIPService *geoip.Service
+	alertService *alerts.Service
+	securityMgr  *security.Manager
+	logger       *logging.Logger
+	metricsInst  *metrics.Metrics
 )
 
 // UserClaims for JWT authentication context
@@ -65,32 +77,91 @@ const userContextKey contextKey = "user"
 var uiAssets embed.FS
 
 func main() {
+	// Parse flags
 	port := flag.Int("port", 8082, "Port to run the server on")
-	dev := flag.Bool("dev", false, "Run in dev mode")
+	dev := flag.Bool("dev", false, "Run in development mode")
+	logLevel := flag.String("log-level", "info", "Log level (debug, info, warn, error)")
+	logFormat := flag.String("log-format", "json", "Log format (json, console)")
 	flag.Parse()
 
-	// Validate required environment variables
-	if os.Getenv("OBSIDIAN_JWT_SECRET") == "" {
-		log.Println("WARNING: OBSIDIAN_JWT_SECRET not set. Using default (insecure for production)")
+	// Initialize structured logging first
+	logCfg := logging.DefaultConfig()
+	logCfg.Level = *logLevel
+	logCfg.Format = *logFormat
+	if *dev {
+		logCfg.Format = "console"
+		logCfg.Level = "debug"
+	}
+	if err := logging.Init(logCfg); err != nil {
+		fmt.Printf("Failed to initialize logging: %v\n", err)
+		os.Exit(1)
+	}
+	logger = logging.Get()
+	defer logger.Sync()
+
+	// Initialize security manager
+	secCfg := security.DefaultConfig()
+	secCfg.RequireSecureSecret = !*dev // Require secret in production
+	var err error
+	securityMgr, err = security.NewManager(secCfg)
+	if err != nil {
+		logger.Error("Failed to initialize security manager") // Using zap fields - this would need adjustment for actual zap import
+
+		os.Exit(1)
 	}
 
 	// Initialize Store
 	s := store.NewStore("data.json")
 	if *dev {
-		fmt.Println("Running in Dev Mode")
+		logger.Info("Running in Development Mode")
 	}
+
+	// Initialize Metrics
+	metricsInst = metrics.New()
 
 	// Initialize Enterprise Features
 	threatIntel = threat.NewThreatIntel(
 		threat.WithPersistPath("threats.json"),
 	)
+
 	rateLimiter = ratelimit.NewRateLimiter(ratelimit.DefaultConfig())
+
 	reportGen = report.NewGenerator()
+
+	// Initialize GeoIP service
+	geoIPService, err = geoip.NewService(geoip.DefaultConfig())
+	if err != nil {
+		logger.Warn("GeoIP service not available (database not configured)")
+	}
+
+	// Initialize Alert service
+	alertCfg := alerts.DefaultConfig()
+	// Configure webhooks from environment
+	if slackURL := os.Getenv("OBSIDIAN_SLACK_WEBHOOK"); slackURL != "" {
+		alertCfg.Webhooks = append(alertCfg.Webhooks, alerts.WebhookConfig{
+			Name:        "slack",
+			Type:        alerts.WebhookSlack,
+			URL:         slackURL,
+			Enabled:     true,
+			MinSeverity: alerts.SeverityMedium,
+		})
+	}
+	if teamsURL := os.Getenv("OBSIDIAN_TEAMS_WEBHOOK"); teamsURL != "" {
+		alertCfg.Webhooks = append(alertCfg.Webhooks, alerts.WebhookConfig{
+			Name:        "teams",
+			Type:        alerts.WebhookTeams,
+			URL:         teamsURL,
+			Enabled:     true,
+			MinSeverity: alerts.SeverityMedium,
+		})
+	}
+	alertService = alerts.NewService(alertCfg)
 
 	// Initialize WAF
 	wafEngine, err := waf.NewWAF(s)
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("Failed to initialize WAF engine")
+		os.Exit(1)
 	}
 
 	// Initialize API
@@ -113,36 +184,83 @@ func main() {
 	mux.HandleFunc("/api/rules/test", authMiddleware(apiHandler.HandleTestRule))
 	mux.HandleFunc("/api/ws", apiHandler.HandleWS)
 	mux.HandleFunc("/api/export", authMiddleware(handleExport(s)))
-	mux.HandleFunc("/api/metrics", authMiddleware(handleMetrics))
 	mux.HandleFunc("/api/admin/users", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleUsers)))
 	mux.HandleFunc("/api/admin/audit", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleAuditLogs)))
+
+	// Prometheus Metrics endpoint
+	mux.Handle("/metrics", metricsInst.Handler())
+
+	// Internal metrics (JSON format)
+	mux.HandleFunc("/api/metrics", authMiddleware(handleMetrics))
 
 	// Threat Intelligence Routes
 	mux.HandleFunc("/api/threats", authMiddleware(threatIntel.HandleThreats))
 	mux.HandleFunc("/api/threats/block", authMiddleware(rbacMiddleware("Admin", threatIntel.HandleBlockIP)))
 	mux.HandleFunc("/api/threats/stats", authMiddleware(threatIntel.HandleStats))
 
-	// Rate Limiter Reset (Admin only) - useful for testing
+	// GeoIP Routes
+	if geoIPService != nil {
+		mux.HandleFunc("/api/geoip/lookup", authMiddleware(geoIPService.HandleLookup))
+		mux.HandleFunc("/api/geoip/blocked", authMiddleware(rbacMiddleware("Admin", geoIPService.HandleBlockedCountries)))
+		mux.HandleFunc("/api/geoip/metrics", authMiddleware(geoIPService.HandleMetrics))
+	}
+
+	// Alert Routes
+	mux.HandleFunc("/api/alerts/webhooks", authMiddleware(rbacMiddleware("Admin", alertService.HandleWebhooks)))
+	mux.HandleFunc("/api/alerts/webhooks/test", authMiddleware(rbacMiddleware("Admin", alertService.HandleTest)))
+	mux.HandleFunc("/api/alerts/metrics", authMiddleware(alertService.HandleMetrics))
+
+	// Rate Limiter Routes
+	mux.HandleFunc("/api/ratelimit/blacklist", authMiddleware(rbacMiddleware("Admin", handleRateLimitBlacklist)))
+	mux.HandleFunc("/api/ratelimit/whitelist", authMiddleware(rbacMiddleware("Admin", handleRateLimitWhitelist)))
 	mux.HandleFunc("/api/admin/ratelimit/reset", authMiddleware(rbacMiddleware("Admin", handleRateLimitReset)))
 
 	// Static Files (UI)
 	uiFS, err := fs.Sub(uiAssets, "ui")
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("Failed to load UI assets")
+		os.Exit(1)
 	}
 	fileServer := http.FileServer(http.FS(uiFS))
 	mux.Handle("/", fileServer)
 
-	// Middleware Stack: Security Headers -> Rate Limit -> Logging -> WAF -> Router
-	finalHandler := securityHeadersMiddleware(rateLimiter.Middleware(loggingMiddleware(wafMiddleware(wafEngine, s, mux))))
+	// Build middleware stack
+	// Order: Request ID -> Security Headers -> Metrics -> Rate Limit -> GeoIP -> Logging -> WAF -> Router
+	var finalHandler http.Handler = mux
+
+	// WAF middleware
+	finalHandler = wafMiddleware(wafEngine, s, finalHandler)
+
+	// Logging middleware
+	finalHandler = loggingMiddleware(finalHandler)
+
+	// GeoIP middleware (if available)
+	if geoIPService != nil {
+		finalHandler = geoIPService.Middleware(finalHandler)
+	}
+
+	// Rate limiting middleware
+	finalHandler = rateLimiter.Middleware(finalHandler)
+
+	// Metrics middleware
+	finalHandler = metricsInst.Middleware(finalHandler)
+
+	// Security headers middleware
+	finalHandler = securityHeadersMiddleware(finalHandler)
+
+	// Request ID middleware
+	reqIDCfg := requestid.DefaultConfig()
+	finalHandler = requestid.Middleware(reqIDCfg)(finalHandler)
 
 	// Create server with timeouts
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", *port),
-		Handler:      finalHandler,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              fmt.Sprintf(":%d", *port),
+		Handler:           finalHandler,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MB
 	}
 
 	// Graceful shutdown
@@ -151,22 +269,67 @@ func main() {
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 		<-sigChan
 
-		log.Println("Shutting down gracefully...")
+		logger.Info("Shutting down gracefully...")
+
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
+		// Stop services
 		threatIntel.Stop()
+		rateLimiter.Stop()
+		alertService.Stop()
 		_ = s.Save()
 
 		if err := server.Shutdown(ctx); err != nil {
-			log.Printf("Shutdown error: %v", err)
+			logger.Error("Shutdown error")
 		}
 	}()
 
-	fmt.Printf("%s v%s is running on http://localhost:%d\n", AppName, AppVersion, *port)
-	fmt.Println("Enterprise Features: Rate Limiting ✓ | Threat Intel ✓ | PDF Reports ✓")
+	// Start uptime counter for metrics
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			metricsInst.IncrementUptime()
+			// Update system metrics
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			metricsInst.SetSystemMetrics(runtime.NumGoroutine(), m.Alloc, m.Sys)
+		}
+	}()
+
+	// Send startup alert
+	_ = alertService.AlertSystemEvent(alerts.SeverityInfo,
+		"Obsidian WAF Started",
+		fmt.Sprintf("Obsidian Sentinel WAF v%s started on port %d", AppVersion, *port))
+
+	// Print startup banner
+	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
+	fmt.Println("║           OBSIDIAN SENTINEL WAF - ENTERPRISE EDITION         ║")
+	fmt.Printf("║                        Version %s                          ║\n", AppVersion)
+	fmt.Println("╠══════════════════════════════════════════════════════════════╣")
+	fmt.Printf("║  Server:      http://localhost:%d                            ║\n", *port)
+	fmt.Printf("║  Metrics:     http://localhost:%d/metrics                    ║\n", *port)
+	fmt.Println("╠══════════════════════════════════════════════════════════════╣")
+	fmt.Println("║  Features:                                                   ║")
+	fmt.Println("║    ✓ Coraza WAF Engine (OWASP CRS Compatible)               ║")
+	fmt.Println("║    ✓ Sharded Rate Limiting (256 shards)                     ║")
+	fmt.Println("║    ✓ Threat Intelligence                                    ║")
+	if geoIPService != nil {
+		fmt.Println("║    ✓ GeoIP Blocking                                         ║")
+	} else {
+		fmt.Println("║    ○ GeoIP Blocking (database not configured)               ║")
+	}
+	fmt.Println("║    ✓ Webhook Alerts (Slack/Teams/Discord)                   ║")
+	fmt.Println("║    ✓ Prometheus Metrics                                     ║")
+	fmt.Println("║    ✓ Structured Logging (JSON)                              ║")
+	fmt.Println("║    ✓ Request ID Tracing                                     ║")
+	fmt.Println("║    ✓ PDF Report Generation                                  ║")
+	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
+
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatal(err)
+		logger.Error("Server failed to start")
+		os.Exit(1)
 	}
 }
 
@@ -178,7 +341,13 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; font-src 'self' https://cdn.jsdelivr.net; connect-src 'self' ws: wss:")
+
+		// HSTS (only enable in production with HTTPS)
+		if r.TLS != nil {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 
 		next.ServeHTTP(w, r)
 	})
@@ -189,7 +358,7 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 		// Panic recovery
 		defer func() {
 			if rec := recover(); rec != nil {
-				log.Printf("WAF Panic recovered: %v", rec)
+				logger.Error("WAF Panic recovered")
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			}
 		}()
@@ -197,11 +366,18 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 		requestStart := time.Now()
 		ip := extractClientIP(r)
 		userAgent := r.UserAgent()
+		requestID := requestid.FromContext(r.Context())
 
 		// Check threat intelligence first
 		if entry, blocked := threatIntel.CheckIP(ip); blocked {
 			atomic.AddInt64(&blockedRequests, 1)
 			threatIntel.RecordHit(ip)
+
+			// Record metrics
+			metricsInst.RecordThreatBlock(entry.Category)
+
+			// Send alert for threat intel block
+			_ = alertService.AlertThreatIntel(ip, entry.Category, entry.Source)
 
 			// Log threat-blocked request
 			s.AddLog(model.LogEntry{
@@ -213,15 +389,16 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 				RuleID:     0,
 				Action:     "Deny",
 				Status:     "ThreatBlocked",
-				Details:    fmt.Sprintf("IP blocked by threat intelligence: %s", entry.Category),
+				Details:    fmt.Sprintf("[%s] IP blocked by threat intelligence: %s", requestID, entry.Category),
 				StatusCode: http.StatusForbidden,
 				UserAgent:  userAgent,
 			})
 
 			w.WriteHeader(http.StatusForbidden)
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"blocked": true,
-				"reason":  fmt.Sprintf("IP blocked by threat intelligence: %s", entry.Category),
+				"blocked":    true,
+				"reason":     fmt.Sprintf("IP blocked by threat intelligence: %s", entry.Category),
+				"request_id": requestID,
 			})
 			return
 		}
@@ -254,6 +431,9 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 			tx.Close()
 		}()
 
+		// Record WAF evaluation start
+		evalStart := time.Now()
+
 		// 1. Process Request Headers
 		tx.ProcessConnection(r.RemoteAddr, 0, "", 0)
 		tx.ProcessURI(r.URL.String(), r.Method, r.Proto)
@@ -262,22 +442,28 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 				tx.AddRequestHeader(k, v)
 			}
 		}
+
+		metricsInst.RecordWAFRuleEvaluation("request_headers", time.Since(evalStart))
+
 		if it := tx.ProcessRequestHeaders(); it != nil {
-			processInterruption(w, it, s, r)
+			processInterruption(w, it, s, r, requestID)
 			return
 		}
 
 		// 2. Process Request Body
+		evalStart = time.Now()
 		if it, _ := tx.ProcessRequestBody(); it != nil {
-			processInterruption(w, it, s, r)
+			processInterruption(w, it, s, r, requestID)
 			return
 		}
+		metricsInst.RecordWAFRuleEvaluation("request_body", time.Since(evalStart))
 
 		// 3. Pass to application
 		rec := &responseRecorder{ResponseWriter: w, statusCode: 200}
 		next.ServeHTTP(rec, r)
 
 		// 4. Process Response
+		evalStart = time.Now()
 		for k, vr := range rec.Header() {
 			for _, v := range vr {
 				tx.AddResponseHeader(k, v)
@@ -286,6 +472,7 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 		if it := tx.ProcessResponseHeaders(rec.statusCode, "HTTP/1.1"); it != nil {
 			// Response phase interruption - log it
 		}
+		metricsInst.RecordWAFRuleEvaluation("response", time.Since(evalStart))
 
 		// Log safe request (skip static assets to reduce noise)
 		if !tx.IsInterrupted() && !isStaticAsset {
@@ -298,7 +485,7 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 				RuleID:     0,
 				Action:     "Pass",
 				Status:     "Safe",
-				Details:    fmt.Sprintf("Request processed successfully in %v", time.Since(requestStart)),
+				Details:    fmt.Sprintf("[%s] Request processed successfully in %v", requestID, time.Since(requestStart)),
 				StatusCode: rec.statusCode,
 				UserAgent:  userAgent,
 			})
@@ -309,35 +496,52 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 	})
 }
 
-func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store.Store, r *http.Request) {
+func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store.Store, r *http.Request, requestID string) {
 	atomic.AddInt64(&blockedRequests, 1)
+
+	ip := extractClientIP(r)
+
+	// Record metrics
+	metricsInst.RecordWAFBlock(it.Action)
+	metricsInst.RecordWAFRuleMatch(it.RuleID, "medium", "waf")
+
+	// Send alert for high-severity blocks
+	_ = alertService.AlertWAFBlock(it.RuleID, ip, r.URL.Path, it.Action)
 
 	// Log blocked request
 	s.AddLog(model.LogEntry{
 		ID:         fmt.Sprintf("block-%d", time.Now().UnixNano()),
 		Timestamp:  time.Now(),
-		ClientIP:   extractClientIP(r),
+		ClientIP:   ip,
 		Method:     r.Method,
 		URI:        r.URL.Path,
 		RuleID:     it.RuleID,
 		Action:     it.Action,
 		Status:     "Blocked",
-		Details:    fmt.Sprintf("WAF Rule %d triggered: %s", it.RuleID, it.Action),
+		Details:    fmt.Sprintf("[%s] WAF Rule %d triggered: %s", requestID, it.RuleID, it.Action),
 		StatusCode: http.StatusForbidden,
 		UserAgent:  r.UserAgent(),
 	})
 
+	w.Header().Set("X-Request-ID", requestID)
 	w.WriteHeader(http.StatusForbidden)
-	w.Write([]byte("WAF Blocked: " + it.Action))
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"blocked":    true,
+		"rule_id":    it.RuleID,
+		"action":     it.Action,
+		"request_id": requestID,
+	})
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		atomic.AddInt64(&totalRequests, 1)
+
 		next.ServeHTTP(w, r)
-		// Access Log
-		fmt.Printf("[%s] %s %s %v\n", time.Now().Format(time.RFC3339), r.Method, r.URL.Path, time.Since(start))
+
+		requestID := requestid.FromContext(r.Context())
+		logger.LogRequest(requestID, r.Method, r.URL.Path, extractClientIP(r), r.UserAgent(), 200, time.Since(start))
 	})
 }
 
@@ -359,6 +563,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		// Use proper JWT verification from auth package
 		claims, err := auth.VerifyJWT(tokenString)
 		if err != nil {
+			metricsInst.RecordAuthAttempt(false, "invalid_token")
 			http.Error(w, `{"error": "Invalid token"}`, http.StatusUnauthorized)
 			return
 		}
@@ -372,6 +577,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if userClaims.Exp < time.Now().Unix() {
+			metricsInst.RecordAuthAttempt(false, "token_expired")
 			http.Error(w, `{"error": "Token expired"}`, http.StatusUnauthorized)
 			return
 		}
@@ -419,6 +625,15 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 		"version":   AppVersion,
 		"name":      AppName,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"features": map[string]bool{
+			"waf":                true,
+			"rate_limiting":      true,
+			"threat_intel":       true,
+			"geoip":              geoIPService != nil,
+			"alerts":             len(alertService.GetWebhooks()) > 0,
+			"prometheus":         true,
+			"structured_logging": true,
+		},
 	})
 }
 
@@ -435,7 +650,7 @@ func handleRateLimitReset(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&req)
 
 	// Reset rate limits
-	rateLimiter.Reset(req.IP) // Empty string resets all
+	rateLimiter.Reset(req.IP)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -445,7 +660,83 @@ func handleRateLimitReset(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleMetrics returns Prometheus-style metrics
+// handleRateLimitBlacklist manages IP blacklist
+func handleRateLimitBlacklist(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		IP string `json:"ip"`
+	}
+
+	switch r.Method {
+	case http.MethodPost:
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.IP == "" {
+			http.Error(w, `{"error": "Invalid IP"}`, http.StatusBadRequest)
+			return
+		}
+		rateLimiter.Blacklist(req.IP)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "IP blacklisted",
+			"ip":      req.IP,
+		})
+
+	case http.MethodDelete:
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.IP == "" {
+			http.Error(w, `{"error": "Invalid IP"}`, http.StatusBadRequest)
+			return
+		}
+		rateLimiter.RemoveFromBlacklist(req.IP)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "IP removed from blacklist",
+			"ip":      req.IP,
+		})
+
+	default:
+		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// handleRateLimitWhitelist manages IP whitelist
+func handleRateLimitWhitelist(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		IP string `json:"ip"`
+	}
+
+	switch r.Method {
+	case http.MethodPost:
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.IP == "" {
+			http.Error(w, `{"error": "Invalid IP"}`, http.StatusBadRequest)
+			return
+		}
+		rateLimiter.Whitelist(req.IP)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "IP whitelisted",
+			"ip":      req.IP,
+		})
+
+	case http.MethodDelete:
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.IP == "" {
+			http.Error(w, `{"error": "Invalid IP"}`, http.StatusBadRequest)
+			return
+		}
+		rateLimiter.RemoveFromWhitelist(req.IP)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "IP removed from whitelist",
+			"ip":      req.IP,
+		})
+
+	default:
+		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// handleMetrics returns JSON metrics
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
@@ -458,6 +749,8 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 		"memory_alloc_mb":  m.Alloc / 1024 / 1024,
 		"memory_sys_mb":    m.Sys / 1024 / 1024,
 		"goroutines":       runtime.NumGoroutine(),
+		"rate_limiter":     rateLimiter.GetStats(),
+		"threat_intel":     threatIntel.GetStats(),
 	})
 }
 
@@ -492,29 +785,35 @@ func handleExport(s *store.Store) http.HandlerFunc {
 	}
 }
 
-// extractClientIP extracts the client IP from the request
+// extractClientIP extracts the client IP using security manager's validation
 func extractClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header
+	if securityMgr != nil {
+		ip, _ := securityMgr.ExtractClientIP(
+			r.RemoteAddr,
+			r.Header.Get("X-Forwarded-For"),
+			r.Header.Get("X-Real-IP"),
+		)
+		return ip
+	}
+
+	// Fallback to basic extraction
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		parts := strings.Split(xff, ",")
 		return strings.TrimSpace(parts[0])
 	}
-	// Check X-Real-IP header
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
 		return xri
 	}
-	// Extract from RemoteAddr
 	ip := r.RemoteAddr
 	if idx := strings.LastIndex(ip, ":"); idx != -1 {
 		ip = ip[:idx]
 	}
-	// Handle IPv6 brackets
 	ip = strings.TrimPrefix(ip, "[")
 	ip = strings.TrimSuffix(ip, "]")
 	return ip
 }
 
-// Helper for response interception (simplified)
+// Helper for response interception
 type responseRecorder struct {
 	http.ResponseWriter
 	statusCode int

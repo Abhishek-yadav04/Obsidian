@@ -642,11 +642,23 @@ select {
     border-color: var(--border-color) !important;
 }
 
+/* Form select dropdown options */
+.form-select option,
+select option {
+    background-color: var(--bg-dark) !important;
+    color: var(--text-main) !important;
+}
+
 .form-control::placeholder,
 input::placeholder,
 textarea::placeholder {
     color: var(--text-muted) !important;
     opacity: 1;
+}
+
+/* Explicit text-white class for dark backgrounds */
+.text-white {
+    color: #ffffff !important;
 }
 
 /* Labels and text */
@@ -722,6 +734,42 @@ label,
 /* Alert fixes */
 .alert {
     color: var(--text-main) !important;
+}
+
+.alert-secondary {
+    background-color: var(--bg-dark) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-main) !important;
+}
+
+.alert-secondary strong,
+.alert-secondary span,
+.alert-secondary * {
+    color: var(--text-main) !important;
+}
+
+.alert-info {
+    background-color: rgba(59, 130, 246, 0.15) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
+    color: #93c5fd !important;
+}
+
+.alert-success {
+    background-color: rgba(16, 185, 129, 0.15) !important;
+    border-color: rgba(16, 185, 129, 0.3) !important;
+    color: #6ee7b7 !important;
+}
+
+.alert-warning {
+    background-color: rgba(251, 191, 36, 0.15) !important;
+    border-color: rgba(251, 191, 36, 0.3) !important;
+    color: #fde68a !important;
+}
+
+.alert-danger {
+    background-color: rgba(244, 63, 94, 0.15) !important;
+    border-color: rgba(244, 63, 94, 0.3) !important;
+    color: #fca5a5 !important;
 }
 
 /* Table text visibility */
@@ -1005,4 +1053,67 @@ dd {
 .btn-primary:hover {
     background-color: #e11d48 !important;
     border-color: #e11d48 !important;
+}
+
+/* ============================================
+   BOOTSTRAP TEXT COLOR OVERRIDES
+   Ensures text utilities are visible on dark theme
+   ============================================ */
+.text-danger {
+    color: #f87171 !important;
+}
+
+.text-warning {
+    color: #fbbf24 !important;
+}
+
+.text-success {
+    color: #34d399 !important;
+}
+
+.text-info {
+    color: #38bdf8 !important;
+}
+
+.text-primary {
+    color: #60a5fa !important;
+}
+
+.text-secondary {
+    color: #9ca3af !important;
+}
+
+.text-light {
+    color: #e5e7eb !important;
+}
+
+/* Stat card values - ensure visible */
+.stat-value.text-danger {
+    color: #f87171 !important;
+}
+
+.stat-value.text-warning {
+    color: #fbbf24 !important;
+}
+
+.stat-value.text-success {
+    color: #34d399 !important;
+}
+
+.stat-value.text-info {
+    color: #38bdf8 !important;
+}
+
+/* Font Awesome icons ensure visibility */
+.fa, .fas, .far, .fab, .fal, .fad {
+    display: inline-block !important;
+}
+
+/* Ensure all text inside cards is visible */
+.card .text-muted {
+    color: var(--text-muted) !important;
+}
+
+.card .small {
+    color: var(--text-main) !important;
 }

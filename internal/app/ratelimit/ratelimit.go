@@ -413,21 +413,21 @@ func (rl *RateLimiter) GetStats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"active_visitors":    rl.totalVisitors.Load(),
-		"blocked_ips":        blockedCount,
-		"rate_limited_ips":   len(rateLimitedIPs),
-		"whitelist_count":    len(whitelist),
-		"blacklist_count":    len(blacklist),
-		"whitelisted_count":  len(whitelist),
-		"blacklisted_count":  len(blacklist),
-		"whitelist":          whitelist,
-		"blacklist":          blacklist,
-		"rate_limit":         rl.config.RequestsPerMinute,
+		"active_visitors":     rl.totalVisitors.Load(),
+		"blocked_ips":         blockedCount,
+		"rate_limited_ips":    len(rateLimitedIPs),
+		"whitelist_count":     len(whitelist),
+		"blacklist_count":     len(blacklist),
+		"whitelisted_count":   len(whitelist),
+		"blacklisted_count":   len(blacklist),
+		"whitelist":           whitelist,
+		"blacklist":           blacklist,
+		"rate_limit":          rl.config.RequestsPerMinute,
 		"requests_per_minute": rl.config.RequestsPerMinute,
-		"window_seconds":     60,
-		"total_allowed":      rl.totalAllowed.Load(),
-		"total_blocked":      rl.totalBlocked.Load(),
-		"shards":             NumShards,
+		"window_seconds":      60,
+		"total_allowed":       rl.totalAllowed.Load(),
+		"total_blocked":       rl.totalBlocked.Load(),
+		"shards":              NumShards,
 	}
 }
 

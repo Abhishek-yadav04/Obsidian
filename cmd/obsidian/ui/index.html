@@ -69,7 +69,7 @@
                     </button>
                 </li>
                 <li class="nav-item">
-                    <button type="button" class="nav-link text-success" id="downloadReport">
+                    <button type="button" class="nav-link text-success" id="downloadReport" onclick="ObsidianApp.exportReport()">
                         <i class="fas fa-file-pdf"></i> Export Report
                     </button>
                 </li>
@@ -240,7 +240,7 @@
                             <div class="col-md-6">
                                 <div class="input-group">
                                     <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-search"></i></span>
-                                    <input type="text" id="logs-search" class="form-control bg-dark border-secondary text-white" placeholder="Search logs by IP, Rule ID, or Attack Type...">
+                                    <input type="text" id="logs-search" class="form-control bg-dark border-secondary text-white" placeholder="Search logs by IP, Rule ID, or Attack Type..." onkeyup="ObsidianApp.filterLogs()">
                                 </div>
                             </div>
                             <div class="col-md-6 text-md-end mt-2 mt-md-0">

@@ -491,8 +491,11 @@ const ObsidianApp = {
 
     // Export logs to CSV
     async exportLogsCSV() {
+        console.log('exportLogsCSV called');
         try {
             const logs = await this.api('/api/logs');
+            console.log('Logs fetched:', logs?.length || 0);
+            
             if (!logs || logs.length === 0) {
                 this.showToast('Info', 'No logs to export');
                 return;
@@ -522,12 +525,15 @@ const ObsidianApp = {
             const a = document.createElement('a');
             a.href = url;
             a.download = `obsidian-attack-logs-${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
             a.click();
+            document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
             this.showToast('Success', `Exported ${logs.length} log entries`);
         } catch (err) {
-            this.showToast('Error', 'Failed to export logs', true);
+            console.error('Export error:', err);
+            this.showToast('Error', 'Failed to export logs: ' + err.message, true);
         }
     },
 
@@ -537,10 +543,14 @@ const ObsidianApp = {
         const searchTerm = searchInput?.value?.toLowerCase() || '';
         const tbody = document.getElementById('full-logs-table');
         
-        if (!tbody) return;
+        if (!tbody) {
+            console.warn('full-logs-table not found');
+            return;
+        }
 
         const rows = tbody.querySelectorAll('tr');
         let visibleCount = 0;
+        let totalCount = rows.length;
 
         rows.forEach(row => {
             const text = row.textContent?.toLowerCase() || '';
@@ -553,13 +563,13 @@ const ObsidianApp = {
         });
 
         // Update count
-        const paginationText = document.querySelector('.card-footer .text-muted');
+        const paginationText = document.querySelector('#view-logs .card-footer .text-muted');
         if (paginationText) {
-            paginationText.textContent = `Showing ${visibleCount} matching entries`;
-        }
-
-        if (searchTerm) {
-            this.showToast('Filter Applied', `Found ${visibleCount} matching entries`);
+            if (searchTerm) {
+                paginationText.textContent = `Showing ${visibleCount} of ${totalCount} entries (filtered)`;
+            } else {
+                paginationText.textContent = `Showing ${visibleCount} of ${totalCount} entries`;
+            }
         }
     },
 
@@ -1263,27 +1273,34 @@ const ObsidianApp = {
 
     // Export report
     async exportReport() {
+        console.log('exportReport called');
         try {
-            // Use text format for reliable export (PDF requires special libraries)
+            // Use text format for reliable export
             const res = await fetch('/api/export?format=text', {
                 headers: { 'Authorization': 'Bearer ' + this.token }
             });
+            
+            console.log('Export response status:', res.status);
             
             if (!res.ok) {
                 throw new Error('Export failed with status ' + res.status);
             }
             
             const blob = await res.blob();
+            console.log('Blob size:', blob.size);
+            
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = 'obsidian-security-report.txt';
+            document.body.appendChild(a);
             a.click();
+            document.body.removeChild(a);
             URL.revokeObjectURL(url);
             this.showToast('Success', 'Report exported successfully');
         } catch (exportError) {
-            console.error('Export failed:', exportError.message);
-            this.showToast('Error', 'Failed to export report', true);
+            console.error('Export failed:', exportError);
+            this.showToast('Error', 'Failed to export report: ' + exportError.message, true);
         }
     },
 

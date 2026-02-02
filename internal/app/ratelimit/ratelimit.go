@@ -1,11 +1,15 @@
 // Package ratelimit provides a high-performance, sharded rate limiter for Obsidian WAF.
 // This implementation addresses the critical audit findings regarding global lock contention
 // and supports per-endpoint rate limiting for enhanced security.
+// ratelimit.go v2.o.
 package ratelimit
 
 import (
 	"hash/fnv"
 	"net/http"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -286,11 +290,21 @@ func (rl *RateLimiter) AllowEndpoint(ip, endpoint string) bool {
 }
 
 // getEndpointConfig returns the rate limit config for an endpoint
+// Uses longest-prefix matching to avoid security bypass issues
 func (rl *RateLimiter) getEndpointConfig(endpoint string) EndpointConfig {
-	// Check for endpoint-specific config
-	for prefix, cfg := range rl.config.EndpointLimits {
-		if len(endpoint) >= len(prefix) && endpoint[:len(prefix)] == prefix {
-			return cfg
+	// Get all prefixes and sort by length (longest first) for proper matching
+	prefixes := make([]string, 0, len(rl.config.EndpointLimits))
+	for prefix := range rl.config.EndpointLimits {
+		prefixes = append(prefixes, prefix)
+	}
+	sort.Slice(prefixes, func(i, j int) bool {
+		return len(prefixes[i]) > len(prefixes[j])
+	})
+
+	// Check for endpoint-specific config using longest-prefix match
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(endpoint, prefix) {
+			return rl.config.EndpointLimits[prefix]
 		}
 	}
 
@@ -369,54 +383,51 @@ func (rl *RateLimiter) Unblock(ip string) {
 
 // GetStats returns rate limiter statistics
 func (rl *RateLimiter) GetStats() map[string]interface{} {
-	var whitelistIPs []string
+	var whitelist []string
 	rl.whitelist.Range(func(key, _ interface{}) bool {
 		if ip, ok := key.(string); ok {
-			whitelistIPs = append(whitelistIPs, ip)
+			whitelist = append(whitelist, ip)
 		}
 		return true
 	})
 
-	var blacklistIPs []string
+	var blacklist []string
 	rl.blacklist.Range(func(key, _ interface{}) bool {
 		if ip, ok := key.(string); ok {
-			blacklistIPs = append(blacklistIPs, ip)
+			blacklist = append(blacklist, ip)
 		}
 		return true
 	})
 
 	blockedCount := int64(0)
-	rateLimitedIPs := 0
+	var rateLimitedIPs []string
 	for _, sh := range rl.shards {
 		sh.mu.RLock()
-		for _, v := range sh.visitors {
+		for ip, v := range sh.visitors {
 			if v.blocked.Load() {
 				blockedCount++
-			}
-			// Count IPs that are near or at rate limit
-			if len(v.timestamps) > rl.config.RequestsPerMinute/2 {
-				rateLimitedIPs++
+				rateLimitedIPs = append(rateLimitedIPs, ip)
 			}
 		}
 		sh.mu.RUnlock()
 	}
 
 	return map[string]interface{}{
-		"active_visitors":     rl.totalVisitors.Load(),
-		"blocked_ips":         blockedCount,
-		"rate_limited_ips":    rateLimitedIPs,
-		"whitelist_count":     len(whitelistIPs),
-		"blacklist_count":     len(blacklistIPs),
-		"whitelisted_count":   len(whitelistIPs),
-		"blacklisted_count":   len(blacklistIPs),
-		"whitelist":           whitelistIPs,
-		"blacklist":           blacklistIPs,
+		"active_visitors":    rl.totalVisitors.Load(),
+		"blocked_ips":        blockedCount,
+		"rate_limited_ips":   len(rateLimitedIPs),
+		"whitelist_count":    len(whitelist),
+		"blacklist_count":    len(blacklist),
+		"whitelisted_count":  len(whitelist),
+		"blacklisted_count":  len(blacklist),
+		"whitelist":          whitelist,
+		"blacklist":          blacklist,
+		"rate_limit":         rl.config.RequestsPerMinute,
 		"requests_per_minute": rl.config.RequestsPerMinute,
-		"rate_limit":          rl.config.RequestsPerMinute,
-		"window_seconds":      60,
-		"total_allowed":       rl.totalAllowed.Load(),
-		"total_blocked":       rl.totalBlocked.Load(),
-		"shards":              NumShards,
+		"window_seconds":     60,
+		"total_allowed":      rl.totalAllowed.Load(),
+		"total_blocked":      rl.totalBlocked.Load(),
+		"shards":             NumShards,
 	}
 }
 
@@ -431,8 +442,8 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 			cfg := rl.getEndpointConfig(endpoint)
 			retryAfter := int(cfg.BlockDuration.Seconds())
 
-			w.Header().Set("Retry-After", string(rune(retryAfter)))
-			w.Header().Set("X-RateLimit-Limit", string(rune(cfg.RequestsPerMinute)))
+			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(cfg.RequestsPerMinute))
 			w.Header().Set("X-RateLimit-Remaining", "0")
 			w.Header().Set("X-RateLimit-Reset", time.Now().Add(cfg.BlockDuration).Format(time.RFC3339))
 			http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
@@ -440,7 +451,7 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 		}
 
 		// Add rate limit headers
-		w.Header().Set("X-RateLimit-Limit", string(rune(rl.config.RequestsPerMinute)))
+		w.Header().Set("X-RateLimit-Limit", strconv.Itoa(rl.config.RequestsPerMinute))
 		w.Header().Set("X-RateLimit-Window", "60s")
 
 		next.ServeHTTP(w, r)

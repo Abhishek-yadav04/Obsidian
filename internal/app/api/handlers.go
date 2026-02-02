@@ -315,13 +315,57 @@ func (a *API) HandleTestRule(w http.ResponseWriter, r *http.Request) {
 
 // HandleUsers returns list of users (Admin only)
 func (a *API) HandleUsers(w http.ResponseWriter, r *http.Request) {
-	// In production, this would query the database
-	users := []map[string]interface{}{
-		{"id": 1, "username": "admin", "email": "admin@obsidian.local", "role": "Admin", "enabled": true},
-	}
+	switch r.Method {
+	case http.MethodGet:
+		// Return all users from the store
+		users := a.Store.GetUsers()
+		// Convert to safe response (no password hashes)
+		safeUsers := make([]map[string]interface{}, 0, len(users))
+		for _, u := range users {
+			safeUsers = append(safeUsers, map[string]interface{}{
+				"id":       u.ID,
+				"username": u.Username,
+				"email":    u.Email,
+				"role":     u.Role,
+				"enabled":  u.Enabled,
+			})
+		}
+		w.Header().Set(contentTypeHeader, contentTypeJSON)
+		json.NewEncoder(w).Encode(safeUsers)
 
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	json.NewEncoder(w).Encode(users)
+	case http.MethodPut:
+		// Update user
+		var req struct {
+			Username string `json:"username"`
+			Role     string `json:"role"`
+			Enabled  bool   `json:"enabled"`
+			Password string `json:"password,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
+			return
+		}
+
+		// Update user in the store
+		if err := a.Store.UpdateUser(req.Username, req.Role, req.Enabled, req.Password); err != nil {
+			w.Header().Set(contentTypeHeader, contentTypeJSON)
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+
+		w.Header().Set(contentTypeHeader, contentTypeJSON)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("User %s updated successfully", req.Username),
+		})
+
+	default:
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
+	}
 }
 
 // HandleAuditLogs returns audit trail (Admin only)

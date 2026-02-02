@@ -489,6 +489,80 @@ const ObsidianApp = {
         }
     },
 
+    // Export logs to CSV
+    async exportLogsCSV() {
+        try {
+            const logs = await this.api('/api/logs');
+            if (!logs || logs.length === 0) {
+                this.showToast('Info', 'No logs to export');
+                return;
+            }
+
+            // Build CSV content
+            const headers = ['Timestamp', 'Status', 'Client IP', 'Method', 'URI', 'Rule ID', 'Action', 'Details'];
+            const csvRows = [headers.join(',')];
+
+            for (const log of logs) {
+                const row = [
+                    new Date(log.timestamp).toISOString(),
+                    log.status || 'Unknown',
+                    log.client_ip || '',
+                    log.method || 'GET',
+                    `"${(log.uri || '/').replace(/"/g, '""')}"`,
+                    log.rule_id || '',
+                    log.action || 'Pass',
+                    `"${(log.details || '').replace(/"/g, '""')}"`
+                ];
+                csvRows.push(row.join(','));
+            }
+
+            const csvContent = csvRows.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `obsidian-attack-logs-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            this.showToast('Success', `Exported ${logs.length} log entries`);
+        } catch (err) {
+            this.showToast('Error', 'Failed to export logs', true);
+        }
+    },
+
+    // Filter logs by search term
+    filterLogs() {
+        const searchInput = document.getElementById('logs-search');
+        const searchTerm = searchInput?.value?.toLowerCase() || '';
+        const tbody = document.getElementById('full-logs-table');
+        
+        if (!tbody) return;
+
+        const rows = tbody.querySelectorAll('tr');
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const text = row.textContent?.toLowerCase() || '';
+            if (searchTerm === '' || text.includes(searchTerm)) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        // Update count
+        const paginationText = document.querySelector('.card-footer .text-muted');
+        if (paginationText) {
+            paginationText.textContent = `Showing ${visibleCount} matching entries`;
+        }
+
+        if (searchTerm) {
+            this.showToast('Filter Applied', `Found ${visibleCount} matching entries`);
+        }
+    },
+
     // Fetch rules
     async fetchRules() {
         const rules = await this.api('/api/rules');
@@ -546,7 +620,7 @@ const ObsidianApp = {
                     <td>${u.username}</td>
                     <td><span class="badge bg-info">${u.role}</span></td>
                     <td>${u.enabled ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-danger">Disabled</span>'}</td>
-                    <td><button class="btn btn-sm btn-outline-secondary" title="Edit User"><i class="fas fa-edit"></i> Edit</button></td>
+                    <td><button class="btn btn-sm btn-outline-secondary" onclick="ObsidianApp.openUserEditModal('${u.username}', '${u.role}', ${u.enabled})" title="Edit User"><i class="fas fa-edit"></i> Edit</button></td>
                 </tr>
             `).join('');
         }
@@ -686,6 +760,43 @@ const ObsidianApp = {
     },
 
     // ============================================
+    // USER MANAGEMENT
+    // ============================================
+    openUserEditModal(username, role, enabled) {
+        const modal = new bootstrap.Modal(document.getElementById('userEditModal'));
+        document.getElementById('editUserUsername').value = username;
+        document.getElementById('editUserRole').value = role;
+        document.getElementById('editUserEnabled').checked = enabled;
+        document.getElementById('editUserPassword').value = '';
+        modal.show();
+    },
+
+    async saveUserEdit() {
+        const username = document.getElementById('editUserUsername').value;
+        const role = document.getElementById('editUserRole').value;
+        const enabled = document.getElementById('editUserEnabled').checked;
+        const password = document.getElementById('editUserPassword').value;
+
+        const payload = { username, role, enabled };
+        if (password && password.trim() !== '') {
+            payload.password = password;
+        }
+
+        const data = await this.api('/api/admin/users', {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+
+        if (data?.success) {
+            this.showToast('Success', 'User updated successfully');
+            bootstrap.Modal.getInstance(document.getElementById('userEditModal')).hide();
+            this.fetchAdminData();
+        } else {
+            this.showToast('Error', data?.message || 'Failed to update user', true);
+        }
+    },
+
+    // ============================================
     // GEOIP MANAGEMENT
     // ============================================
     async fetchGeoIPData() {
@@ -796,14 +907,29 @@ const ObsidianApp = {
         const resultDiv = document.getElementById('geoip-lookup-result');
         
         if (data && !data.error) {
-            document.getElementById('lookup-country').innerText = data.country_name || 'Unknown';
+            // Build location string with city if available
+            let locationStr = data.country_name || 'Unknown';
+            if (data.city && data.city !== '') {
+                locationStr = `${data.city}, ${data.country_name}`;
+            }
+            document.getElementById('lookup-country').innerText = locationStr;
             document.getElementById('lookup-code').innerText = data.country_code || '-';
             document.getElementById('lookup-blocked').innerHTML = data.is_blocked 
                 ? '<span class="badge bg-danger">Yes</span>' 
                 : '<span class="badge bg-success">No</span>';
-            document.getElementById('lookup-risk').innerHTML = data.risk_level 
-                ? `<span class="badge bg-${data.risk_level === 'high' ? 'danger' : 'warning'}">${data.risk_level}</span>`
-                : '<span class="badge bg-secondary">Unknown</span>';
+            
+            // Show risk level with threat score
+            const riskLevel = data.risk_level || 'low';
+            const riskColor = riskLevel === 'high' ? 'danger' : (riskLevel === 'medium' ? 'warning' : 'success');
+            document.getElementById('lookup-risk').innerHTML = 
+                `<span class="badge bg-${riskColor}">${riskLevel.toUpperCase()} (${data.threat_score || 0})</span>`;
+            
+            // Show additional info if ISP/org available
+            if (data.isp || data.organization) {
+                const ispInfo = data.isp || data.organization || '';
+                document.getElementById('lookup-code').innerText = `${data.country_code || '-'} | ${ispInfo}`;
+            }
+            
             resultDiv.classList.remove('d-none');
         } else {
             this.showToast('Error', data?.error || 'IP lookup failed', true);
@@ -1138,16 +1264,23 @@ const ObsidianApp = {
     // Export report
     async exportReport() {
         try {
-            const res = await fetch('/api/export', {
+            // Use text format for reliable export (PDF requires special libraries)
+            const res = await fetch('/api/export?format=text', {
                 headers: { 'Authorization': 'Bearer ' + this.token }
             });
+            
+            if (!res.ok) {
+                throw new Error('Export failed with status ' + res.status);
+            }
+            
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'obsidian-report.pdf';
+            a.download = 'obsidian-security-report.txt';
             a.click();
             URL.revokeObjectURL(url);
+            this.showToast('Success', 'Report exported successfully');
         } catch (exportError) {
             console.error('Export failed:', exportError.message);
             this.showToast('Error', 'Failed to export report', true);

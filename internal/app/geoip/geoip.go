@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"sync"
+	"time"
 )
 
 // Errors for geoip operations
@@ -168,11 +170,104 @@ func (s *Service) Lookup(ipStr string) (*GeoIPInfo, error) {
 		return nil, ErrInvalidIP
 	}
 
-	// Use fallback database lookup
-	info := s.lookupFallback(ipStr, ip)
+	// Check if it's a private/reserved IP first
+	if isPrivateIP(ip) {
+		info := &GeoIPInfo{
+			IP:          ipStr,
+			CountryCode: "XX",
+			CountryName: "Private Network",
+		}
+		s.ipCache.Store(ipStr, info)
+		return info, nil
+	}
+
+	// Try external API lookup first for accurate results
+	info, err := s.lookupExternal(ipStr)
+	if err == nil && info.CountryCode != "" && info.CountryCode != "XX" {
+		// Cache the result
+		s.ipCache.Store(ipStr, info)
+		return info, nil
+	}
+
+	// Fallback to embedded database lookup
+	info = s.lookupFallback(ipStr, ip)
 
 	// Cache the result
 	s.ipCache.Store(ipStr, info)
+
+	return info, nil
+}
+
+// ipAPIResponse represents the response from ip-api.com
+type ipAPIResponse struct {
+	Status      string  `json:"status"`
+	Country     string  `json:"country"`
+	CountryCode string  `json:"countryCode"`
+	Region      string  `json:"region"`
+	RegionName  string  `json:"regionName"`
+	City        string  `json:"city"`
+	Zip         string  `json:"zip"`
+	Lat         float64 `json:"lat"`
+	Lon         float64 `json:"lon"`
+	Timezone    string  `json:"timezone"`
+	ISP         string  `json:"isp"`
+	Org         string  `json:"org"`
+	AS          string  `json:"as"`
+	Proxy       bool    `json:"proxy"`
+	Hosting     bool    `json:"hosting"`
+}
+
+// lookupExternal uses ip-api.com for accurate IP geolocation (free tier: 45 req/min)
+func (s *Service) lookupExternal(ipStr string) (*GeoIPInfo, error) {
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+	}
+
+	// Use ip-api.com with fields for more detailed info
+	url := fmt.Sprintf("http://ip-api.com/json/%s?fields=status,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,proxy,hosting", ipStr)
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("external API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("external API returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var apiResp ipAPIResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return nil, fmt.Errorf("failed to parse API response: %w", err)
+	}
+
+	if apiResp.Status != "success" {
+		return nil, fmt.Errorf("API lookup failed for IP %s", ipStr)
+	}
+
+	info := &GeoIPInfo{
+		IP:           ipStr,
+		CountryCode:  apiResp.CountryCode,
+		CountryName:  apiResp.Country,
+		City:         apiResp.City,
+		Region:       apiResp.RegionName,
+		PostalCode:   apiResp.Zip,
+		Latitude:     apiResp.Lat,
+		Longitude:    apiResp.Lon,
+		Timezone:     apiResp.Timezone,
+		ISP:          apiResp.ISP,
+		Organization: apiResp.Org,
+		IsProxy:      apiResp.Proxy,
+		IsDatacenter: apiResp.Hosting,
+	}
+
+	// Calculate threat score based on various factors
+	info.ThreatScore = calculateThreatScore(info)
 
 	return info, nil
 }
@@ -416,9 +511,40 @@ func (s *Service) HandleLookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if this IP's country is blocked
+	result, _ := s.ShouldBlock(ip)
+	isBlocked := result != nil && result.Blocked
+
+	// Calculate risk level based on threat score
+	riskLevel := "low"
+	if info.ThreatScore >= 50 {
+		riskLevel = "high"
+	} else if info.ThreatScore >= 20 {
+		riskLevel = "medium"
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"ip":"%s","country_code":"%s","country_name":"%s","is_proxy":%t,"is_vpn":%t,"is_tor":%t,"threat_score":%d}`,
-		info.IP, info.CountryCode, info.CountryName, info.IsProxy, info.IsVPN, info.IsTor, info.ThreatScore)
+	response := map[string]interface{}{
+		"ip":            info.IP,
+		"country_code":  info.CountryCode,
+		"country_name":  info.CountryName,
+		"city":          info.City,
+		"region":        info.Region,
+		"postal_code":   info.PostalCode,
+		"latitude":      info.Latitude,
+		"longitude":     info.Longitude,
+		"timezone":      info.Timezone,
+		"isp":           info.ISP,
+		"organization":  info.Organization,
+		"is_proxy":      info.IsProxy,
+		"is_vpn":        info.IsVPN,
+		"is_tor":        info.IsTor,
+		"is_datacenter": info.IsDatacenter,
+		"threat_score":  info.ThreatScore,
+		"is_blocked":    isBlocked,
+		"risk_level":    riskLevel,
+	}
+	json.NewEncoder(w).Encode(response)
 }
 
 // HandleBlockedCountries returns list of blocked countries

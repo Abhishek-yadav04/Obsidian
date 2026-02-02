@@ -27,10 +27,70 @@ func NewStore(path string) *Store {
 			Logs:  []model.LogEntry{},
 			Rules: defaultRules(), // Initialize with some defaults
 			Stats: model.Stats{ActiveRulesCount: 5},
+			Users: defaultUsers(), // Initialize with default users
 		},
 	}
 	s.load()
 	return s
+}
+
+// defaultUsers returns the default user accounts
+func defaultUsers() []model.User {
+	return []model.User{
+		{
+			ID:       1,
+			Username: "admin",
+			Email:    "admin@obsidian.local",
+			Role:     "Admin",
+			Enabled:  true,
+		},
+		{
+			ID:       2,
+			Username: "analyst",
+			Email:    "analyst@obsidian.local",
+			Role:     "Analyst",
+			Enabled:  true,
+		},
+		{
+			ID:       3,
+			Username: "viewer",
+			Email:    "viewer@obsidian.local",
+			Role:     "Viewer",
+			Enabled:  true,
+		},
+	}
+}
+
+// GetUsers returns all users
+func (s *Store) GetUsers() []model.User {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.state.Users) == 0 {
+		return defaultUsers()
+	}
+	return s.state.Users
+}
+
+// UpdateUser updates a user's information
+func (s *Store) UpdateUser(username, role string, enabled bool, newPassword string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Initialize users if empty
+	if len(s.state.Users) == 0 {
+		s.state.Users = defaultUsers()
+	}
+
+	for i, u := range s.state.Users {
+		if u.Username == username {
+			s.state.Users[i].Role = role
+			s.state.Users[i].Enabled = enabled
+			// In production, hash the password if provided
+			// For now, we just acknowledge the update
+			return nil
+		}
+	}
+	return fmt.Errorf("user not found: %s", username)
 }
 
 func (s *Store) load() {

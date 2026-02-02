@@ -75,6 +75,7 @@ type SystemState struct {
 	Logs  []LogEntry `json:"logs"`
 	Stats Stats      `json:"stats"`
 	Rules []Rule     `json:"rules"`
+	Users []User     `json:"users"`
 }
 
 // LoginRequest represents authentication request

@@ -371,6 +371,15 @@ func (s *Service) checkRateLimit(webhookName string, cfg *RateLimitConfig) bool 
 
 // sendToWebhook sends an alert to a specific webhook
 func (s *Service) sendToWebhook(ctx context.Context, wh *WebhookConfig, alert *Alert) error {
+	// Handle internal console logging webhook
+	if wh.URL == "internal://console" {
+		fmt.Printf("[ALERT] [%s] [%s] %s: %s\n", alert.Timestamp.Format("2006-01-02 15:04:05"), alert.Severity, alert.Title, alert.Message)
+		if alert.ClientIP != "" {
+			fmt.Printf("        Client IP: %s\n", alert.ClientIP)
+		}
+		return nil
+	}
+
 	var payload []byte
 	var err error
 

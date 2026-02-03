@@ -1,5 +1,52 @@
 # Changelog
 
+## Obsidian Sentinel v2.2.0 Enterprise Edition (2026-02-03)
+
+### 🚀 New Features
+
+#### OAuth Integration (Supabase)
+- **Google OAuth**: Sign in with Google via Supabase authentication
+- **GitHub OAuth**: Sign in with GitHub via Supabase authentication
+- **OAuth Callback Handler**: Secure token exchange and user creation
+- **Role Assignment**: Automatic role assignment for OAuth users from database
+
+#### Security Settings Dashboard
+- **Security Overview API**: Comprehensive security configuration status
+- **Password Breach Check (HIBP)**: Check passwords against Have I Been Pwned database using k-anonymity
+- **Secrets Management**: View and reload application secrets
+- **JWT Rotation**: Rotate JWT secrets with automatic token invalidation
+- **Security Metrics**: Track API keys, IP allowlist, and managed secrets
+
+#### Enhanced Authentication
+- **MFA Foundation**: UI and backend support for two-factor authentication
+- **Role-Based UI**: Dynamic UI elements based on user role (Admin/Analyst/Viewer)
+- **Session Management**: Improved JWT token handling with refresh support
+
+#### UI/UX Improvements
+- **Security Settings View**: New dedicated security configuration panel
+- **Tab-Based Navigation**: Organized security settings with Bootstrap tabs
+- **Real-Time HIBP Check**: Client-side password breach verification
+- **Export Options**: Added CSV export alongside PDF reports
+
+### 🔧 Technical Improvements
+
+#### API Enhancements
+- **Security APIs**: `/api/security/overview`, `/api/security/password/check`
+- **Secrets APIs**: `/api/security/secrets/reload`, `/api/security/secrets/rotate-jwt`
+- **OAuth APIs**: `/api/auth/google`, `/api/auth/github`, `/api/auth/callback`
+
+#### Code Quality
+- **Removed Legacy Code**: Cleaned up old http-server example directory
+- **Consolidated UI**: Single UI in `cmd/obsidian/ui` directory
+- **Improved Error Handling**: Better error messages for OAuth failures
+
+### 📝 Documentation
+- Updated CHANGELOG with all new features
+- OAuth setup instructions for Supabase
+- Security settings API documentation
+
+---
+
 ## Obsidian Sentinel v2.1.0 Enterprise Edition (2026-02-01)
 
 ### 🚀 Major Enterprise Features

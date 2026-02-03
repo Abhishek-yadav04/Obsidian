@@ -4,6 +4,54 @@
  */
 
 // ============================================
+// SECURITY UTILITIES
+// ============================================
+/**
+ * Escape HTML entities to prevent XSS attacks
+ * @param {string} str - String to escape
+ * @returns {string} Escaped string safe for HTML insertion
+ */
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = String(str);
+    return div.innerHTML;
+}
+
+/**
+ * Escape HTML attributes
+ * @param {string} str - String to escape for attribute use
+ * @returns {string} Escaped string safe for HTML attribute insertion
+ */
+function escapeAttr(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+/**
+ * Safe text helper - always escapes for HTML content context
+ * @param {string} str - String to safely render
+ * @returns {string} Escaped string
+ */
+function safeText(str) {
+    return escapeHtml(str);
+}
+
+/**
+ * Safe attribute helper - always escapes for HTML attribute context
+ * @param {string} str - String to safely render in attributes
+ * @returns {string} Escaped string for attribute use
+ */
+function safeAttr(str) {
+    return escapeAttr(str);
+}
+
+// ============================================
 // AUTHENTICATION HELPER
 // ============================================
 function getStoredValue(key) {
@@ -82,6 +130,7 @@ const ObsidianApp = {
         // Update page title
         const titles = {
             dashboard: 'Security Dashboard',
+            analytics: 'Analytics & Reports',
             logs: 'Attack Logs',
             rules: 'Rules Management',
             admin: 'Admin Panel',
@@ -89,6 +138,8 @@ const ObsidianApp = {
             geoip: 'GeoIP Blocking',
             ratelimit: 'Rate Limiting',
             alerts: 'Alert Webhooks',
+            security: 'Security Settings',
+            health: 'System Health',
             settings: 'Settings'
         };
         document.getElementById('pageTitle').innerText = titles[view] || 'Dashboard';
@@ -102,6 +153,9 @@ const ObsidianApp = {
         switch (view) {
             case 'dashboard':
                 await this.fetchDashboardData();
+                break;
+            case 'analytics':
+                await this.fetchAnalyticsData();
                 break;
             case 'logs':
                 await this.fetchLogs();
@@ -123,6 +177,12 @@ const ObsidianApp = {
                 break;
             case 'alerts':
                 await this.fetchAlertsData();
+                break;
+            case 'security':
+                await this.fetchSecurityData();
+                break;
+            case 'health':
+                await this.fetchHealthData();
                 break;
         }
     },
@@ -215,7 +275,7 @@ const ObsidianApp = {
         tbody.innerHTML = logs.map(log => {
             const date = new Date(log.timestamp).toLocaleTimeString();
             
-            // Status badge based on log status
+            // Status badge based on log status (safe - hardcoded values)
             let statusBadge = '';
             switch (log.status) {
                 case 'Blocked':
@@ -233,10 +293,11 @@ const ObsidianApp = {
                     break;
             }
 
-            // Action badge
+            // Action badge - escape user-controlled data
+            const safeAction = escapeHtml(log.action || 'Unknown');
             const actionBadge = log.action === 'Pass' 
                 ? '<span class="badge bg-dark border border-success text-success">Pass</span>'
-                : `<span class="badge bg-dark border border-danger text-danger">${log.action || 'Unknown'}</span>`;
+                : `<span class="badge bg-dark border border-danger text-danger">${safeAction}</span>`;
 
             // Calculate row class based on status
             let rowClass = '';
@@ -246,21 +307,27 @@ const ObsidianApp = {
                 rowClass = 'table-warning';
             }
 
-            // Format URI display with truncation
-            const uriDisplay = (log.uri || '/').substring(0, 30);
-            const uriSuffix = (log.uri || '').length > 30 ? '...' : '';
+            // Format URI display with truncation - escape user-controlled data
+            const rawUri = String(log.uri || '/');
+            const uriDisplay = escapeHtml(rawUri.substring(0, 30));
+            const uriSuffix = rawUri.length > 30 ? '...' : '';
             
-            // Format details display with truncation
-            const detailsDisplay = (log.details || '').substring(0, 40);
-            const detailsSuffix = (log.details || '').length > 40 ? '...' : '';
+            // Format details display with truncation - escape user-controlled data
+            const rawDetails = String(log.details || '');
+            const detailsDisplay = escapeHtml(rawDetails.substring(0, 40));
+            const detailsSuffix = rawDetails.length > 40 ? '...' : '';
+
+            // Escape other user-controlled fields
+            const safeRuleId = escapeHtml(log.rule_id || '-');
+            const safeMethod = escapeHtml(log.method || 'GET');
 
             return `
                 <tr class="${rowClass}">
-                    <td class="text-secondary font-monospace small">${date}</td>
+                    <td class="text-secondary font-monospace small">${escapeHtml(date)}</td>
                     <td>${statusBadge}</td>
                     <td>${actionBadge}</td>
-                    <td class="font-monospace small">${log.rule_id || '-'}</td>
-                    <td><code class="text-info">${log.method || 'GET'} ${uriDisplay}${uriSuffix}</code></td>
+                    <td class="font-monospace small">${safeRuleId}</td>
+                    <td><code class="text-info">${safeMethod} ${uriDisplay}${uriSuffix}</code></td>
                     <td class="text-white-50 small">${detailsDisplay}${detailsSuffix}</td>
                 </tr>
             `;
@@ -453,10 +520,11 @@ const ObsidianApp = {
                     break;
             }
 
-            // Action badge
+            // Action badge - escape user data
+            const safeAction = escapeHtml(log.action || 'Unknown');
             const actionBadge = log.action === 'Pass' 
                 ? '<span class="badge bg-success">Pass</span>'
-                : `<span class="badge bg-danger">${log.action || 'Unknown'}</span>`;
+                : `<span class="badge bg-danger">${safeAction}</span>`;
 
             // Method badge color
             const methodColors = {
@@ -468,15 +536,24 @@ const ObsidianApp = {
             };
             const methodClass = methodColors[log.method] || 'bg-secondary';
 
+            // Escape all user-controlled data
+            const safeTimestamp = escapeHtml(new Date(log.timestamp).toLocaleString());
+            const safeClientIP = escapeHtml(log.client_ip || '127.0.0.1');
+            const safeMethod = escapeHtml(log.method || 'GET');
+            const safeUri = escapeHtml(log.uri || '/');
+            const safeRuleId = escapeHtml(log.rule_id || '-');
+            const rawDetails = String(log.details || '');
+            const safeDetails = escapeHtml(rawDetails.substring(0, 50)) + (rawDetails.length > 50 ? '...' : '');
+
             return `
-                <tr class="${rowClass}">
-                    <td class="text-secondary font-monospace small">${new Date(log.timestamp).toLocaleString()}</td>
+                <tr class="${escapeAttr(rowClass)}">
+                    <td class="text-secondary font-monospace small">${safeTimestamp}</td>
                     <td>${statusBadge}</td>
-                    <td>${log.client_ip || '127.0.0.1'}</td>
-                    <td><span class="badge ${methodClass}">${log.method || 'GET'}</span></td>
-                    <td class="font-monospace small"><code>${log.uri || '/'}</code></td>
-                    <td>${log.rule_id || '-'}</td>
-                    <td class="small text-muted">${(log.details || '').substring(0, 50)}${(log.details || '').length > 50 ? '...' : ''}</td>
+                    <td>${safeClientIP}</td>
+                    <td><span class="badge ${escapeAttr(methodClass)}">${safeMethod}</span></td>
+                    <td class="font-monospace small"><code>${safeUri}</code></td>
+                    <td>${safeRuleId}</td>
+                    <td class="small text-muted">${safeDetails}</td>
                     <td>${actionBadge}</td>
                 </tr>
             `;
@@ -594,18 +671,25 @@ const ObsidianApp = {
                 ? '<span class="badge bg-success">Active</span>'
                 : '<span class="badge bg-secondary">Disabled</span>';
 
+            // Escape user-controlled data
+            const safeId = escapeHtml(rule.id);
+            const safeDesc = escapeHtml(rule.description);
+            const safeSeverity = escapeHtml(rule.severity || 'NOTICE');
+            const safeCategory = escapeHtml(rule.category || 'General');
+            const ruleIdNum = Number.parseInt(rule.id, 10) || 0;
+
             return `
                 <tr>
-                    <td class="font-monospace">${rule.id}</td>
-                    <td>${rule.description}</td>
-                    <td><span class="badge ${sevClass}">${rule.severity || 'NOTICE'}</span></td>
-                    <td>${rule.category || 'General'}</td>
+                    <td class="font-monospace">${safeId}</td>
+                    <td>${safeDesc}</td>
+                    <td><span class="badge ${escapeAttr(sevClass)}">${safeSeverity}</span></td>
+                    <td>${safeCategory}</td>
                     <td>${statusBadge}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-info me-1" onclick="ObsidianApp.editRule(${rule.id})" title="Edit Rule">
+                        <button class="btn btn-sm btn-outline-info me-1" onclick="ObsidianApp.editRule(${ruleIdNum})" title="Edit Rule">
                             <i class="fas fa-edit"></i> Edit
                         </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.deleteRule(${rule.id})" title="Delete Rule">
+                        <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.deleteRule(${ruleIdNum})" title="Delete Rule">
                             <i class="fas fa-trash"></i> Delete
                         </button>
                     </td>
@@ -625,25 +709,53 @@ const ObsidianApp = {
         // Users table
         const usersTbody = document.getElementById('users-tbody');
         if (usersTbody && users) {
-            usersTbody.innerHTML = users.map(u => `
+            usersTbody.innerHTML = users.map(u => {
+                const safeUsername = escapeHtml(u.username);
+                const safeRole = escapeHtml(u.role);
+                // Use JSON.stringify for safe JS string literals in onclick
+                const usernameJson = JSON.stringify(u.username);
+                const roleJson = JSON.stringify(u.role);
+                return `
                 <tr>
-                    <td>${u.username}</td>
-                    <td><span class="badge bg-info">${u.role}</span></td>
+                    <td>${safeUsername}</td>
+                    <td><span class="badge bg-info">${safeRole}</span></td>
                     <td>${u.enabled ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-danger">Disabled</span>'}</td>
-                    <td><button class="btn btn-sm btn-outline-secondary" onclick="ObsidianApp.openUserEditModal('${u.username}', '${u.role}', ${u.enabled})" title="Edit User"><i class="fas fa-edit"></i> Edit</button></td>
+                    <td><button class="btn btn-sm btn-outline-secondary" onclick="ObsidianApp.openUserEditModal(${usernameJson}, ${roleJson}, ${!!u.enabled})" title="Edit User"><i class="fas fa-edit"></i> Edit</button></td>
                 </tr>
-            `).join('');
+            `}).join('');
         }
 
         // Audit logs
         const auditList = document.getElementById('audit-list');
-        if (auditList && audit) {
-            auditList.innerHTML = audit.map(log => `
-                <li class="list-group-item bg-transparent border-secondary text-light">
-                    <small class="text-muted">${log.timestamp}</small><br>
-                    <strong>${log.action}</strong> on ${log.resource}
-                </li>
-            `).join('');
+        if (auditList && audit && Array.isArray(audit)) {
+            if (audit.length === 0) {
+                auditList.innerHTML = '<li class="list-group-item bg-transparent border-secondary text-light text-center"><em>No audit logs available</em></li>';
+            } else {
+                auditList.innerHTML = audit.map(log => {
+                    // Format timestamp - handle both 'time' and 'timestamp' fields
+                    const timestamp = log.time || log.timestamp || log.created_at;
+                    const formattedTime = timestamp ? new Date(timestamp).toLocaleString() : 'Unknown time';
+                    
+                    // Get action/message - handle various field names
+                    const action = log.message || log.action || log.type || 'Activity';
+                    
+                    // Get resource - use request_uri, resource, or client_ip
+                    const resource = log.request_uri || log.resource || log.client_ip || '';
+                    
+                    // Get severity badge if available
+                    const severityBadge = log.severity ? 
+                        `<span class="badge bg-${log.severity === 'HIGH' ? 'danger' : log.severity === 'MEDIUM' ? 'warning' : 'info'} ms-2">${log.severity}</span>` : '';
+                    
+                    return `
+                        <li class="list-group-item bg-transparent border-secondary text-light">
+                            <small class="text-muted">${formattedTime}</small>${severityBadge}<br>
+                            <strong>${action}</strong>${resource ? ' on ' + resource : ''}
+                        </li>
+                    `;
+                }).join('');
+            }
+        } else if (auditList) {
+            auditList.innerHTML = '<li class="list-group-item bg-transparent border-secondary text-light text-center"><em>No audit logs available</em></li>';
         }
 
         // Metrics
@@ -671,14 +783,23 @@ const ObsidianApp = {
                     riskColor = 'warning';
                 }
                 
+                // Escape user-controlled data
+                const safeIP = escapeHtml(t.ip);
+                const safeRiskLevel = escapeHtml(t.risk_level);
+                const safeCategory = escapeHtml(t.category);
+                const safeSource = escapeHtml(t.source);
+                const safeLastSeen = escapeHtml(new Date(t.last_seen).toLocaleString());
+                // Use JSON.stringify for safe JS string literal in onclick
+                const ipJson = JSON.stringify(t.ip);
+
                 return `
                     <tr>
-                        <td class="font-monospace">${t.ip}</td>
-                        <td><span class="badge bg-${riskColor}">${t.risk_level}</span></td>
-                        <td>${t.category}</td>
-                        <td>${t.source}</td>
-                        <td>${new Date(t.last_seen).toLocaleString()}</td>
-                        <td><button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.blockIP('${t.ip}')" title="Block IP"><i class="fas fa-ban"></i> Block</button></td>
+                        <td class="font-monospace">${safeIP}</td>
+                        <td><span class="badge bg-${escapeAttr(riskColor)}">${safeRiskLevel}</span></td>
+                        <td>${safeCategory}</td>
+                        <td>${safeSource}</td>
+                        <td>${safeLastSeen}</td>
+                        <td><button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.blockIP(${ipJson})" title="Block IP"><i class="fas fa-ban"></i> Block</button></td>
                     </tr>
                 `;
             }).join('');
@@ -1272,11 +1393,37 @@ const ObsidianApp = {
     },
 
     // Export report
-    async exportReport() {
-        console.log('exportReport called');
+    async exportReport(format = 'pdf') {
+        console.log('exportReport called, format:', format);
         try {
-            // Use text format for reliable export
-            const res = await fetch('/api/export?format=text', {
+            if (format === 'csv') {
+                // Export logs as CSV
+                const logs = await this.api('/api/logs');
+                if (!logs || !logs.length) {
+                    this.showToast('Warning', 'No logs to export', true);
+                    return;
+                }
+                
+                let csv = 'Timestamp,Client IP,Method,Path,Rule ID,Action,Status,Details\n';
+                logs.forEach(log => {
+                    csv += `"${log.timestamp || ''}","${log.client_ip || ''}","${log.method || ''}","${log.uri || ''}","${log.rule_id || ''}","${log.action || ''}","${log.status || ''}","${(log.details || '').replace(/"/g, '""')}"\n`;
+                });
+                
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'obsidian-logs.csv';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                this.showToast('Success', 'CSV exported successfully');
+                return;
+            }
+            
+            // PDF export
+            const res = await fetch('/api/export?format=pdf', {
                 headers: { 'Authorization': 'Bearer ' + this.token }
             });
             
@@ -1292,7 +1439,7 @@ const ObsidianApp = {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'obsidian-security-report.txt';
+            a.download = 'obsidian-security-report.pdf';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -1310,10 +1457,15 @@ const ObsidianApp = {
         const id = 'toast-' + Date.now();
         const color = isError ? 'text-bg-danger' : 'text-bg-dark border-secondary text-white';
 
+        // Escape user-controlled content to prevent XSS
+        const safeTitle = escapeHtml(title);
+        const safeMessage = escapeHtml(message);
+        const safeId = escapeAttr(id);
+
         container.innerHTML += `
-            <div id="${id}" class="toast align-items-center ${color} border-0 mb-2 show" role="alert">
+            <div id="${safeId}" class="toast align-items-center ${escapeAttr(color)} border-0 mb-2 show" role="alert">
                 <div class="d-flex">
-                    <div class="toast-body"><strong>${title}</strong><br>${message}</div>
+                    <div class="toast-body"><strong>${safeTitle}</strong><br>${safeMessage}</div>
                     <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.parentElement.parentElement.remove()"></button>
                 </div>
             </div>
@@ -1328,6 +1480,727 @@ const ObsidianApp = {
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
         return `${h}h ${m}m`;
+    },
+
+    // ============================================
+    // ANALYTICS FUNCTIONS
+    // ============================================
+    
+    analyticsPeriod: 'today',
+    
+    setAnalyticsPeriod(period) {
+        this.analyticsPeriod = period;
+        document.querySelectorAll('#view-analytics .btn-group .btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.textContent.toLowerCase().includes(period.substring(0, 4))) {
+                btn.classList.add('active');
+            }
+        });
+        this.fetchAnalyticsData();
+    },
+    
+    async fetchAnalyticsData() {
+        const [stats, logs, metrics] = await Promise.all([
+            this.api('/api/stats'),
+            this.api('/api/logs'),
+            this.api('/api/metrics')
+        ]);
+        
+        if (stats) {
+            const total = (stats.total_requests || 0);
+            const blocked = (stats.blocked_requests || 0);
+            const blockRate = total > 0 ? ((blocked / total) * 100).toFixed(1) : '0';
+            
+            document.getElementById('analytics-total-24h').textContent = total.toLocaleString();
+            document.getElementById('analytics-block-rate').textContent = blockRate + '%';
+            document.getElementById('analytics-avg-response').textContent = (stats.avg_response_time_ms || 0).toFixed(1) + 'ms';
+        }
+        
+        if (logs && logs.length > 0) {
+            // Calculate unique IPs
+            const uniqueIPs = new Set(logs.map(l => l.client_ip).filter(Boolean));
+            document.getElementById('analytics-unique-ips').textContent = uniqueIPs.size;
+            
+            // Top attacked endpoints
+            const endpointStats = {};
+            logs.forEach(log => {
+                const uri = log.uri || '/';
+                if (!endpointStats[uri]) {
+                    endpointStats[uri] = { total: 0, blocked: 0 };
+                }
+                endpointStats[uri].total++;
+                if (log.status === 'Blocked' || log.status === 'ThreatBlocked') {
+                    endpointStats[uri].blocked++;
+                }
+            });
+            
+            const topEndpoints = Object.entries(endpointStats)
+                .filter(([_, stats]) => stats.blocked > 0)
+                .sort((a, b) => b[1].blocked - a[1].blocked)
+                .slice(0, 5);
+            
+            const endpointsTbody = document.getElementById('analytics-top-endpoints');
+            if (endpointsTbody) {
+                if (topEndpoints.length === 0) {
+                    endpointsTbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No attacks detected</td></tr>';
+                } else {
+                    endpointsTbody.innerHTML = topEndpoints.map(([uri, stats]) => {
+                        const rate = stats.total > 0 ? ((stats.blocked / stats.total) * 100).toFixed(0) : 0;
+                        return `<tr>
+                            <td><code class="text-info">${uri.substring(0, 40)}${uri.length > 40 ? '...' : ''}</code></td>
+                            <td><span class="badge bg-danger">${stats.blocked}</span></td>
+                            <td>${rate}%</td>
+                        </tr>`;
+                    }).join('');
+                }
+            }
+            
+            // Top attackers
+            const attackerStats = {};
+            logs.forEach(log => {
+                if (log.status !== 'Blocked' && log.status !== 'ThreatBlocked') return;
+                const ip = log.client_ip || 'Unknown';
+                if (!attackerStats[ip]) {
+                    attackerStats[ip] = { count: 0, country: log.country || 'Unknown' };
+                }
+                attackerStats[ip].count++;
+            });
+            
+            const topAttackers = Object.entries(attackerStats)
+                .sort((a, b) => b[1].count - a[1].count)
+                .slice(0, 5);
+            
+            const attackersTbody = document.getElementById('analytics-top-attackers');
+            if (attackersTbody) {
+                if (topAttackers.length === 0) {
+                    attackersTbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No attackers detected</td></tr>';
+                } else {
+                    attackersTbody.innerHTML = topAttackers.map(([ip, stats]) => `<tr>
+                        <td><code>${ip}</code></td>
+                        <td>${stats.country}</td>
+                        <td><span class="badge bg-danger">${stats.count}</span></td>
+                        <td><button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.blacklistIP('${ip}')"><i class="fas fa-ban"></i></button></td>
+                    </tr>`).join('');
+                }
+            }
+            
+            // Update charts
+            this.updateAnalyticsCharts(logs);
+        } else {
+            document.getElementById('analytics-unique-ips').textContent = '0';
+        }
+    },
+    
+    updateAnalyticsCharts(logs) {
+        // Traffic chart (7 days)
+        const trafficCtx = document.getElementById('trafficChart')?.getContext('2d');
+        if (trafficCtx) {
+            const days = [];
+            const blocked = [];
+            const safe = [];
+            
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date();
+                date.setDate(date.getDate() - i);
+                days.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
+                
+                const dayLogs = logs.filter(l => {
+                    const logDate = new Date(l.timestamp);
+                    return logDate.toDateString() === date.toDateString();
+                });
+                
+                blocked.push(dayLogs.filter(l => l.status === 'Blocked' || l.status === 'ThreatBlocked').length);
+                safe.push(dayLogs.filter(l => l.status === 'Safe').length);
+            }
+            
+            if (this.charts.traffic) {
+                this.charts.traffic.data.labels = days;
+                this.charts.traffic.data.datasets[0].data = safe;
+                this.charts.traffic.data.datasets[1].data = blocked;
+                this.charts.traffic.update();
+            } else {
+                this.charts.traffic = new Chart(trafficCtx, {
+                    type: 'line',
+                    data: {
+                        labels: days,
+                        datasets: [
+                            { label: 'Safe', data: safe, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.4 },
+                            { label: 'Blocked', data: blocked, borderColor: '#f43f5e', backgroundColor: 'rgba(244, 63, 94, 0.1)', fill: true, tension: 0.4 }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: '#3d424a' } },
+                            x: { grid: { color: '#3d424a' } }
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Category chart
+        const categoryCtx = document.getElementById('categoryChart')?.getContext('2d');
+        if (categoryCtx) {
+            const categories = { 'XSS': 0, 'SQLi': 0, 'RCE': 0, 'LFI': 0, 'Other': 0 };
+            logs.forEach(log => {
+                if (log.status !== 'Blocked' && log.status !== 'ThreatBlocked') return;
+                const details = (log.details || '').toLowerCase();
+                if (details.includes('xss') || details.includes('script')) categories['XSS']++;
+                else if (details.includes('sql') || details.includes('injection')) categories['SQLi']++;
+                else if (details.includes('rce') || details.includes('command')) categories['RCE']++;
+                else if (details.includes('lfi') || details.includes('path') || details.includes('traversal')) categories['LFI']++;
+                else categories['Other']++;
+            });
+            
+            if (this.charts.category) {
+                this.charts.category.data.datasets[0].data = Object.values(categories);
+                this.charts.category.update();
+            } else {
+                this.charts.category = new Chart(categoryCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(categories),
+                        datasets: [{
+                            data: Object.values(categories),
+                            backgroundColor: ['#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4', '#6b7280']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'right' } }
+                    }
+                });
+            }
+        }
+        
+        // Hourly chart
+        const hourlyCtx = document.getElementById('hourlyChart')?.getContext('2d');
+        if (hourlyCtx) {
+            const hourlyData = Array(24).fill(0);
+            const today = new Date().toDateString();
+            logs.forEach(log => {
+                const logDate = new Date(log.timestamp);
+                if (logDate.toDateString() === today) {
+                    hourlyData[logDate.getHours()]++;
+                }
+            });
+            
+            const labels = Array.from({ length: 24 }, (_, i) => `${i}:00`);
+            
+            if (this.charts.hourly) {
+                this.charts.hourly.data.datasets[0].data = hourlyData;
+                this.charts.hourly.update();
+            } else {
+                this.charts.hourly = new Chart(hourlyCtx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Requests',
+                            data: hourlyData,
+                            backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                            borderColor: '#3b82f6',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: '#3d424a' } },
+                            x: { grid: { display: false } }
+                        }
+                    }
+                });
+            }
+        }
+    },
+
+    // ============================================
+    // SYSTEM HEALTH FUNCTIONS
+    // ============================================
+    
+    async fetchHealthData() {
+        const [health, metrics] = await Promise.all([
+            this.api('/api/health'),
+            this.api('/api/metrics')
+        ]);
+        
+        if (health) {
+            // System status
+            const statusEl = document.getElementById('health-status');
+            if (statusEl) {
+                if (health.status === 'healthy') {
+                    statusEl.innerHTML = '<span class="badge bg-success fs-5"><i class="fas fa-check-circle me-1"></i>Healthy</span>';
+                } else {
+                    statusEl.innerHTML = '<span class="badge bg-danger fs-5"><i class="fas fa-exclamation-circle me-1"></i>Degraded</span>';
+                }
+            }
+            
+            // Parse databases object from health response
+            const databases = health.databases || {};
+            
+            // PostgreSQL status
+            const postgresEl = document.getElementById('health-postgres');
+            if (postgresEl) {
+                const pgStatus = databases.postgres || 'not_configured';
+                const isConnected = pgStatus === 'connected';
+                postgresEl.textContent = isConnected ? 'Connected' : (pgStatus === 'not_configured' ? 'Not Configured' : 'Disconnected');
+                postgresEl.className = `badge bg-${isConnected ? 'success' : (pgStatus === 'not_configured' ? 'secondary' : 'danger')}`;
+            }
+            
+            // Redis status
+            const redisEl = document.getElementById('health-redis');
+            if (redisEl) {
+                const redisStatus = databases.redis || 'not_configured';
+                const isConnected = redisStatus === 'connected';
+                redisEl.textContent = isConnected ? 'Connected' : 'Not Configured';
+                redisEl.className = `badge bg-${isConnected ? 'success' : 'secondary'}`;
+            }
+            
+            // GeoIP status from features
+            const geoipEl = document.getElementById('health-geoip');
+            if (geoipEl && health.features) {
+                const geoipActive = health.features.geoip;
+                geoipEl.textContent = geoipActive ? 'Active' : 'Not Configured';
+                geoipEl.className = `badge bg-${geoipActive ? 'success' : 'secondary'}`;
+            }
+            
+            // Alert service from features
+            const alertsEl = document.getElementById('health-alerts');
+            if (alertsEl && health.features) {
+                const alertsActive = health.features.alerts;
+                alertsEl.textContent = alertsActive ? 'Active' : 'Not Configured';
+                alertsEl.className = `badge bg-${alertsActive ? 'success' : 'secondary'}`;
+            }
+            
+            // Uptime from health response
+            if (health.uptime) {
+                const uptimeEl = document.getElementById('health-uptime');
+                if (uptimeEl) uptimeEl.textContent = health.uptime;
+            }
+        }
+        
+        if (metrics) {
+            // Uptime
+            document.getElementById('health-uptime').textContent = this.formatUptime(metrics.uptime_seconds);
+            
+            // Memory
+            const memAlloc = metrics.memory_alloc_mb || 0;
+            const memSys = metrics.memory_sys_mb || 0;
+            document.getElementById('health-memory').textContent = memAlloc.toFixed(1) + ' MB';
+            document.getElementById('health-mem-alloc').textContent = memAlloc.toFixed(1) + ' MB';
+            document.getElementById('health-mem-sys').textContent = memSys.toFixed(1) + ' MB';
+            
+            // Progress bars (assuming 512MB max for visualization)
+            const maxMem = 512;
+            document.getElementById('health-mem-bar').style.width = Math.min((memAlloc / maxMem) * 100, 100) + '%';
+            document.getElementById('health-sys-bar').style.width = Math.min((memSys / maxMem) * 100, 100) + '%';
+            
+            // Goroutines
+            const goroutines = metrics.goroutines || 0;
+            document.getElementById('health-goroutines').textContent = goroutines;
+            document.getElementById('health-go-count').textContent = goroutines;
+            document.getElementById('health-go-bar').style.width = Math.min((goroutines / 100) * 100, 100) + '%';
+            
+            // Last update
+            document.getElementById('health-last-update').textContent = new Date().toLocaleTimeString();
+        }
+        
+        // Add system events
+        this.loadHealthEvents();
+    },
+    
+    async loadHealthEvents() {
+        const tbody = document.getElementById('health-events');
+        if (!tbody) return;
+        
+        // Try to get real events from audit API
+        try {
+            const auditLogs = await this.api('/api/admin/audit?limit=10');
+            
+            if (auditLogs && Array.isArray(auditLogs) && auditLogs.length > 0) {
+                // Real audit events
+                tbody.innerHTML = auditLogs.map(log => {
+                    const time = log.time || log.timestamp || log.created_at;
+                    const formattedTime = time ? new Date(time).toLocaleTimeString() : '-';
+                    const eventType = log.type || log.action || 'Event';
+                    const details = log.message || log.request_uri || log.details || '-';
+                    const severity = log.severity || 'info';
+                    const statusClass = severity === 'HIGH' ? 'danger' : severity === 'MEDIUM' ? 'warning' : 'success';
+                    
+                    return `
+                        <tr>
+                            <td class="text-muted">${formattedTime}</td>
+                            <td>${eventType}</td>
+                            <td class="small">${details}</td>
+                            <td><span class="badge bg-${statusClass}">${severity.toLowerCase()}</span></td>
+                        </tr>
+                    `;
+                }).join('');
+                return;
+            }
+        } catch (e) {
+            console.log('Could not fetch audit logs, using system events');
+        }
+        
+        // Fallback: Generate events based on current health status
+        const health = await this.api('/api/health');
+        const events = [];
+        const now = Date.now();
+        
+        // Add startup event
+        events.push({
+            time: new Date(now - 1000).toLocaleTimeString(),
+            event: 'Health Check',
+            details: `System status: ${health?.status || 'unknown'}`,
+            status: health?.status === 'healthy' ? 'success' : 'warning'
+        });
+        
+        // Database event
+        const dbStatus = health?.databases?.postgres || 'not_configured';
+        events.push({
+            time: new Date(now - 5000).toLocaleTimeString(),
+            event: 'Database Status',
+            details: `PostgreSQL: ${dbStatus}`,
+            status: dbStatus === 'connected' ? 'success' : 'warning'
+        });
+        
+        // WAF event
+        if (health?.features?.waf) {
+            events.push({
+                time: new Date(now - 10000).toLocaleTimeString(),
+                event: 'WAF Engine',
+                details: 'Protection active',
+                status: 'success'
+            });
+        }
+        
+        // Version info
+        events.push({
+            time: new Date(now - 30000).toLocaleTimeString(),
+            event: 'System Start',
+            details: `Version ${health?.version || 'unknown'}`,
+            status: 'info'
+        });
+        
+        tbody.innerHTML = events.map(e => `
+            <tr>
+                <td class="text-muted">${e.time}</td>
+                <td>${e.event}</td>
+                <td class="small">${e.details}</td>
+                <td><span class="badge bg-${e.status}">${e.status}</span></td>
+            </tr>
+        `).join('');
+    },
+    
+    refreshHealth() {
+        this.showToast('Info', 'Refreshing health data...');
+        this.fetchHealthData();
+    },
+
+    // ============================================
+    // SECURITY SETTINGS FUNCTIONS
+    // ============================================
+    
+    async fetchSecurityData() {
+        // Fetch all security data
+        await Promise.all([
+            this.fetchAPIKeys(),
+            this.fetchIPAllowlist(),
+            this.fetchSecurityOverview()
+        ]);
+    },
+    
+    async fetchSecurityOverview() {
+        const data = await this.api('/api/security/overview');
+        if (data) {
+            document.getElementById('security-api-keys').textContent = data.api_keys_count || '0';
+            document.getElementById('security-ip-count').textContent = data.ip_allowlist_count || '0';
+        }
+    },
+    
+    async fetchAPIKeys() {
+        const data = await this.api('/api/security/apikeys');
+        const tbody = document.getElementById('apikeys-tbody');
+        if (!tbody) return;
+        
+        if (!data || !data.keys || data.keys.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No API keys configured</td></tr>';
+            document.getElementById('security-api-keys').textContent = '0';
+            return;
+        }
+        
+        document.getElementById('security-api-keys').textContent = data.keys.length;
+        
+        tbody.innerHTML = data.keys.map(key => `
+            <tr>
+                <td>${key.name}</td>
+                <td><code>${key.key_prefix}</code></td>
+                <td>${key.scopes ? key.scopes.join(', ') : '-'}</td>
+                <td>${new Date(key.created_at).toLocaleDateString()}</td>
+                <td>${new Date(key.expires_at).toLocaleDateString()}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.revokeAPIKey('${key.id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    },
+    
+    async createAPIKey() {
+        const name = document.getElementById('apikey-name')?.value;
+        const scopes = document.getElementById('apikey-scopes')?.value.split(',').map(s => s.trim());
+        const expiresIn = parseInt(document.getElementById('apikey-expires')?.value || '30');
+        
+        if (!name) {
+            this.showToast('Error', 'Please enter a key name', true);
+            return;
+        }
+        
+        const res = await this.api('/api/security/apikeys/create', {
+            method: 'POST',
+            body: JSON.stringify({ name, scopes, expires_in_days: expiresIn })
+        });
+        
+        if (res?.success) {
+            this.showToast('Success', `API Key created! Key: ${res.full_key}`);
+            // Show the key in an alert so user can copy it
+            alert(`API Key Created!\n\nKey: ${res.full_key}\n\nSave this key now - it won't be shown again!`);
+            await this.fetchAPIKeys();
+            bootstrap.Modal.getInstance(document.getElementById('apiKeyModal'))?.hide();
+        } else {
+            this.showToast('Error', 'Failed to create API key', true);
+        }
+    },
+    
+    async revokeAPIKey(keyId) {
+        if (!confirm('Are you sure you want to revoke this API key?')) return;
+        
+        const res = await this.api('/api/security/apikeys/revoke', {
+            method: 'POST',
+            body: JSON.stringify({ key_id: keyId })
+        });
+        
+        if (res?.success) {
+            this.showToast('Success', 'API key revoked');
+            await this.fetchAPIKeys();
+        } else {
+            this.showToast('Error', 'Failed to revoke API key', true);
+        }
+    },
+    
+    async fetchIPAllowlist() {
+        const data = await this.api('/api/security/ipallowlist');
+        const tbody = document.getElementById('ipallow-tbody');
+        const enabledCheckbox = document.getElementById('ipAllowlistEnabled');
+        
+        if (!tbody) return;
+        
+        if (enabledCheckbox) {
+            enabledCheckbox.checked = data?.enabled || false;
+        }
+        
+        if (!data || !data.entries || data.entries.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No IPs whitelisted</td></tr>';
+            document.getElementById('security-ip-count').textContent = '0';
+            return;
+        }
+        
+        document.getElementById('security-ip-count').textContent = data.entries.length;
+        
+        tbody.innerHTML = data.entries.map(entry => `
+            <tr>
+                <td><code>${entry.ip}</code></td>
+                <td>${entry.description || '-'}</td>
+                <td>${new Date(entry.added_at).toLocaleDateString()}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.removeIPFromAllowlist('${entry.ip}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    },
+    
+    async addIPToAllowlist() {
+        const ip = document.getElementById('ip-address')?.value?.trim();
+        const description = document.getElementById('ip-description')?.value?.trim();
+        
+        if (!ip) {
+            this.showToast('Error', 'Please enter an IP address', true);
+            return;
+        }
+        
+        // Validate IP format with proper octet and CIDR range checking
+        const validateIP = (ipStr) => {
+            // Check for CIDR notation
+            const parts = ipStr.split('/');
+            const ipPart = parts[0];
+            const cidrPart = parts[1];
+            
+            // Validate octets (must be 0-255)
+            const octets = ipPart.split('.');
+            if (octets.length !== 4) return false;
+            
+            for (const octet of octets) {
+                const num = parseInt(octet, 10);
+                if (isNaN(num) || num < 0 || num > 255 || octet !== num.toString()) {
+                    return false;
+                }
+            }
+            
+            // Validate CIDR if present (must be 0-32)
+            if (cidrPart !== undefined) {
+                const cidr = parseInt(cidrPart, 10);
+                if (isNaN(cidr) || cidr < 0 || cidr > 32 || cidrPart !== cidr.toString()) {
+                    return false;
+                }
+            }
+            
+            return true;
+        };
+        
+        if (!validateIP(ip)) {
+            this.showToast('Error', 'Invalid IP address. Use format: 192.168.1.1 or 192.168.1.0/24 (octets 0-255, CIDR 0-32)', true);
+            return;
+        }
+        
+        try {
+            const res = await this.api('/api/security/ipallowlist/add', {
+                method: 'POST',
+                body: JSON.stringify({ ip, description: description || 'Added via dashboard' })
+            });
+            
+            if (res && res.success) {
+                this.showToast('Success', `IP ${ip} added to allowlist`);
+                // Close modal first
+                const modal = bootstrap.Modal.getInstance(document.getElementById('ipModal'));
+                if (modal) modal.hide();
+                // Then refresh data
+                setTimeout(() => this.fetchIPAllowlist(), 300);
+            } else {
+                this.showToast('Error', res?.error || 'Failed to add IP', true);
+            }
+        } catch (err) {
+            console.error('Add IP error:', err);
+            this.showToast('Error', 'Network error. Please try again.', true);
+        }
+    },
+    
+    async removeIPFromAllowlist(ip) {
+        if (!confirm(`Remove ${ip} from allowlist?`)) return;
+        
+        const res = await this.api('/api/security/ipallowlist/remove', {
+            method: 'POST',
+            body: JSON.stringify({ ip })
+        });
+        
+        if (res?.success) {
+            this.showToast('Success', 'IP removed from allowlist');
+            await this.fetchIPAllowlist();
+        } else {
+            this.showToast('Error', 'Failed to remove IP', true);
+        }
+    },
+    
+    async checkPasswordBreach(password) {
+        const pwd = password || document.getElementById('hibp-password')?.value;
+        if (!pwd) {
+            this.showToast('Warning', 'Please enter a password to check', true);
+            return;
+        }
+        
+        const resultDiv = document.getElementById('hibp-result');
+        resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-warning"></div> Checking...';
+        
+        try {
+            // Use backend API to avoid CORS issues with direct HIBP calls
+            const res = await this.api('/api/security/password/check', {
+                method: 'POST',
+                body: JSON.stringify({ password: pwd })
+            });
+            
+            if (!res) {
+                resultDiv.innerHTML = `<div class="alert alert-warning">Failed to check password. Please try again.</div>`;
+                return;
+            }
+            
+            if (res.error) {
+                resultDiv.innerHTML = `<div class="alert alert-warning">${res.error}</div>`;
+                return;
+            }
+            
+            if (res.compromised) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Password Compromised!</strong><br>
+                        This password has been seen <strong>${res.count.toLocaleString()}</strong> times in data breaches. Do not use it!
+                    </div>`;
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Password Safe</strong><br>
+                        This password was not found in any known data breaches.
+                    </div>`;
+            }
+        } catch (e) {
+            console.error('Password check error:', e);
+            resultDiv.innerHTML = `<div class="alert alert-warning">Failed to check password: ${e.message}</div>`;
+        }
+    },
+    
+    // Toggle password visibility
+    togglePasswordVisibility(inputId) {
+        const input = document.getElementById(inputId);
+        const icon = document.getElementById(inputId + '-eye');
+        if (!input) return;
+        
+        if (input.type === 'password') {
+            input.type = 'text';
+            if (icon) icon.className = 'fas fa-eye-slash';
+        } else {
+            input.type = 'password';
+            if (icon) icon.className = 'fas fa-eye';
+        }
+    },
+    
+    async rotateSecret(secretType) {
+        if (!confirm(`Are you sure you want to rotate the ${secretType.toUpperCase()} secret? This will invalidate all existing tokens.`)) {
+            return;
+        }
+        
+        const res = await this.api('/api/security/secrets/rotate-jwt', { method: 'POST' });
+        if (res?.success) {
+            this.showToast('Success', 'Secret rotated successfully. All users will need to re-authenticate.');
+        } else {
+            this.showToast('Error', 'Failed to rotate secret', true);
+        }
+    },
+    
+    async reloadSecrets() {
+        const res = await this.api('/api/security/secrets/reload', { method: 'POST' });
+        if (res?.success) {
+            this.showToast('Success', 'Secrets reloaded from environment');
+        } else {
+            this.showToast('Error', 'Failed to reload secrets', true);
+        }
+    },
+    
+    showCreateApiKeyModal() {
+        document.getElementById('apiKeyForm')?.reset();
+        new bootstrap.Modal(document.getElementById('apiKeyModal')).show();
+    },
+    
+    showAddIpModal() {
+        document.getElementById('ipForm')?.reset();
+        new bootstrap.Modal(document.getElementById('ipModal')).show();
     },
 
     // Logout
@@ -1347,3 +2220,16 @@ function logout() { ObsidianApp.logout(); }
 function openRuleModal(id) { ObsidianApp.openRuleModal(id); }
 function saveRule() { ObsidianApp.saveRule(); }
 function deleteRule(id) { ObsidianApp.deleteRule(id); }
+
+// Security Settings global functions
+function checkPasswordBreach() { ObsidianApp.checkPasswordBreach(); }
+function rotateSecret(type) { ObsidianApp.rotateSecret(type); }
+function reloadSecrets() { ObsidianApp.reloadSecrets(); }
+function showCreateApiKeyModal() { 
+    document.getElementById('apiKeyForm')?.reset();
+    new bootstrap.Modal(document.getElementById('apiKeyModal')).show(); 
+}
+function showAddIpModal() { 
+    document.getElementById('ipForm')?.reset();
+    new bootstrap.Modal(document.getElementById('ipModal')).show(); 
+}

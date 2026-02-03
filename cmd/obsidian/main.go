@@ -4,16 +4,22 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha1"
 	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -41,7 +47,7 @@ import (
 // Application version
 const (
 	AppName    = "Obsidian Sentinel WAF"
-	AppVersion = "2.1.0" // Enterprise Edition
+	AppVersion = "2.2.1" // Enterprise Edition - Analytics & Health Update
 )
 
 // Metrics for observability
@@ -205,6 +211,23 @@ func main() {
 			MinSeverity: alerts.SeverityMedium,
 		})
 	}
+	if discordURL := os.Getenv("OBSIDIAN_DISCORD_WEBHOOK"); discordURL != "" {
+		alertCfg.Webhooks = append(alertCfg.Webhooks, alerts.WebhookConfig{
+			Name:        "discord",
+			Type:        alerts.WebhookDiscord,
+			URL:         discordURL,
+			Enabled:     true,
+			MinSeverity: alerts.SeverityMedium,
+		})
+	}
+	// Add built-in console logger webhook for alerts (always active)
+	alertCfg.Webhooks = append(alertCfg.Webhooks, alerts.WebhookConfig{
+		Name:        "console",
+		Type:        alerts.WebhookGeneric,
+		URL:         "internal://console",
+		Enabled:     true,
+		MinSeverity: alerts.SeverityHigh,
+	})
 	alertService = alerts.NewService(alertCfg)
 
 	// Initialize WAF
@@ -223,6 +246,11 @@ func main() {
 	// API Routes - Public (no auth required)
 	mux.HandleFunc("/api/login", apiHandler.HandleLogin)
 	mux.HandleFunc("/api/health", handleHealth)
+
+	// OAuth Routes (Supabase integration)
+	mux.HandleFunc("/api/auth/google", handleOAuthGoogle)
+	mux.HandleFunc("/api/auth/github", handleOAuthGitHub)
+	mux.HandleFunc("/api/auth/callback", handleOAuthCallback)
 
 	// API Routes - Protected (auth required)
 	mux.HandleFunc("/api/stats", authMiddleware(apiHandler.HandleStats))
@@ -268,6 +296,22 @@ func main() {
 	// Cache/Redis Routes
 	mux.HandleFunc("/api/cache/stats", authMiddleware(handleCacheStats))
 	mux.HandleFunc("/api/cache/health", authMiddleware(handleCacheHealth))
+
+	// Security Settings Routes
+	mux.HandleFunc("/api/security/overview", authMiddleware(handleSecurityOverview))
+	mux.HandleFunc("/api/security/password/check", authMiddleware(handlePasswordBreachCheck))
+	mux.HandleFunc("/api/security/secrets/reload", authMiddleware(rbacMiddleware("Admin", handleSecretsReload)))
+	mux.HandleFunc("/api/security/secrets/rotate-jwt", authMiddleware(rbacMiddleware("Admin", handleSecretsRotateJWT)))
+
+	// API Key Management
+	mux.HandleFunc("/api/security/apikeys", authMiddleware(handleAPIKeysList))
+	mux.HandleFunc("/api/security/apikeys/create", authMiddleware(rbacMiddleware("Admin", handleAPIKeyCreate)))
+	mux.HandleFunc("/api/security/apikeys/revoke", authMiddleware(rbacMiddleware("Admin", handleAPIKeyRevoke)))
+
+	// IP Allowlist Management
+	mux.HandleFunc("/api/security/ipallowlist", authMiddleware(handleIPAllowlist))
+	mux.HandleFunc("/api/security/ipallowlist/add", authMiddleware(rbacMiddleware("Admin", handleIPAllowlistAdd)))
+	mux.HandleFunc("/api/security/ipallowlist/remove", authMiddleware(rbacMiddleware("Admin", handleIPAllowlistRemove)))
 
 	// Static Files (UI)
 	uiFS, err := fs.Sub(uiAssets, "ui")
@@ -612,15 +656,40 @@ func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store
 	})
 }
 
+// statusRecorder wraps http.ResponseWriter to capture the status code
+type statusRecorder struct {
+	http.ResponseWriter
+	status  int
+	written bool
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	if !r.written {
+		r.status = code
+		r.written = true
+	}
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	if !r.written {
+		r.status = http.StatusOK
+		r.written = true
+	}
+	return r.ResponseWriter.Write(b)
+}
+
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		atomic.AddInt64(&totalRequests, 1)
 
-		next.ServeHTTP(w, r)
+		// Wrap response writer to capture status code
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
 
 		requestID := requestid.FromContext(r.Context())
-		logger.LogRequest(requestID, r.Method, r.URL.Path, extractClientIP(r), r.UserAgent(), 200, time.Since(start))
+		logger.LogRequest(requestID, r.Method, r.URL.Path, extractClientIP(r), r.UserAgent(), rec.status, time.Since(start))
 	})
 }
 
@@ -762,7 +831,25 @@ func handleRateLimitReset(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		IP string `json:"ip"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	if req.IP == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "IP address is required",
+		})
+		return
+	}
 
 	// Reset rate limits
 	rateLimiter.Reset(req.IP)
@@ -789,11 +876,20 @@ func handleRateLimitBlacklist(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error": "Invalid IP"}`, http.StatusBadRequest)
 			return
 		}
-		rateLimiter.Blacklist(req.IP)
+		// Trim and validate IP address
+		ip := strings.TrimSpace(req.IP)
+		if net.ParseIP(ip) == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "Invalid IP address format",
+			})
+			return
+		}
+		rateLimiter.Blacklist(ip)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"message": "IP blacklisted",
-			"ip":      req.IP,
+			"ip":      ip,
 		})
 
 	case http.MethodDelete:
@@ -801,11 +897,20 @@ func handleRateLimitBlacklist(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error": "Invalid IP"}`, http.StatusBadRequest)
 			return
 		}
-		rateLimiter.RemoveFromBlacklist(req.IP)
+		// Trim and validate IP address
+		ip := strings.TrimSpace(req.IP)
+		if net.ParseIP(ip) == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "Invalid IP address format",
+			})
+			return
+		}
+		rateLimiter.RemoveFromBlacklist(ip)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"message": "IP removed from blacklist",
-			"ip":      req.IP,
+			"ip":      ip,
 		})
 
 	default:
@@ -1017,4 +1122,594 @@ func handleCacheHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+// ============================================
+// Security Settings Handlers
+// ============================================
+
+// handleSecurityOverview returns security configuration overview
+func handleSecurityOverview(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	overview := map[string]interface{}{
+		"oauth": map[string]interface{}{
+			"google_enabled": os.Getenv("SUPABASE_URL") != "",
+			"github_enabled": os.Getenv("SUPABASE_URL") != "",
+			"provider":       "supabase",
+		},
+		"database": map[string]interface{}{
+			"postgres_connected": dbManager != nil && dbManager.HasPostgres(),
+			"redis_connected":    dbManager != nil && dbManager.HasRedis(),
+		},
+		"security": map[string]interface{}{
+			"jwt_configured":    securityMgr != nil,
+			"rate_limit_active": rateLimiter != nil,
+			"threat_intel":      threatIntel != nil,
+		},
+		"version": AppVersion,
+	}
+
+	json.NewEncoder(w).Encode(overview)
+}
+
+// handlePasswordBreachCheck checks if a password has been compromised using k-anonymity
+func handlePasswordBreachCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if req.Password == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Password is required",
+		})
+		return
+	}
+
+	// Hash the password using SHA-1 for HIBP API
+	hash := fmt.Sprintf("%X", sha1.Sum([]byte(req.Password)))
+	prefix := hash[:5]
+	suffix := hash[5:]
+
+	// Query HIBP API with timeout
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	hibpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.pwnedpasswords.com/range/"+prefix, nil)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Failed to create request: " + err.Error(),
+		})
+		return
+	}
+
+	hibpClient := &http.Client{Timeout: 10 * time.Second}
+	resp, err := hibpClient.Do(hibpReq)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Failed to check password: " + err.Error(),
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	lines := strings.Split(string(body), "\r\n")
+
+	var count int
+	for _, line := range lines {
+		parts := strings.Split(line, ":")
+		if len(parts) == 2 && strings.ToUpper(parts[0]) == suffix {
+			fmt.Sscanf(parts[1], "%d", &count)
+			break
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"compromised": count > 0,
+		"count":       count,
+		"message": func() string {
+			if count > 0 {
+				return fmt.Sprintf("Password found %d times in data breaches. Do not use!", count)
+			}
+			return "Password not found in known data breaches."
+		}(),
+	})
+}
+
+// handleSecretsReload reloads secrets from environment
+func handleSecretsReload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Note: Secrets reload is not fully implemented - requires application restart
+	// Return 501 to indicate this feature is not available
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotImplemented)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": false,
+		"message": "Secrets reload requires application restart. Please update environment variables and restart the service.",
+		"action":  "restart_required",
+	})
+}
+
+// handleSecretsRotateJWT rotates the JWT secret
+func handleSecretsRotateJWT(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Note: JWT rotation is not fully implemented - secret is not persisted
+	// Return 501 to indicate this feature requires manual intervention
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotImplemented)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": false,
+		"message": "JWT secret rotation requires manual intervention. Update JWT_SECRET environment variable and restart the service to rotate secrets. All users must re-authenticate after restart.",
+		"action":  "manual_rotation_required",
+		"steps": []string{
+			"1. Generate new secret: openssl rand -hex 32",
+			"2. Update JWT_SECRET environment variable",
+			"3. Restart the service",
+			"4. All existing tokens will be invalidated",
+		},
+	})
+}
+
+// ============================================
+// API Key Management Handlers
+// ============================================
+
+// In-memory API key storage (in production, use database)
+var apiKeys = make(map[string]APIKey)
+var apiKeysMutex sync.RWMutex
+
+type APIKey struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	KeyPrefix string    `json:"key_prefix"`
+	Scopes    []string  `json:"scopes"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	LastUsed  time.Time `json:"last_used,omitempty"`
+	Enabled   bool      `json:"enabled"`
+}
+
+func handleAPIKeysList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	apiKeysMutex.RLock()
+	keys := make([]APIKey, 0, len(apiKeys))
+	for _, k := range apiKeys {
+		keys = append(keys, k)
+	}
+	apiKeysMutex.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"keys":  keys,
+		"count": len(keys),
+	})
+}
+
+func handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Name      string   `json:"name"`
+		Scopes    []string `json:"scopes"`
+		ExpiresIn int      `json:"expires_in_days"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Generate API key
+	keyBytes := make([]byte, 32)
+	if _, err := rand.Read(keyBytes); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Failed to generate secure API key",
+		})
+		logger.Error("Failed to generate API key bytes")
+		return
+	}
+	fullKey := fmt.Sprintf("obs_%x", keyBytes)
+
+	key := APIKey{
+		ID:        fmt.Sprintf("key_%d", time.Now().UnixNano()),
+		Name:      req.Name,
+		KeyPrefix: fullKey[:12] + "...",
+		Scopes:    req.Scopes,
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().AddDate(0, 0, req.ExpiresIn),
+		Enabled:   true,
+	}
+
+	apiKeysMutex.Lock()
+	apiKeys[key.ID] = key
+	apiKeysMutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":  true,
+		"key":      key,
+		"full_key": fullKey, // Only shown once!
+		"warning":  "Save this key now. It won't be shown again.",
+	})
+}
+
+func handleAPIKeyRevoke(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		KeyID string `json:"key_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	apiKeysMutex.Lock()
+	delete(apiKeys, req.KeyID)
+	apiKeysMutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "API key revoked",
+	})
+}
+
+// ============================================
+// IP Allowlist Management Handlers
+// ============================================
+
+var ipAllowlist = make(map[string]IPAllowEntry)
+var ipAllowlistMutex sync.RWMutex
+var ipAllowlistEnabled = false
+
+type IPAllowEntry struct {
+	IP          string    `json:"ip"`
+	Description string    `json:"description"`
+	AddedAt     time.Time `json:"added_at"`
+	AddedBy     string    `json:"added_by"`
+}
+
+func handleIPAllowlist(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ipAllowlistMutex.RLock()
+	entries := make([]IPAllowEntry, 0, len(ipAllowlist))
+	for _, e := range ipAllowlist {
+		entries = append(entries, e)
+	}
+	enabled := ipAllowlistEnabled
+	ipAllowlistMutex.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"enabled": enabled,
+		"entries": entries,
+		"count":   len(entries),
+	})
+}
+
+func handleIPAllowlistAdd(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		IP          string `json:"ip"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Trim and validate IP address
+	trimmedIP := strings.TrimSpace(req.IP)
+	if net.ParseIP(trimmedIP) == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid IP address format",
+		})
+		return
+	}
+
+	// Get username from JWT claims
+	addedBy := "admin" // default fallback
+	if claims, ok := r.Context().Value(userContextKey).(*UserClaims); ok && claims.Username != "" {
+		addedBy = claims.Username
+	}
+
+	entry := IPAllowEntry{
+		IP:          trimmedIP,
+		Description: req.Description,
+		AddedAt:     time.Now(),
+		AddedBy:     addedBy,
+	}
+
+	ipAllowlistMutex.Lock()
+	ipAllowlist[trimmedIP] = entry
+	ipAllowlistMutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"entry":   entry,
+	})
+}
+
+func handleIPAllowlistRemove(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		IP string `json:"ip"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	ipAllowlistMutex.Lock()
+	delete(ipAllowlist, req.IP)
+	ipAllowlistMutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "IP removed from allowlist",
+	})
+}
+
+// ============================================
+// OAuth Handlers (Supabase Integration)
+// ============================================
+
+// handleOAuthGoogle initiates Google OAuth flow via Supabase
+func handleOAuthGoogle(w http.ResponseWriter, r *http.Request) {
+	supabaseURL := os.Getenv("SUPABASE_URL")
+	if supabaseURL == "" {
+		// Return a proper HTML page explaining OAuth setup
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OAuth Not Configured - Obsidian WAF</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body { background: #0d1117; color: #e6edf3; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: system-ui; }
+.card { background: #161b22; border: 1px solid #30363d; max-width: 500px; }
+code { background: #21262d; padding: 2px 6px; border-radius: 4px; color: #f0883e; }
+.btn-primary { background: #f43f5e; border-color: #f43f5e; }
+.btn-primary:hover { background: #e11d48; border-color: #e11d48; }
+</style>
+</head>
+<body>
+<div class="card p-4">
+<h4 class="text-warning mb-3"><i class="fas fa-exclamation-triangle me-2"></i>OAuth Not Configured</h4>
+<p>Google OAuth requires Supabase configuration. To enable OAuth login:</p>
+<ol class="small">
+<li class="mb-2">Create a project at <a href="https://supabase.com" target="_blank" class="text-info">supabase.com</a></li>
+<li class="mb-2">Enable Google Auth in Authentication → Providers</li>
+<li class="mb-2">Set environment variables:
+<pre class="mt-1 p-2 rounded" style="background:#21262d">SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-public-key</pre>
+</li>
+<li>Restart Obsidian WAF</li>
+</ol>
+<hr class="border-secondary">
+<p class="small text-muted mb-3">For now, please use username/password login with the default credentials.</p>
+<a href="/login.html" class="btn btn-primary w-100"><i class="fas fa-arrow-left me-2"></i>Back to Login</a>
+</div>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</body>
+</html>`))
+		return
+	}
+
+	// Build redirect URL
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	redirectTo := fmt.Sprintf("%s://%s/api/auth/callback", scheme, r.Host)
+
+	authURL := fmt.Sprintf("%s/auth/v1/authorize?provider=google&redirect_to=%s",
+		supabaseURL, redirectTo)
+
+	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+}
+
+// handleOAuthGitHub initiates GitHub OAuth flow via Supabase
+func handleOAuthGitHub(w http.ResponseWriter, r *http.Request) {
+	supabaseURL := os.Getenv("SUPABASE_URL")
+	if supabaseURL == "" {
+		// Return a proper HTML page explaining OAuth setup
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OAuth Not Configured - Obsidian WAF</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body { background: #0d1117; color: #e6edf3; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: system-ui; }
+.card { background: #161b22; border: 1px solid #30363d; max-width: 500px; }
+code { background: #21262d; padding: 2px 6px; border-radius: 4px; color: #f0883e; }
+.btn-primary { background: #f43f5e; border-color: #f43f5e; }
+.btn-primary:hover { background: #e11d48; border-color: #e11d48; }
+</style>
+</head>
+<body>
+<div class="card p-4">
+<h4 class="text-warning mb-3"><i class="fas fa-exclamation-triangle me-2"></i>OAuth Not Configured</h4>
+<p>GitHub OAuth requires Supabase configuration. To enable OAuth login:</p>
+<ol class="small">
+<li class="mb-2">Create a project at <a href="https://supabase.com" target="_blank" class="text-info">supabase.com</a></li>
+<li class="mb-2">Enable GitHub Auth in Authentication → Providers</li>
+<li class="mb-2">Set environment variables:
+<pre class="mt-1 p-2 rounded" style="background:#21262d">SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-public-key</pre>
+</li>
+<li>Restart Obsidian WAF</li>
+</ol>
+<hr class="border-secondary">
+<p class="small text-muted mb-3">For now, please use username/password login with the default credentials.</p>
+<a href="/login.html" class="btn btn-primary w-100"><i class="fas fa-arrow-left me-2"></i>Back to Login</a>
+</div>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</body>
+</html>`))
+		return
+	}
+
+	// Build redirect URL
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	redirectTo := fmt.Sprintf("%s://%s/api/auth/callback", scheme, r.Host)
+
+	authURL := fmt.Sprintf("%s/auth/v1/authorize?provider=github&redirect_to=%s",
+		supabaseURL, redirectTo)
+
+	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+}
+
+// handleOAuthCallback handles the OAuth callback from Supabase
+func handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
+	// Supabase returns tokens in the URL fragment for implicit flow
+	// or as query parameters for code flow
+	accessToken := r.URL.Query().Get("access_token")
+
+	if accessToken == "" {
+		// Check for error - sanitize before using in redirect
+		if errMsg := r.URL.Query().Get("error_description"); errMsg != "" {
+			// URL-encode and sanitize the error message to prevent header injection
+			// Strip CRLF characters and limit length
+			sanitized := strings.Map(func(r rune) rune {
+				if r == '\r' || r == '\n' || r < 32 {
+					return -1 // Remove control characters
+				}
+				return r
+			}, errMsg)
+			if len(sanitized) > 200 {
+				sanitized = sanitized[:200]
+			}
+			http.Redirect(w, r, "/login.html?error="+url.QueryEscape(sanitized), http.StatusTemporaryRedirect)
+			return
+		}
+		// For implicit flow, the token is in the hash fragment
+		// We need to render a page that extracts it and redirects
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(`<!DOCTYPE html>
+<html>
+<head><title>Processing...</title></head>
+<body>
+<script>
+// Extract token from hash fragment
+const hash = window.location.hash.substring(1);
+const params = new URLSearchParams(hash);
+const token = params.get('access_token');
+if (token) {
+    window.location.href = '/login.html?token=' + encodeURIComponent(token);
+} else {
+    window.location.href = '/login.html?error=OAuth+failed';
+}
+</script>
+<p>Processing authentication...</p>
+</body>
+</html>`))
+		return
+	}
+
+	// Verify token with Supabase and get user info
+	supabaseURL := os.Getenv("SUPABASE_URL")
+	supabaseKey := os.Getenv("SUPABASE_KEY")
+
+	if supabaseURL == "" || supabaseKey == "" {
+		http.Redirect(w, r, "/login.html?error=OAuth+not+configured", http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Get user from Supabase
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, _ := http.NewRequest("GET", supabaseURL+"/auth/v1/user", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("apikey", supabaseKey)
+
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		http.Redirect(w, r, "/login.html?error=OAuth+verification+failed", http.StatusTemporaryRedirect)
+		return
+	}
+	defer resp.Body.Close()
+
+	var supabaseUser struct {
+		ID          string `json:"id"`
+		Email       string `json:"email"`
+		AppMetadata struct {
+			Provider string `json:"provider"`
+		} `json:"app_metadata"`
+	}
+	json.NewDecoder(resp.Body).Decode(&supabaseUser)
+
+	// Determine role - default to Viewer for OAuth users
+	role := "Viewer"
+
+	// Generate our JWT token
+	token, err := auth.GenerateJWT(0, supabaseUser.Email, role, 24*time.Hour)
+	if err != nil {
+		http.Redirect(w, r, "/login.html?error=Token+generation+failed", http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Redirect to frontend with token
+	http.Redirect(w, r, "/login.html?token="+token, http.StatusTemporaryRedirect)
 }

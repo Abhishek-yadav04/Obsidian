@@ -1,4 +1,4 @@
-# 🛡️ OBSIDIAN Sentinel WAF v2.1.0 Enterprise Edition
+# 🛡️ OBSIDIAN Sentinel WAF v2.2.0 Enterprise Edition
 
 <p align="center">
   <img src="cmd/obsidian/ui/assets/logo.svg" alt="Obsidian Sentinel WAF" width="200"/>
@@ -232,6 +232,8 @@ obsidian/
 | `DATABASE_URL` | PostgreSQL connection string | None | **Yes** |
 | `REDIS_URL` | Redis connection string | None | No |
 | `GEOIP_DATABASE_PATH` | Path to MaxMind GeoIP2 database | None | No |
+| `SUPABASE_URL` | Supabase project URL for OAuth | None | No (for OAuth) |
+| `SUPABASE_KEY` | Supabase anon/public key | None | No (for OAuth) |
 | `LOG_LEVEL` | Logging level (debug, info, warn, error) | info | No |
 | `LOG_FORMAT` | Log format (json, console) | json | No |
 
@@ -265,6 +267,10 @@ DATABASE_URL=postgresql://obsidian:secure_password@localhost:5432/obsidian?sslmo
 # Redis Cache (OPTIONAL - enables distributed rate limiting)
 REDIS_URL=redis://localhost:6379/0
 # For TLS: REDIS_URL=rediss://user:pass@host:port/0
+
+# OAuth via Supabase (OPTIONAL - enables Google/GitHub login)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-public-key
 
 # WebSocket Origins (customize for your domain)
 OBSIDIAN_ALLOWED_ORIGINS=https://your-domain.com

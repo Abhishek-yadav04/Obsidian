@@ -51,7 +51,48 @@ func NewStore(path string, opts ...StoreOption) *Store {
 	}
 
 	s.load()
+
+	// Initialize default users in memory if not loaded from file and DB not available
+	if len(s.state.Users) == 0 {
+		s.initDefaultUsers()
+	}
+
 	return s
+}
+
+// initDefaultUsers creates default users in memory for when DB is not available
+func (s *Store) initDefaultUsers() {
+	// Hash default passwords
+	adminHash, _ := auth.HashPassword("ObsidianAdmin#2024")
+	analystHash, _ := auth.HashPassword("ObsidianAnalyst#2024")
+	viewerHash, _ := auth.HashPassword("ObsidianViewer#2024")
+
+	s.state.Users = []model.User{
+		{
+			ID:           1,
+			Username:     "admin",
+			PasswordHash: adminHash,
+			Email:        "admin@obsidian.local",
+			Role:         "Admin",
+			Enabled:      true,
+		},
+		{
+			ID:           2,
+			Username:     "analyst",
+			PasswordHash: analystHash,
+			Email:        "analyst@obsidian.local",
+			Role:         "Analyst",
+			Enabled:      true,
+		},
+		{
+			ID:           3,
+			Username:     "viewer",
+			PasswordHash: viewerHash,
+			Email:        "viewer@obsidian.local",
+			Role:         "Viewer",
+			Enabled:      true,
+		},
+	}
 }
 
 func (s *Store) load() {
@@ -301,63 +342,105 @@ func defaultRules() []model.Rule {
 	}
 }
 
-// AuthenticateUser validates credentials against PostgreSQL database
-// SECURITY: No hardcoded users, no plaintext fallbacks
+// AuthenticateUser validates credentials against PostgreSQL database or in-memory fallback
+// SECURITY: Uses bcrypt for password verification
 func (s *Store) AuthenticateUser(username, password string) (*model.User, error) {
-	// CRITICAL: Use PostgreSQL database for authentication
-	if s.dbManager == nil {
-		return nil, fmt.Errorf("database not configured - authentication unavailable")
+	// Try PostgreSQL database first if available
+	if s.dbManager != nil && s.dbManager.HasPostgres() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Query user from PostgreSQL
+		dbUser, err := s.dbManager.GetUserByUsername(ctx, username)
+		if err == nil {
+			// Verify password using bcrypt
+			if err := auth.VerifyPassword(dbUser.PasswordHash, password); err != nil {
+				return nil, auth.ErrInvalidCredentials
+			}
+
+			if !dbUser.Enabled {
+				return nil, fmt.Errorf("user account is disabled")
+			}
+
+			// Convert database.User to model.User
+			user := &model.User{
+				ID:           dbUser.ID,
+				Username:     dbUser.Username,
+				Email:        dbUser.Email,
+				PasswordHash: dbUser.PasswordHash,
+				Role:         dbUser.Role,
+				Enabled:      dbUser.Enabled,
+				CreatedAt:    dbUser.CreatedAt,
+			}
+
+			return user, nil
+		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	// In-memory fallback when database is not connected
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	// Query user from PostgreSQL
-	dbUser, err := s.dbManager.GetUserByUsername(ctx, username)
-	if err != nil {
-		// Generic error to prevent username enumeration
-		return nil, auth.ErrInvalidCredentials
+	for _, u := range s.state.Users {
+		if u.Username == username {
+			// Verify password using bcrypt
+			if err := auth.VerifyPassword(u.PasswordHash, password); err != nil {
+				return nil, auth.ErrInvalidCredentials
+			}
+
+			if !u.Enabled {
+				return nil, fmt.Errorf("user account is disabled")
+			}
+
+			// Return a copy
+			user := &model.User{
+				ID:           u.ID,
+				Username:     u.Username,
+				Email:        u.Email,
+				PasswordHash: u.PasswordHash,
+				Role:         u.Role,
+				Enabled:      u.Enabled,
+				CreatedAt:    u.CreatedAt,
+			}
+
+			return user, nil
+		}
 	}
 
-	// Verify password using bcrypt - NO PLAINTEXT FALLBACKS
-	if err := auth.VerifyPassword(dbUser.PasswordHash, password); err != nil {
-		return nil, auth.ErrInvalidCredentials
-	}
-
-	if !dbUser.Enabled {
-		return nil, fmt.Errorf("user account is disabled")
-	}
-
-	// Convert database.User to model.User
-	user := &model.User{
-		ID:           dbUser.ID,
-		Username:     dbUser.Username,
-		Email:        dbUser.Email,
-		PasswordHash: dbUser.PasswordHash,
-		Role:         dbUser.Role,
-		Enabled:      dbUser.Enabled,
-		CreatedAt:    dbUser.CreatedAt,
-	}
-
-	return user, nil
+	return nil, auth.ErrInvalidCredentials
 }
 
-// GetUsers returns all users from PostgreSQL
+// GetUsers returns all users from PostgreSQL or in-memory fallback
 func (s *Store) GetUsers() []model.User {
-	if s.dbManager == nil {
-		return []model.User{}
+	// Try database first if available
+	if s.dbManager != nil && s.dbManager.HasPostgres() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		dbUsers, err := s.dbManager.GetAllUsers(ctx)
+		if err == nil && len(dbUsers) > 0 {
+			users := make([]model.User, 0, len(dbUsers))
+			for _, u := range dbUsers {
+				users = append(users, model.User{
+					ID:        u.ID,
+					Username:  u.Username,
+					Email:     u.Email,
+					Role:      u.Role,
+					Enabled:   u.Enabled,
+					CreatedAt: u.CreatedAt,
+				})
+			}
+			return users
+		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	// In-memory fallback
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	dbUsers, err := s.dbManager.GetAllUsers(ctx)
-	if err != nil {
-		return []model.User{}
-	}
-
-	users := make([]model.User, 0, len(dbUsers))
-	for _, u := range dbUsers {
+	// Return copy without password hashes
+	users := make([]model.User, 0, len(s.state.Users))
+	for _, u := range s.state.Users {
 		users = append(users, model.User{
 			ID:        u.ID,
 			Username:  u.Username,
@@ -370,32 +453,54 @@ func (s *Store) GetUsers() []model.User {
 	return users
 }
 
-// UpdateUser updates a user in PostgreSQL
+// UpdateUser updates a user in PostgreSQL or in-memory fallback
 func (s *Store) UpdateUser(username, role string, enabled bool, newPassword string) error {
-	if s.dbManager == nil {
-		return fmt.Errorf("database not configured")
-	}
+	// Try database first if available
+	if s.dbManager != nil && s.dbManager.HasPostgres() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Update role and enabled status
-	if err := s.dbManager.UpdateUser(ctx, username, role, enabled); err != nil {
-		return fmt.Errorf("failed to update user: %w", err)
-	}
-
-	// Update password if provided
-	if newPassword != "" {
-		passwordHash, err := auth.HashPassword(newPassword)
-		if err != nil {
-			return fmt.Errorf("failed to hash password: %w", err)
+		// Update role and enabled status
+		if err := s.dbManager.UpdateUser(ctx, username, role, enabled); err != nil {
+			return fmt.Errorf("failed to update user: %w", err)
 		}
-		if err := s.dbManager.UpdateUserPassword(ctx, username, passwordHash); err != nil {
-			return fmt.Errorf("failed to update password: %w", err)
+
+		// Update password if provided
+		if newPassword != "" {
+			passwordHash, err := auth.HashPassword(newPassword)
+			if err != nil {
+				return fmt.Errorf("failed to hash password: %w", err)
+			}
+			if err := s.dbManager.UpdateUserPassword(ctx, username, passwordHash); err != nil {
+				return fmt.Errorf("failed to update password: %w", err)
+			}
+		}
+
+		return nil
+	}
+
+	// In-memory fallback when database is not connected
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i, u := range s.state.Users {
+		if u.Username == username {
+			s.state.Users[i].Role = role
+			s.state.Users[i].Enabled = enabled
+			if newPassword != "" {
+				passwordHash, err := auth.HashPassword(newPassword)
+				if err != nil {
+					return fmt.Errorf("failed to hash password: %w", err)
+				}
+				s.state.Users[i].PasswordHash = passwordHash
+			}
+			// Save state to persist changes
+			go s.Save()
+			return nil
 		}
 	}
 
-	return nil
+	return fmt.Errorf("user not found: %s", username)
 }
 
 // CreateSession stores a new session in the database

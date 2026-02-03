@@ -4,6 +4,46 @@
  */
 
 // ============================================
+// XSS PREVENTION HELPERS
+// ============================================
+/**
+ * Escapes HTML special characters to prevent XSS attacks
+ * @param {string} str - The string to escape
+ * @returns {string} - HTML-safe string
+ */
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = String(str);
+    return div.innerHTML;
+}
+
+/**
+ * Escapes a string for use in HTML attributes
+ * @param {string} str - The string to escape  
+ * @returns {string} - Attribute-safe string
+ */
+function escapeAttr(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+/**
+ * Safely sets text content (shorthand for escapeHtml)
+ */
+const safeText = escapeHtml;
+
+/**
+ * Safely sets attribute values (shorthand for escapeAttr)
+ */
+const safeAttr = escapeAttr;
+
+// ============================================
 // AUTHENTICATION HELPER
 // ============================================
 function getStoredValue(key) {
@@ -233,10 +273,11 @@ const ObsidianApp = {
                     break;
             }
 
-            // Action badge
+            // Action badge - escape user data
+            const safeAction = safeText(log.action || 'Unknown');
             const actionBadge = log.action === 'Pass' 
                 ? '<span class="badge bg-dark border border-success text-success">Pass</span>'
-                : `<span class="badge bg-dark border border-danger text-danger">${log.action || 'Unknown'}</span>`;
+                : `<span class="badge bg-dark border border-danger text-danger">${safeAction}</span>`;
 
             // Calculate row class based on status
             let rowClass = '';
@@ -246,22 +287,26 @@ const ObsidianApp = {
                 rowClass = 'table-warning';
             }
 
-            // Format URI display with truncation
-            const uriDisplay = (log.uri || '/').substring(0, 30);
+            // Format URI display with truncation - escape user data
+            const safeUri = safeText((log.uri || '/').substring(0, 30));
             const uriSuffix = (log.uri || '').length > 30 ? '...' : '';
             
-            // Format details display with truncation
-            const detailsDisplay = (log.details || '').substring(0, 40);
+            // Format details display with truncation - escape user data
+            const safeDetails = safeText((log.details || '').substring(0, 40));
             const detailsSuffix = (log.details || '').length > 40 ? '...' : '';
+            
+            // Escape other user-controllable fields
+            const safeRuleId = safeText(log.rule_id || '-');
+            const safeMethod = safeText(log.method || 'GET');
 
             return `
                 <tr class="${rowClass}">
-                    <td class="text-secondary font-monospace small">${date}</td>
+                    <td class="text-secondary font-monospace small">${safeText(date)}</td>
                     <td>${statusBadge}</td>
                     <td>${actionBadge}</td>
-                    <td class="font-monospace small">${log.rule_id || '-'}</td>
-                    <td><code class="text-info">${log.method || 'GET'} ${uriDisplay}${uriSuffix}</code></td>
-                    <td class="text-white-50 small">${detailsDisplay}${detailsSuffix}</td>
+                    <td class="font-monospace small">${safeRuleId}</td>
+                    <td><code class="text-info">${safeMethod} ${safeUri}${uriSuffix}</code></td>
+                    <td class="text-white-50 small">${safeDetails}${detailsSuffix}</td>
                 </tr>
             `;
         }).join('');
@@ -453,12 +498,13 @@ const ObsidianApp = {
                     break;
             }
 
-            // Action badge
+            // Action badge - escape user data
+            const safeAction = safeText(log.action || 'Unknown');
             const actionBadge = log.action === 'Pass' 
                 ? '<span class="badge bg-success">Pass</span>'
-                : `<span class="badge bg-danger">${log.action || 'Unknown'}</span>`;
+                : `<span class="badge bg-danger">${safeAction}</span>`;
 
-            // Method badge color
+            // Method badge color - escape user data
             const methodColors = {
                 'GET': 'bg-info',
                 'POST': 'bg-warning text-dark',
@@ -466,17 +512,25 @@ const ObsidianApp = {
                 'DELETE': 'bg-danger',
                 'PATCH': 'bg-secondary'
             };
+            const safeMethod = safeText(log.method || 'GET');
             const methodClass = methodColors[log.method] || 'bg-secondary';
+            
+            // Escape all user-controllable data
+            const safeClientIp = safeText(log.client_ip || '127.0.0.1');
+            const safeUri = safeText(log.uri || '/');
+            const safeRuleId = safeText(log.rule_id || '-');
+            const safeDetails = safeText((log.details || '').substring(0, 50));
+            const detailsSuffix = (log.details || '').length > 50 ? '...' : '';
 
             return `
                 <tr class="${rowClass}">
-                    <td class="text-secondary font-monospace small">${new Date(log.timestamp).toLocaleString()}</td>
+                    <td class="text-secondary font-monospace small">${safeText(new Date(log.timestamp).toLocaleString())}</td>
                     <td>${statusBadge}</td>
-                    <td>${log.client_ip || '127.0.0.1'}</td>
-                    <td><span class="badge ${methodClass}">${log.method || 'GET'}</span></td>
-                    <td class="font-monospace small"><code>${log.uri || '/'}</code></td>
-                    <td>${log.rule_id || '-'}</td>
-                    <td class="small text-muted">${(log.details || '').substring(0, 50)}${(log.details || '').length > 50 ? '...' : ''}</td>
+                    <td>${safeClientIp}</td>
+                    <td><span class="badge ${methodClass}">${safeMethod}</span></td>
+                    <td class="font-monospace small"><code>${safeUri}</code></td>
+                    <td>${safeRuleId}</td>
+                    <td class="small text-muted">${safeDetails}${detailsSuffix}</td>
                     <td>${actionBadge}</td>
                 </tr>
             `;
@@ -509,19 +563,28 @@ const ObsidianApp = {
             const statusBadge = isEnabled
                 ? '<span class="badge bg-success">Active</span>'
                 : '<span class="badge bg-secondary">Disabled</span>';
+            
+            // Escape user-controllable data
+            const safeId = safeText(rule.id);
+            const safeDescription = safeText(rule.description);
+            const safeSeverity = safeText(rule.severity || 'NOTICE');
+            const safeCategory = safeText(rule.category || 'General');
+            // Validate rule.id is a number for onclick handlers
+            const ruleIdNum = parseInt(rule.id, 10);
+            const safeRuleIdForJs = isNaN(ruleIdNum) ? 0 : ruleIdNum;
 
             return `
                 <tr>
-                    <td class="font-monospace">${rule.id}</td>
-                    <td>${rule.description}</td>
-                    <td><span class="badge ${sevClass}">${rule.severity || 'NOTICE'}</span></td>
-                    <td>${rule.category || 'General'}</td>
+                    <td class="font-monospace">${safeId}</td>
+                    <td>${safeDescription}</td>
+                    <td><span class="badge ${sevClass}">${safeSeverity}</span></td>
+                    <td>${safeCategory}</td>
                     <td>${statusBadge}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-info me-1" onclick="ObsidianApp.editRule(${rule.id})" title="Edit Rule">
+                        <button class="btn btn-sm btn-outline-info me-1" onclick="ObsidianApp.editRule(${safeRuleIdForJs})" title="Edit Rule">
                             <i class="fas fa-edit"></i> Edit
                         </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.deleteRule(${rule.id})" title="Delete Rule">
+                        <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.deleteRule(${safeRuleIdForJs})" title="Delete Rule">
                             <i class="fas fa-trash"></i> Delete
                         </button>
                     </td>
@@ -541,25 +604,36 @@ const ObsidianApp = {
         // Users table
         const usersTbody = document.getElementById('users-tbody');
         if (usersTbody && users) {
-            usersTbody.innerHTML = users.map(u => `
-                <tr>
-                    <td>${u.username}</td>
-                    <td><span class="badge bg-info">${u.role}</span></td>
-                    <td>${u.enabled ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-danger">Disabled</span>'}</td>
-                    <td><button class="btn btn-sm btn-outline-secondary" title="Edit User"><i class="fas fa-edit"></i> Edit</button></td>
-                </tr>
-            `).join('');
+            usersTbody.innerHTML = users.map(u => {
+                // Escape user-controllable data
+                const safeUsername = safeText(u.username);
+                const safeRole = safeText(u.role);
+                return `
+                    <tr>
+                        <td>${safeUsername}</td>
+                        <td><span class="badge bg-info">${safeRole}</span></td>
+                        <td>${u.enabled ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-danger">Disabled</span>'}</td>
+                        <td><button class="btn btn-sm btn-outline-secondary" title="Edit User"><i class="fas fa-edit"></i> Edit</button></td>
+                    </tr>
+                `;
+            }).join('');
         }
 
         // Audit logs
         const auditList = document.getElementById('audit-list');
         if (auditList && audit) {
-            auditList.innerHTML = audit.map(log => `
-                <li class="list-group-item bg-transparent border-secondary text-light">
-                    <small class="text-muted">${log.timestamp}</small><br>
-                    <strong>${log.action}</strong> on ${log.resource}
-                </li>
-            `).join('');
+            auditList.innerHTML = audit.map(log => {
+                // Escape user-controllable data
+                const safeTimestamp = safeText(log.timestamp);
+                const safeAction = safeText(log.action);
+                const safeResource = safeText(log.resource);
+                return `
+                    <li class="list-group-item bg-transparent border-secondary text-light">
+                        <small class="text-muted">${safeTimestamp}</small><br>
+                        <strong>${safeAction}</strong> on ${safeResource}
+                    </li>
+                `;
+            }).join('');
         }
 
         // Metrics
@@ -581,20 +655,29 @@ const ObsidianApp = {
             tbody.innerHTML = threats.map(t => {
                 // Determine risk level badge color
                 let riskColor = 'secondary';
+                const safeRiskLevel = safeText(t.risk_level);
                 if (t.risk_level === 'HIGH') {
                     riskColor = 'danger';
                 } else if (t.risk_level === 'MEDIUM') {
                     riskColor = 'warning';
                 }
                 
+                // Escape user-controllable data
+                const safeIp = safeText(t.ip);
+                const safeCategory = safeText(t.category);
+                const safeSource = safeText(t.source);
+                const safeLastSeen = safeText(new Date(t.last_seen).toLocaleString());
+                // Validate IP for onclick handler - only allow valid IP characters
+                const ipForJs = (t.ip || '').replace(/[^0-9.:/]/g, '');
+                
                 return `
                     <tr>
-                        <td class="font-monospace">${t.ip}</td>
-                        <td><span class="badge bg-${riskColor}">${t.risk_level}</span></td>
-                        <td>${t.category}</td>
-                        <td>${t.source}</td>
-                        <td>${new Date(t.last_seen).toLocaleString()}</td>
-                        <td><button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.blockIP('${t.ip}')" title="Block IP"><i class="fas fa-ban"></i> Block</button></td>
+                        <td class="font-monospace">${safeIp}</td>
+                        <td><span class="badge bg-${riskColor}">${safeRiskLevel}</span></td>
+                        <td>${safeCategory}</td>
+                        <td>${safeSource}</td>
+                        <td>${safeLastSeen}</td>
+                        <td><button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.blockIP('${safeAttr(ipForJs)}')" title="Block IP"><i class="fas fa-ban"></i> Block</button></td>
                     </tr>
                 `;
             }).join('');

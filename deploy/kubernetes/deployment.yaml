@@ -1,0 +1,217 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: obsidian-waf
+  labels:
+    app.kubernetes.io/name: obsidian-waf
+    app.kubernetes.io/part-of: obsidian
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: obsidian-config
+  namespace: obsidian-waf
+data:
+  OBSIDIAN_PORT: "8082"
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+---
+# IMPORTANT: Do NOT commit secrets to version control!
+# Create secrets manually or use a secrets management solution:
+#
+# Option 1: Manual creation (for local/dev):
+#   kubectl create secret generic obsidian-secrets \
+#     --namespace=obsidian-waf \
+#     --from-literal=JWT_SECRET=$(openssl rand -hex 32) \
+#     --from-literal=DATABASE_URL="postgresql://user:password@postgres:5432/obsidian?sslmode=require" \
+#     --from-literal=REDIS_URL="redis://:password@redis:6379"
+#
+# Option 2: Use External Secrets Operator with a vault (recommended for production):
+#   - Install External Secrets Operator
+#   - Configure SecretStore to connect to your vault (AWS Secrets Manager, HashiCorp Vault, etc.)
+#   - Create ExternalSecret referencing vault keys
+#
+# Option 3: Use Sealed Secrets for GitOps:
+#   - Install kubeseal
+#   - kubeseal --format yaml < secret.yaml > sealed-secret.yaml
+#   - Commit sealed-secret.yaml (encrypted)
+#
+# Option 4: Use Kustomize secretGenerator with .env file (add .env to .gitignore):
+#   secretGenerator:
+#     - name: obsidian-secrets
+#       envs:
+#         - .env.secrets
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: obsidian-waf
+  namespace: obsidian-waf
+  labels:
+    app.kubernetes.io/name: obsidian-waf
+    app.kubernetes.io/version: "2.2.1"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: obsidian-waf
+  template:
+    metadata:
+      labels:
+        app: obsidian-waf
+        app.kubernetes.io/name: obsidian-waf
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: "/api/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: obsidian
+          image: ghcr.io/corazawaf/obsidian-waf:2.2.1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8082
+              name: http
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: obsidian-config
+            - secretRef:
+                name: obsidian-secrets
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8082
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - obsidian-waf
+                topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: obsidian-waf
+  namespace: obsidian-waf
+  labels:
+    app.kubernetes.io/name: obsidian-waf
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 8082
+      protocol: TCP
+      name: http
+  selector:
+    app: obsidian-waf
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: obsidian-waf
+  namespace: obsidian-waf
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts:
+        - waf.example.com  # REPLACE with your domain
+      secretName: obsidian-tls
+  rules:
+    - host: waf.example.com  # REPLACE with your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: obsidian-waf
+                port:
+                  number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: obsidian-waf
+  namespace: obsidian-waf
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: obsidian-waf
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: obsidian-waf
+  namespace: obsidian-waf
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: obsidian-waf

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,93 +11,59 @@ import (
 
 	"github.com/corazawaf/coraza/v3/experimental/plugins/plugintypes"
 	"github.com/corazawaf/coraza/v3/internal/app/auth"
+	"github.com/corazawaf/coraza/v3/internal/app/database"
 	"github.com/corazawaf/coraza/v3/internal/app/model"
 )
 
 // Store handles persistence of WAF data
+// Uses PostgreSQL via database.Manager for authentication and audit logs
 type Store struct {
-	mu       sync.RWMutex
-	filePath string
-	state    model.SystemState
+	mu        sync.RWMutex
+	filePath  string
+	state     model.SystemState
+	dbManager *database.Manager // Database manager for PostgreSQL/Redis
 }
 
-func NewStore(path string) *Store {
+// StoreOption configures a Store instance
+type StoreOption func(*Store)
+
+// WithDatabaseManager sets the database manager for PostgreSQL operations
+func WithDatabaseManager(db *database.Manager) StoreOption {
+	return func(s *Store) {
+		s.dbManager = db
+	}
+}
+
+func NewStore(path string, opts ...StoreOption) *Store {
 	s := &Store{
 		filePath: path,
 		state: model.SystemState{
 			Logs:  []model.LogEntry{},
 			Rules: defaultRules(), // Initialize with some defaults
 			Stats: model.Stats{ActiveRulesCount: 5},
-			Users: defaultUsers(), // Initialize with default users
+			Users: []model.User{}, // Users are now in PostgreSQL
 		},
 	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(s)
+	}
+
 	s.load()
 	return s
 }
 
-// defaultUsers returns the default user accounts
-func defaultUsers() []model.User {
-	return []model.User{
-		{
-			ID:       1,
-			Username: "admin",
-			Email:    "admin@obsidian.local",
-			Role:     "Admin",
-			Enabled:  true,
-		},
-		{
-			ID:       2,
-			Username: "analyst",
-			Email:    "analyst@obsidian.local",
-			Role:     "Analyst",
-			Enabled:  true,
-		},
-		{
-			ID:       3,
-			Username: "viewer",
-			Email:    "viewer@obsidian.local",
-			Role:     "Viewer",
-			Enabled:  true,
-		},
-	}
-}
-
-// GetUsers returns all users
-func (s *Store) GetUsers() []model.User {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if len(s.state.Users) == 0 {
-		return defaultUsers()
-	}
-	return s.state.Users
-}
-
-// UpdateUser updates a user's information
-func (s *Store) UpdateUser(username, role string, enabled bool, newPassword string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Initialize users if empty
-	if len(s.state.Users) == 0 {
-		s.state.Users = defaultUsers()
-	}
-
-	for i, u := range s.state.Users {
-		if u.Username == username {
-			s.state.Users[i].Role = role
-			s.state.Users[i].Enabled = enabled
-			// In production, hash the password if provided
-			// For now, we just acknowledge the update
-			return nil
-		}
-	}
-	return fmt.Errorf("user not found: %s", username)
-}
-
 func (s *Store) load() {
 	data, err := os.ReadFile(s.filePath)
-	if err == nil {
-		json.Unmarshal(data, &s.state)
+	if err != nil {
+		// File doesn't exist or can't be read - start with empty state
+		return
+	}
+	if err := json.Unmarshal(data, &s.state); err != nil {
+		// JSON parsing failed - log and start with empty state
+		// This prevents data corruption from propagating
+		fmt.Printf("[Store] Warning: failed to parse state file %s: %v\n", s.filePath, err)
 	}
 }
 
@@ -107,7 +74,7 @@ func (s *Store) Save() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.filePath, data, 0644)
+	return os.WriteFile(s.filePath, data, 0600)
 }
 
 func (s *Store) AddLog(entry model.LogEntry) {
@@ -334,77 +301,162 @@ func defaultRules() []model.Rule {
 	}
 }
 
-// AuthenticateUser validates credentials and returns user if valid
+// AuthenticateUser validates credentials against PostgreSQL database
+// SECURITY: No hardcoded users, no plaintext fallbacks
 func (s *Store) AuthenticateUser(username, password string) (*model.User, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Default admin user with bcrypt-hashed password
-	// Hash of "password": $2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.V4Z6P8Z9Z8P8Z8
-	// For demo: admin/password (in production, use database)
-	adminPasswordHash := "$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.V4Z6P8Z9Z8P8Z8"
-
-	users := map[string]model.User{
-		"admin": {
-			ID:           1,
-			Username:     "admin",
-			PasswordHash: adminPasswordHash,
-			Email:        "admin@obsidian.local",
-			Role:         "Admin",
-			Enabled:      true,
-			CreatedAt:    time.Now(),
-		},
-		"analyst": {
-			ID:           2,
-			Username:     "analyst",
-			PasswordHash: adminPasswordHash,
-			Email:        "analyst@obsidian.local",
-			Role:         "Analyst",
-			Enabled:      true,
-			CreatedAt:    time.Now(),
-		},
-		"viewer": {
-			ID:           3,
-			Username:     "viewer",
-			PasswordHash: adminPasswordHash,
-			Email:        "viewer@obsidian.local",
-			Role:         "Viewer",
-			Enabled:      true,
-			CreatedAt:    time.Now(),
-		},
+	// CRITICAL: Use PostgreSQL database for authentication
+	if s.dbManager == nil {
+		return nil, fmt.Errorf("database not configured - authentication unavailable")
 	}
 
-	user, exists := users[username]
-	if !exists {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Query user from PostgreSQL
+	dbUser, err := s.dbManager.GetUserByUsername(ctx, username)
+	if err != nil {
+		// Generic error to prevent username enumeration
 		return nil, auth.ErrInvalidCredentials
 	}
 
-	// Verify password using bcrypt - but for demo, also allow plaintext "password"
-	err := auth.VerifyPassword(user.PasswordHash, password)
-	if err != nil {
-		// Fallback for demo mode - allow "password" as plaintext
-		if password != "password" {
-			return nil, auth.ErrInvalidCredentials
-		}
+	// Verify password using bcrypt - NO PLAINTEXT FALLBACKS
+	if err := auth.VerifyPassword(dbUser.PasswordHash, password); err != nil {
+		return nil, auth.ErrInvalidCredentials
 	}
 
-	if !user.Enabled {
+	if !dbUser.Enabled {
 		return nil, fmt.Errorf("user account is disabled")
 	}
 
-	return &user, nil
+	// Convert database.User to model.User
+	user := &model.User{
+		ID:           dbUser.ID,
+		Username:     dbUser.Username,
+		Email:        dbUser.Email,
+		PasswordHash: dbUser.PasswordHash,
+		Role:         dbUser.Role,
+		Enabled:      dbUser.Enabled,
+		CreatedAt:    dbUser.CreatedAt,
+	}
+
+	return user, nil
 }
 
-// CreateSession stores a new session
+// GetUsers returns all users from PostgreSQL
+func (s *Store) GetUsers() []model.User {
+	if s.dbManager == nil {
+		return []model.User{}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	dbUsers, err := s.dbManager.GetAllUsers(ctx)
+	if err != nil {
+		return []model.User{}
+	}
+
+	users := make([]model.User, 0, len(dbUsers))
+	for _, u := range dbUsers {
+		users = append(users, model.User{
+			ID:        u.ID,
+			Username:  u.Username,
+			Email:     u.Email,
+			Role:      u.Role,
+			Enabled:   u.Enabled,
+			CreatedAt: u.CreatedAt,
+		})
+	}
+	return users
+}
+
+// UpdateUser updates a user in PostgreSQL
+func (s *Store) UpdateUser(username, role string, enabled bool, newPassword string) error {
+	if s.dbManager == nil {
+		return fmt.Errorf("database not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Update role and enabled status
+	if err := s.dbManager.UpdateUser(ctx, username, role, enabled); err != nil {
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+
+	// Update password if provided
+	if newPassword != "" {
+		passwordHash, err := auth.HashPassword(newPassword)
+		if err != nil {
+			return fmt.Errorf("failed to hash password: %w", err)
+		}
+		if err := s.dbManager.UpdateUserPassword(ctx, username, passwordHash); err != nil {
+			return fmt.Errorf("failed to update password: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// CreateSession stores a new session in the database
 func (s *Store) CreateSession(session model.Session) error {
-	// Store in state (will use DB in production)
+	if s.dbManager == nil || s.dbManager.PostgresPool() == nil {
+		// In-memory fallback - sessions not persisted
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Hash the token for secure storage
+	tokenHash := session.TokenHash
+	if tokenHash == "" && session.Token != "" {
+		tokenHash = auth.HashToken(session.Token)
+	}
+
+	_, err := s.dbManager.PostgresPool().Exec(ctx, `
+		INSERT INTO sessions (id, user_id, token_hash, expires_at, ip_address, user_agent)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, session.ID, session.UserID, tokenHash, session.ExpiresAt, session.IPAddress, session.UserAgent)
+	if err != nil {
+		return fmt.Errorf("failed to create session: %w", err)
+	}
+
 	return nil
 }
 
-// AddAuditLog records an audit trail entry
+// AddAuditLog records an audit trail entry in the database
 func (s *Store) AddAuditLog(log model.AuditLog) error {
-	// Will use DB in production
+	if s.dbManager == nil || s.dbManager.PostgresPool() == nil {
+		// In-memory fallback - audit logs not persisted
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Insert into audit_logs table using the model.AuditLog structure
+	_, err := s.dbManager.PostgresPool().Exec(ctx, `
+		INSERT INTO audit_logs (rule_id, severity, message, type, client_ip, request_uri, user_agent)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, log.Action, "", log.Details, log.Resource, log.IPAddress, log.Resource, "")
+	if err != nil {
+		return fmt.Errorf("failed to insert audit log: %w", err)
+	}
+
 	return nil
+}
+
+// GetAuditLogs retrieves audit logs from the database
+func (s *Store) GetAuditLogs(limit, offset int) ([]map[string]interface{}, error) {
+	if s.dbManager == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	return s.dbManager.GetAuditLogs(ctx, limit, offset)
 }
 
 // CreateRule adds a new WAF rule

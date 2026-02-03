@@ -25,7 +25,17 @@ var (
 // cachedSecretKey stores the JWT secret for the lifetime of the application
 var cachedSecretKey string
 
-// getSecretKey retrieves JWT secret from environment or uses a stable default for development
+// isDevelopmentMode tracks whether we're running in dev mode
+var isDevelopmentMode bool
+
+// SetDevelopmentMode enables/disables development mode for JWT secret handling
+// In production, JWT secret MUST be set via OBSIDIAN_JWT_SECRET environment variable
+func SetDevelopmentMode(dev bool) {
+	isDevelopmentMode = dev
+}
+
+// getSecretKey retrieves JWT secret from environment
+// SECURITY: In production mode, this will panic if OBSIDIAN_JWT_SECRET is not set
 func getSecretKey() string {
 	// Return cached key if already set
 	if cachedSecretKey != "" {
@@ -34,10 +44,23 @@ func getSecretKey() string {
 
 	key := os.Getenv("OBSIDIAN_JWT_SECRET")
 	if key == "" {
-		// Use a stable default key for development (NOT for production!)
-		// This ensures tokens remain valid for the application lifetime
-		key = "obsidian-development-secret-key-change-in-production"
-		fmt.Println("WARNING: Using default JWT secret. Set OBSIDIAN_JWT_SECRET for production!")
+		if isDevelopmentMode {
+			// Development only - use a stable default key
+			// This ensures tokens remain valid for the application lifetime
+			key = "obsidian-development-secret-key-change-in-production"
+			fmt.Println("⚠️  WARNING: Using default JWT secret (DEVELOPMENT MODE ONLY)")
+		} else {
+			// PRODUCTION: FAIL HARD - no default secrets
+			panic("FATAL: OBSIDIAN_JWT_SECRET environment variable not set. This is required in production mode.")
+		}
+	}
+
+	// Validate minimum key length (256 bits = 32 bytes minimum)
+	if len(key) < 32 {
+		if !isDevelopmentMode {
+			panic("FATAL: OBSIDIAN_JWT_SECRET must be at least 32 characters for production security")
+		}
+		fmt.Println("⚠️  WARNING: JWT secret is less than 32 characters - NOT SECURE FOR PRODUCTION")
 	}
 
 	// Cache the key for consistent signing/verification
@@ -70,6 +93,14 @@ func GenerateToken(length int) (string, error) {
 		return "", fmt.Errorf("failed to generate token: %w", err)
 	}
 	return base64.URLEncoding.EncodeToString(bytes), nil
+}
+
+// HashToken creates a SHA-256 hash of a token for secure database storage
+// This is NOT for passwords (use bcrypt for that), but for session tokens
+// where we need fast comparison and don't need protection against offline attacks
+func HashToken(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return base64.URLEncoding.EncodeToString(hash[:])
 }
 
 // GenerateJWT creates a properly signed JWT token with HMAC-SHA256
@@ -181,15 +212,35 @@ func parseJSONClaims(data []byte, claims *Claims) error {
 	return nil
 }
 
-// ValidatePassword checks if password meets security requirements
+// Common weak passwords to reject (partial list - add more as needed)
+var commonPasswords = map[string]bool{
+	"password": true, "password123": true, "12345678": true, "123456789": true,
+	"qwerty": true, "admin": true, "admin123": true, "letmein": true,
+	"welcome": true, "monkey": true, "dragon": true, "master": true,
+	"obsidian": true, "obsidian123": true, "security": true, "trustno1": true,
+}
+
+// ValidatePassword checks if password meets production security requirements
+// PRODUCTION REQUIREMENTS:
+// - Minimum 12 characters (was 8 in demo)
+// - Must contain: uppercase, lowercase, number, AND special character
+// - Cannot be a common password
+// - Cannot be username or email (caller should check this separately)
 func ValidatePassword(password string) error {
-	if len(password) < 8 {
-		return ErrWeakPassword
+	// PRODUCTION: 12 character minimum
+	if len(password) < 12 {
+		return fmt.Errorf("%w: password must be at least 12 characters", ErrWeakPassword)
+	}
+
+	// Check for common passwords
+	if commonPasswords[strings.ToLower(password)] {
+		return fmt.Errorf("%w: password is too common", ErrWeakPassword)
 	}
 
 	hasUpper := false
 	hasLower := false
 	hasNumber := false
+	hasSpecial := false
 
 	for _, c := range password {
 		switch {
@@ -199,24 +250,23 @@ func ValidatePassword(password string) error {
 			hasLower = true
 		case c >= '0' && c <= '9':
 			hasNumber = true
+		case strings.ContainsRune("!@#$%^&*()_+-=[]{}|;':\",./<>?`~", c):
+			hasSpecial = true
 		}
 	}
 
-	// Require at least 2 of 3 character types for demo mode
-	// In production, require all 3 plus special characters
-	count := 0
-	if hasUpper {
-		count++
+	// PRODUCTION: Require ALL character types
+	if !hasUpper {
+		return fmt.Errorf("%w: password must contain at least one uppercase letter", ErrWeakPassword)
 	}
-	if hasLower {
-		count++
+	if !hasLower {
+		return fmt.Errorf("%w: password must contain at least one lowercase letter", ErrWeakPassword)
 	}
-	if hasNumber {
-		count++
+	if !hasNumber {
+		return fmt.Errorf("%w: password must contain at least one number", ErrWeakPassword)
 	}
-
-	if count < 2 {
-		return ErrWeakPassword
+	if !hasSpecial {
+		return fmt.Errorf("%w: password must contain at least one special character (!@#$%%^&*...)", ErrWeakPassword)
 	}
 
 	return nil

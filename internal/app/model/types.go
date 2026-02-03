@@ -18,7 +18,8 @@ type User struct {
 type Session struct {
 	ID           string    `json:"id" db:"id"`
 	UserID       int       `json:"user_id" db:"user_id"`
-	Token        string    `json:"-" db:"token"` // JWT refresh token
+	Token        string    `json:"-" db:"token"`      // JWT refresh token
+	TokenHash    string    `json:"-" db:"token_hash"` // Hashed token for DB storage
 	ExpiresAt    time.Time `json:"expires_at" db:"expires_at"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 	LastActivity time.Time `json:"last_activity" db:"last_activity"`

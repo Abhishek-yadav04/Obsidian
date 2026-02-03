@@ -125,26 +125,23 @@ export REDIS_URL="redis://localhost:6379"
 
 Open your browser and navigate to: **http://localhost:8082**
 
-**Default Credentials:**
+**Default Credentials (CHANGE IMMEDIATELY IN PRODUCTION):**
 
-*Admin*
-- Username: `admin`
-- Password: `password`
+| Role | Username | Password |
+|------|----------|----------|
+| Admin | `admin` | `ObsidianAdmin#2024` |
+| Analyst | `analyst` | `ObsidianAnalyst#2024` |
+| Viewer | `viewer` | `ObsidianViewer#2024` |
 
-*Analyst*
-- Username: `Analyst`
-- Password: `password`
-  
-*Viewer*
-- Username: `Viewer`
-- Password: `password`
-  
-**Default Roles:**
-- **Admin**: Full access (rules, threats, users, audit logs)
+**Role Permissions:**
+- **Admin**: Full access (rules, threats, users, audit logs, settings)
 - **Analyst**: Read-only security data + report export
 - **Viewer**: Read-only dashboard and logs
 
-> ⚠️ **Important**: Change the default password in production!
+> 🔐 **SECURITY NOTICE**: 
+> - Default passwords are documented and MUST be changed before production
+> - Set `OBSIDIAN_JWT_SECRET` environment variable (min 32 characters)
+> - Do NOT commit `.env` files to version control
 
 ---
 
@@ -227,17 +224,16 @@ obsidian/
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OBSIDIAN_JWT_SECRET` | JWT signing secret (min 32 chars) | Random on startup |
-| `OBSIDIAN_ALLOWED_ORIGINS` | Comma-separated WebSocket origins | localhost:8082 |
-| `DATABASE_URL` | PostgreSQL connection string | In-memory mode |
-| `REDIS_URL` | Redis connection string | In-memory rate limiting |
-| `GEOIP_DATABASE_PATH` | Path to MaxMind GeoIP2 database | Disabled |
-| `THREAT_FEEDS_ENABLED` | Enable threat intelligence feeds | true |
-| `ALERT_WEBHOOKS_ENABLED` | Enable webhook alerting | true |
-| `RATE_LIMIT_REDIS` | Use Redis for distributed rate limiting | false |
-| `LOG_LEVEL` | Logging level (debug, info, warn, error) | info |
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `OBSIDIAN_JWT_SECRET` | JWT signing secret (min 32 chars) | Random in dev | **Yes (prod)** |
+| `OBSIDIAN_ENV` | Environment (development/production) | development | No |
+| `OBSIDIAN_ALLOWED_ORIGINS` | Comma-separated WebSocket origins | localhost:8082 | No |
+| `DATABASE_URL` | PostgreSQL connection string | None | **Yes** |
+| `REDIS_URL` | Redis connection string | None | No |
+| `GEOIP_DATABASE_PATH` | Path to MaxMind GeoIP2 database | None | No |
+| `LOG_LEVEL` | Logging level (debug, info, warn, error) | info | No |
+| `LOG_FORMAT` | Log format (json, console) | json | No |
 
 ### Command Line Flags
 
@@ -245,34 +241,54 @@ obsidian/
 ./obsidian.exe [options]
 
 Options:
-  -port int     Port to run the server on (default 8082)
-  -dev          Run in development mode
+  -port int        Port to run the server on (default 8082)
+  -dev             Run in development mode (relaxed security)
+  -log-level       Override LOG_LEVEL env var
+  -log-format      Override LOG_FORMAT env var
 ```
 
-### Production Configuration
+### Sample .env File
 
 ```bash
-# Set secure JWT secret
-export OBSIDIAN_JWT_SECRET="your-secure-random-secret-at-least-32-characters"
+# ⚠️ NEVER COMMIT THIS FILE TO VERSION CONTROL
+# Copy to .env and customize for your environment
 
-# Set allowed origins for WebSocket
-export OBSIDIAN_ALLOWED_ORIGINS="https://your-domain.com,https://www.your-domain.com"
+# JWT Authentication (REQUIRED in production - min 32 chars)
+OBSIDIAN_JWT_SECRET=your-super-secure-random-secret-minimum-32-chars
 
-# Configure PostgreSQL for enterprise features
-export DATABASE_URL="postgres://obsidian:secure_password@localhost:5432/obsidian_prod?sslmode=require"
+# Environment
+OBSIDIAN_ENV=production
 
-# Configure Redis for distributed rate limiting
-export REDIS_URL="redis://localhost:6379/0"
+# PostgreSQL Database (REQUIRED)
+DATABASE_URL=postgresql://obsidian:secure_password@localhost:5432/obsidian?sslmode=require
 
-# Enable GeoIP blocking
-export GEOIP_DATABASE_PATH="/opt/maxmind/GeoLite2-Country.mmdb"
+# Redis Cache (OPTIONAL - enables distributed rate limiting)
+REDIS_URL=redis://localhost:6379/0
+# For TLS: REDIS_URL=rediss://user:pass@host:port/0
 
-# Production logging
-export LOG_LEVEL="warn"
+# WebSocket Origins (customize for your domain)
+OBSIDIAN_ALLOWED_ORIGINS=https://your-domain.com
 
-# Run the application
-./obsidian.exe -port 8082
+# GeoIP Database (OPTIONAL)
+GEOIP_DATABASE_PATH=/opt/maxmind/GeoLite2-Country.mmdb
+
+# Logging
+LOG_LEVEL=info
+LOG_FORMAT=json
 ```
+
+### Production Deployment Checklist
+
+- [ ] Set `OBSIDIAN_JWT_SECRET` (32+ random characters)
+- [ ] Set `OBSIDIAN_ENV=production`
+- [ ] Configure PostgreSQL with SSL (`sslmode=require`)
+- [ ] Change all default user passwords immediately
+- [ ] Configure proper `OBSIDIAN_ALLOWED_ORIGINS`
+- [ ] Set up Redis for distributed rate limiting
+- [ ] Enable GeoIP blocking if needed
+- [ ] Configure reverse proxy (nginx/Caddy) with TLS
+- [ ] Set up log aggregation
+- [ ] Configure alerting webhooks
 
 ---
 
@@ -576,6 +592,17 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+---
+
+## 📊 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Production Audit Report](docs/PRODUCTION_AUDIT_REPORT.md) | Comprehensive security audit with 100 issues and 50 features |
+| [Contributing Guide](CONTRIBUTING.md) | How to contribute to the project |
+| [Security Policy](SECURITY.md) | How to report vulnerabilities |
+| [License](LICENSE) | Apache 2.0 License |
 
 ---
 

@@ -136,7 +136,7 @@ func NewLogger(cfg Config) (*Logger, error) {
 	case "stderr":
 		output = zapcore.AddSync(os.Stderr)
 	default:
-		file, err := os.OpenFile(cfg.Output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		file, err := os.OpenFile(cfg.Output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open log file: %w", err)
 		}

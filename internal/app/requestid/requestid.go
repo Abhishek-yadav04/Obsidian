@@ -41,7 +41,15 @@ var (
 func init() {
 	// Generate a short instance ID on startup
 	b := make([]byte, 4)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// CRITICAL: If crypto/rand fails, fall back to time-based value
+		// This should never happen on a properly configured system
+		ts := time.Now().UnixNano()
+		b[0] = byte(ts >> 24)
+		b[1] = byte(ts >> 16)
+		b[2] = byte(ts >> 8)
+		b[3] = byte(ts)
+	}
 	instanceID = hex.EncodeToString(b)
 }
 
@@ -81,9 +89,16 @@ func Generate() string {
 	// Increment counter atomically
 	count := atomic.AddUint64(&counter, 1)
 
-	// Generate random suffix
+	// Generate random suffix with fallback
 	b := make([]byte, 4)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback: use counter and time for uniqueness
+		ts := time.Now().UnixNano()
+		b[0] = byte(ts >> 24)
+		b[1] = byte(ts >> 16)
+		b[2] = byte(count >> 8)
+		b[3] = byte(count)
+	}
 	random := hex.EncodeToString(b)
 
 	// Get current timestamp (seconds since epoch, base36 for compactness)
@@ -97,14 +112,31 @@ func Generate() string {
 func GenerateShort() string {
 	ts := time.Now().UnixNano()
 	b := make([]byte, 4)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback: use nanosecond timestamp bits
+		b[0] = byte(ts >> 56)
+		b[1] = byte(ts >> 48)
+		b[2] = byte(ts >> 40)
+		b[3] = byte(ts >> 32)
+	}
 	return fmt.Sprintf("%x-%s", ts&0xFFFFFFFF, hex.EncodeToString(b))
 }
 
 // GenerateUUID creates a UUID v4 style request ID
 func GenerateUUID() string {
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// CRITICAL: crypto/rand failed - use time-based fallback
+		// This should never happen but we need deterministic behavior
+		ts := time.Now().UnixNano()
+		count := atomic.AddUint64(&counter, 1)
+		for i := 0; i < 8; i++ {
+			b[i] = byte(ts >> (i * 8))
+		}
+		for i := 0; i < 8; i++ {
+			b[8+i] = byte(count >> (i * 8))
+		}
+	}
 
 	// Set version 4 and variant bits
 	b[6] = (b[6] & 0x0f) | 0x40

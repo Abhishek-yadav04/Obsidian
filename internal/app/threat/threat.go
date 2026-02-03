@@ -95,31 +95,13 @@ func NewThreatIntel(opts ...Option) *ThreatIntel {
 		ti.loadFromDisk()
 	}
 
-	// Add sample threat data for demonstration if no data loaded
-	if len(ti.blockedIPs) == 0 {
-		ti.addSampleThreats()
-	}
+	// PRODUCTION: No sample data - threat intel is loaded from actual feeds or database
+	// Sample data has been removed for production release
 
 	// Start background update for threat feeds
 	ti.startBackgroundUpdates()
 
 	return ti
-}
-
-// addSampleThreats adds sample threat entries for demonstration purposes
-func (ti *ThreatIntel) addSampleThreats() {
-	now := time.Now()
-	sampleThreats := []*ThreatEntry{
-		{IP: "185.220.101.42", Category: "Tor Exit Node", Source: "TorDNSEL", RiskLevel: "HIGH", FirstSeen: now.Add(-24 * time.Hour), LastSeen: now},
-		{IP: "45.155.205.233", Category: "Brute Force", Source: "AbuseIPDB", RiskLevel: "HIGH", FirstSeen: now.Add(-12 * time.Hour), LastSeen: now},
-		{IP: "89.248.167.131", Category: "Port Scanner", Source: "Shodan", RiskLevel: "MEDIUM", FirstSeen: now.Add(-48 * time.Hour), LastSeen: now.Add(-6 * time.Hour)},
-		{IP: "193.32.162.159", Category: "Spam Source", Source: "Spamhaus", RiskLevel: "MEDIUM", FirstSeen: now.Add(-72 * time.Hour), LastSeen: now.Add(-24 * time.Hour)},
-		{IP: "46.161.27.117", Category: "Botnet C2", Source: "Emerging Threats", RiskLevel: "HIGH", FirstSeen: now.Add(-6 * time.Hour), LastSeen: now},
-	}
-
-	for _, threat := range sampleThreats {
-		ti.blockedIPs[threat.IP] = threat
-	}
 }
 
 // loadFromDisk loads threat data from persistent storage

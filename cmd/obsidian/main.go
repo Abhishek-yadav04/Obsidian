@@ -22,6 +22,8 @@ import (
 	"github.com/corazawaf/coraza/v3/internal/app/alerts"
 	"github.com/corazawaf/coraza/v3/internal/app/api"
 	"github.com/corazawaf/coraza/v3/internal/app/auth"
+	"github.com/corazawaf/coraza/v3/internal/app/cache"
+	"github.com/corazawaf/coraza/v3/internal/app/database"
 	"github.com/corazawaf/coraza/v3/internal/app/geoip"
 	"github.com/corazawaf/coraza/v3/internal/app/logging"
 	"github.com/corazawaf/coraza/v3/internal/app/metrics"
@@ -59,6 +61,8 @@ var (
 	securityMgr  *security.Manager
 	logger       *logging.Logger
 	metricsInst  *metrics.Metrics
+	dbManager    *database.Manager // Database connection manager
+	redisCache   *cache.Cache      // Redis cache for rate limiting & sessions
 )
 
 // UserClaims for JWT authentication context
@@ -83,6 +87,9 @@ func main() {
 	logLevel := flag.String("log-level", "info", "Log level (debug, info, warn, error)")
 	logFormat := flag.String("log-format", "json", "Log format (json, console)")
 	flag.Parse()
+
+	// Set authentication development mode EARLY - before any JWT operations
+	auth.SetDevelopmentMode(*dev)
 
 	// Initialize structured logging first
 	logCfg := logging.DefaultConfig()
@@ -110,8 +117,51 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize Store
-	s := store.NewStore("data.json")
+	// Initialize Database Connections (Supabase PostgreSQL + Redis Cloud)
+	ctx := context.Background()
+	dbManager, err = database.New(ctx, database.DefaultConfig())
+	if err != nil {
+		logger.Warn("Database connection failed - using in-memory storage")
+		logger.Warn(fmt.Sprintf("Database error: %v", err))
+	} else {
+		// Log connection status for each database
+		if dbManager.HasPostgres() {
+			if dbManager.IsLocalPostgres() {
+				logger.Info("Connected to PostgreSQL (Local)")
+			} else {
+				logger.Info("Connected to PostgreSQL (Supabase)")
+			}
+			if err := dbManager.RunMigrations(ctx); err != nil {
+				logger.Warn(fmt.Sprintf("Migration warning: %v", err))
+			} else {
+				logger.Info("Database migrations completed")
+			}
+			// Insert default users
+			if err := dbManager.InsertDefaultUsers(ctx); err != nil {
+				logger.Warn(fmt.Sprintf("Default users warning: %v", err))
+			}
+		} else {
+			logger.Warn("PostgreSQL not connected - check DATABASE_URL")
+		}
+		if dbManager.HasRedis() {
+			logger.Info("Connected to Redis (Redis Cloud)")
+			// Initialize Redis cache for rate limiting, sessions, and caching
+			redisCache = cache.New(dbManager.RedisClient())
+			logger.Info("Redis cache initialized for rate limiting and sessions")
+		} else {
+			logger.Warn("Redis not connected - check REDIS_URL")
+		}
+	}
+
+	// Initialize Store with database manager
+	storeOpts := []store.StoreOption{}
+	if dbManager != nil && dbManager.HasPostgres() {
+		storeOpts = append(storeOpts, store.WithDatabaseManager(dbManager))
+		logger.Info("Store configured with PostgreSQL backend")
+	} else {
+		logger.Warn("Store running without PostgreSQL - authentication will fail!")
+	}
+	s := store.NewStore("data.json", storeOpts...)
 	if *dev {
 		logger.Info("Running in Development Mode")
 	}
@@ -215,6 +265,10 @@ func main() {
 	mux.HandleFunc("/api/ratelimit/whitelist", authMiddleware(rbacMiddleware("Admin", handleRateLimitWhitelist)))
 	mux.HandleFunc("/api/admin/ratelimit/reset", authMiddleware(rbacMiddleware("Admin", handleRateLimitReset)))
 
+	// Cache/Redis Routes
+	mux.HandleFunc("/api/cache/stats", authMiddleware(handleCacheStats))
+	mux.HandleFunc("/api/cache/health", authMiddleware(handleCacheHealth))
+
 	// Static Files (UI)
 	uiFS, err := fs.Sub(uiAssets, "ui")
 	if err != nil {
@@ -280,6 +334,15 @@ func main() {
 		alertService.Stop()
 		_ = s.Save()
 
+		// Close database connections
+		if dbManager != nil {
+			if err := dbManager.Close(); err != nil {
+				logger.Warn(fmt.Sprintf("Database close error: %v", err))
+			} else {
+				logger.Info("Database connections closed")
+			}
+		}
+
 		if err := server.Shutdown(ctx); err != nil {
 			logger.Error("Shutdown error")
 		}
@@ -325,6 +388,22 @@ func main() {
 	fmt.Println("║    ✓ Structured Logging (JSON)                              ║")
 	fmt.Println("║    ✓ Request ID Tracing                                     ║")
 	fmt.Println("║    ✓ PDF Report Generation                                  ║")
+	fmt.Println("╠══════════════════════════════════════════════════════════════╣")
+	fmt.Println("║  Database Connections:                                       ║")
+	if dbManager != nil && dbManager.HasPostgres() {
+		if dbManager.IsLocalPostgres() {
+			fmt.Println("║    ✓ PostgreSQL (Local) - Connected                         ║")
+		} else {
+			fmt.Println("║    ✓ PostgreSQL (Supabase) - Connected                      ║")
+		}
+	} else {
+		fmt.Println("║    ○ PostgreSQL - Not connected (using in-memory)           ║")
+	}
+	if dbManager != nil && dbManager.HasRedis() {
+		fmt.Println("║    ✓ Redis (Redis Cloud) - Connected                        ║")
+	} else {
+		fmt.Println("║    ○ Redis - Not connected (using local cache)              ║")
+	}
 	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -619,6 +698,41 @@ func rbacMiddleware(requiredRole string, next http.HandlerFunc) http.HandlerFunc
 // handleHealth returns system health status
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Check database health
+	dbStatus := map[string]interface{}{
+		"postgres": "not_configured",
+		"redis":    "not_configured",
+	}
+	if dbManager != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		if dbManager.HasPostgres() {
+			if err := dbManager.PostgresPool().Ping(ctx); err != nil {
+				dbStatus["postgres"] = "error: " + err.Error()
+			} else {
+				dbStatus["postgres"] = "connected"
+			}
+		}
+		if dbManager.HasRedis() {
+			if err := dbManager.RedisClient().Ping(ctx).Err(); err != nil {
+				dbStatus["redis"] = "error: " + err.Error()
+			} else {
+				dbStatus["redis"] = "connected"
+			}
+		}
+
+		// Add connection stats
+		stats := dbManager.GetStats()
+		if stats.Postgres != nil {
+			dbStatus["postgres_stats"] = stats.Postgres
+		}
+		if stats.Redis != nil {
+			dbStatus["redis_stats"] = stats.Redis
+		}
+	}
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":    "healthy",
 		"uptime":    time.Since(startTime).String(),
@@ -634,6 +748,7 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 			"prometheus":         true,
 			"structured_logging": true,
 		},
+		"databases": dbStatus,
 	})
 }
 
@@ -822,4 +937,84 @@ type responseRecorder struct {
 func (rec *responseRecorder) WriteHeader(code int) {
 	rec.statusCode = code
 	rec.ResponseWriter.WriteHeader(code)
+}
+
+// handleCacheStats returns Redis cache statistics
+func handleCacheStats(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	response := map[string]interface{}{
+		"redis_connected": redisCache != nil,
+		"timestamp":       time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if redisCache != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		// Get stats from Redis
+		stats, err := redisCache.GetAllStats(ctx)
+		if err == nil {
+			response["stats"] = stats
+		}
+
+		// Get connection pool stats from database manager
+		if dbManager != nil {
+			dbStats := dbManager.GetStats()
+			if dbStats.Redis != nil {
+				response["pool"] = dbStats.Redis
+			}
+		}
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleCacheHealth checks Redis cache health
+func handleCacheHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	response := map[string]interface{}{
+		"status":    "unknown",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if redisCache == nil {
+		response["status"] = "not_configured"
+		response["message"] = "Redis cache is not configured"
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	if err := redisCache.Ping(ctx); err != nil {
+		response["status"] = "error"
+		response["error"] = err.Error()
+		w.WriteHeader(http.StatusServiceUnavailable)
+	} else {
+		response["status"] = "healthy"
+
+		// Get Redis info
+		if info, err := redisCache.Info(ctx); err == nil {
+			// Parse some basic info
+			lines := strings.Split(info, "\r\n")
+			infoMap := make(map[string]string)
+			for _, line := range lines {
+				if strings.Contains(line, ":") {
+					parts := strings.SplitN(line, ":", 2)
+					if len(parts) == 2 {
+						infoMap[parts[0]] = parts[1]
+					}
+				}
+			}
+			response["redis_version"] = infoMap["redis_version"]
+			response["connected_clients"] = infoMap["connected_clients"]
+			response["used_memory_human"] = infoMap["used_memory_human"]
+			response["uptime_in_days"] = infoMap["uptime_in_days"]
+		}
+	}
+
+	json.NewEncoder(w).Encode(response)
 }

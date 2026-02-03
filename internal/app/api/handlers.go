@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -369,10 +370,32 @@ func (a *API) HandleUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleAuditLogs returns audit trail (Admin only)
+// Requires authentication - JWT token in Authorization header
 func (a *API) HandleAuditLogs(w http.ResponseWriter, r *http.Request) {
-	// In production, this would query the database
-	logs := []map[string]interface{}{
-		{"id": 1, "action": "LOGIN", "resource": "/api/login", "timestamp": time.Now().Add(-1 * time.Hour).Format(time.RFC3339)},
+	if r.Method != http.MethodGet {
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse pagination parameters
+	limit := 100
+	offset := 0
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 1000 {
+			limit = parsed
+		}
+	}
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	// Query database for audit logs
+	logs, err := a.Store.GetAuditLogs(limit, offset)
+	if err != nil {
+		// Return empty array if database not configured or query fails
+		logs = []map[string]interface{}{}
 	}
 
 	w.Header().Set(contentTypeHeader, contentTypeJSON)

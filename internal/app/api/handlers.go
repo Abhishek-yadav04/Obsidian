@@ -20,6 +20,10 @@ var AllowedOrigins = []string{
 	"http://localhost:8082",
 	"http://127.0.0.1:8082",
 	"https://localhost:8082",
+	"http://localhost:8080",
+	"http://127.0.0.1:8080",
+	"http://[::1]:8082",
+	"http://[::1]:8080",
 }
 
 const (
@@ -52,6 +56,13 @@ func NewAPI(s *store.Store) *API {
 				origin := r.Header.Get("Origin")
 				if origin == "" {
 					return true // Same-origin request
+				}
+				// Allow localhost/loopback for development
+				if strings.HasPrefix(origin, "http://localhost:") ||
+					strings.HasPrefix(origin, "http://127.0.0.1:") ||
+					strings.HasPrefix(origin, "http://[::1]:") ||
+					strings.HasPrefix(origin, "https://localhost:") {
+					return true
 				}
 				for _, allowed := range AllowedOrigins {
 					if origin == allowed {
@@ -189,6 +200,8 @@ func (a *API) HandleRules(w http.ResponseWriter, r *http.Request) {
 func (a *API) HandleWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := a.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		// Log the actual WebSocket upgrade error for debugging
+		fmt.Printf("[WebSocket] Upgrade failed: %v (ResponseWriter type: %T)\n", err, w)
 		return
 	}
 	defer conn.Close()

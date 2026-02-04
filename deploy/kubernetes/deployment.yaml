@@ -63,7 +63,7 @@ spec:
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8082"
-        prometheus.io/path: "/api/metrics"
+        prometheus.io/path: "/metrics"
     spec:
       securityContext:
         runAsNonRoot: true

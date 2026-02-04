@@ -4,6 +4,9 @@
 package metrics
 
 import (
+	"bufio"
+	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -465,6 +468,14 @@ func (m *Metrics) IncrementUptime() {
 // Middleware returns HTTP middleware that records request metrics
 func (m *Metrics) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip metrics wrapping for WebSocket connections to avoid hijack issues
+		if r.URL.Path == "/api/ws" {
+			m.ActiveRequests.Inc()
+			defer m.ActiveRequests.Dec()
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		start := time.Now()
 
 		// Track active requests
@@ -505,6 +516,21 @@ func (w *responseWrapper) Write(b []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(b)
 	w.size += n
 	return n, err
+}
+
+// Hijack implements http.Hijacker interface for WebSocket support
+func (w *responseWrapper) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := w.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, fmt.Errorf("underlying ResponseWriter does not support Hijack")
+}
+
+// Flush implements http.Flusher interface
+func (w *responseWrapper) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 // normalizePath normalizes URL paths for metric labels to prevent cardinality explosion

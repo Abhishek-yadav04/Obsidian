@@ -14,7 +14,7 @@ services:
       - OBSIDIAN_LOG_FORMAT=${LOG_FORMAT:-json}
       - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-obsidian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-obsidian}?sslmode=disable}
       - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:-}@redis:6379}
-      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - OBSIDIAN_JWT_SECRET=${OBSIDIAN_JWT_SECRET:?OBSIDIAN_JWT_SECRET is required}
       - SUPABASE_URL=${SUPABASE_URL:-}
       - SUPABASE_KEY=${SUPABASE_KEY:-}
     depends_on:

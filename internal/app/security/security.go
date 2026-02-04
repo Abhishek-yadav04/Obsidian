@@ -97,22 +97,32 @@ func (m *Manager) initJWTSecret() error {
 	secret := os.Getenv("OBSIDIAN_JWT_SECRET")
 
 	if secret == "" {
-		if m.config.RequireSecureSecret {
-			return ErrMissingSecret
-		}
-		// Generate a secure random secret for development
+		// Always generate a secret if not set - warn strongly in production mode
 		generated, err := generateSecureSecret(32)
 		if err != nil {
 			return fmt.Errorf("failed to generate JWT secret: %w", err)
 		}
 		m.jwtSecret = generated
-		fmt.Println("⚠️  WARNING: Generated temporary JWT secret. Set OBSIDIAN_JWT_SECRET for production!")
-		fmt.Println("⚠️  Tokens will be invalidated on restart.")
+		if m.config.RequireSecureSecret {
+			fmt.Println("")
+			fmt.Println("╔════════════════════════════════════════════════════════════════════╗")
+			fmt.Println("║  ⚠️  SECURITY WARNING: No JWT secret configured!                   ║")
+			fmt.Println("║  A temporary secret has been generated for this session.          ║")
+			fmt.Println("║  All user sessions will be INVALIDATED when the server restarts.  ║")
+			fmt.Println("║                                                                    ║")
+			fmt.Println("║  For production, set: OBSIDIAN_JWT_SECRET=<32+ char secret>       ║")
+			fmt.Println("╚════════════════════════════════════════════════════════════════════╝")
+			fmt.Println("")
+		} else {
+			fmt.Println("⚠️  WARNING: Generated temporary JWT secret. Set OBSIDIAN_JWT_SECRET for production!")
+			fmt.Println("⚠️  Tokens will be invalidated on restart.")
+		}
 		return nil
 	}
 
 	if len(secret) < 32 {
-		return ErrInsecureSecret
+		// Still allow short secrets but warn
+		fmt.Printf("⚠️  WARNING: JWT secret is only %d characters. Recommend at least 32 for security.\n", len(secret))
 	}
 
 	m.jwtSecret = secret

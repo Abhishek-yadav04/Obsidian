@@ -393,3 +393,24 @@ func generateID() string {
 	}
 	return fmt.Sprintf("%x", b)
 }
+
+// ExtractIP extracts the client IP from a request
+func ExtractIP(remoteAddr string, forwardedFor string) string {
+	// Check X-Forwarded-For first
+	if forwardedFor != "" {
+		// Take first IP in chain
+		for i := 0; i < len(forwardedFor); i++ {
+			if forwardedFor[i] == ',' {
+				return forwardedFor[:i]
+			}
+		}
+		return forwardedFor
+	}
+
+	// Fall back to remote address
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+	return host
+}

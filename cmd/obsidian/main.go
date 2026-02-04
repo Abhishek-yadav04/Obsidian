@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"embed"
 	"encoding/json"
@@ -73,11 +74,11 @@ var (
 	redisCache   *cache.Cache      // Redis cache for rate limiting & sessions
 
 	// Security Services (Enterprise Features)
-	apiKeyMgr    *apikeys.Manager  // API Key management with scopes
-	ipAllowMgr   *ipallow.Manager  // IP allowlist management
-	hibpChecker  *hibp.Checker     // Password breach checking (HIBP)
-	secretsManager *secrets.Manager // Secret hot-reload management
-	graphqlAnalyzer *graphql.Analyzer // GraphQL security analysis
+	apiKeyMgr         *apikeys.Manager    // API Key management with scopes
+	ipAllowMgr        *ipallow.Manager    // IP allowlist management
+	hibpChecker       *hibp.Checker       // Password breach checking (HIBP)
+	secretsManager    *secrets.Manager    // Secret hot-reload management
+	graphqlAnalyzer   *graphql.Analyzer   // GraphQL security analysis
 	respBodyInspector *respbody.Inspector // Response body DLP
 )
 
@@ -105,6 +106,12 @@ func main() {
 	logFormat := flag.String("log-format", "json", "Log format (json, console)")
 	flag.Parse()
 
+	// CRITICAL: Load .env file FIRST - before any component checks environment variables
+	// This ensures OBSIDIAN_JWT_SECRET and other env vars are available
+	if err := database.LoadEnv(); err != nil {
+		fmt.Printf("Warning: Failed to load .env file: %v\n", err)
+	}
+
 	// Set authentication development mode EARLY - before any JWT operations
 	auth.SetDevelopmentMode(*dev)
 
@@ -123,7 +130,7 @@ func main() {
 	logger = logging.Get()
 	defer logger.Sync()
 
-	// Initialize security manager
+	// Initialize security manager (now .env is already loaded)
 	secCfg := security.DefaultConfig()
 	secCfg.RequireSecureSecret = !*dev // Require secret in production
 	var err error
@@ -703,10 +710,31 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	return r.ResponseWriter.Write(b)
 }
 
+// Hijack implements http.Hijacker interface for WebSocket support
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := r.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, fmt.Errorf("underlying ResponseWriter does not support Hijack")
+}
+
+// Flush implements http.Flusher interface
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		atomic.AddInt64(&totalRequests, 1)
+
+		// Skip wrapping for WebSocket connections to avoid hijack issues
+		if r.URL.Path == "/api/ws" {
+			next.ServeHTTP(w, r)
+			return
+		}
 
 		// Wrap response writer to capture status code
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
@@ -1196,6 +1224,21 @@ func (rec *responseRecorder) WriteHeader(code int) {
 	rec.ResponseWriter.WriteHeader(code)
 }
 
+// Hijack implements http.Hijacker interface for WebSocket support
+func (rec *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := rec.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, fmt.Errorf("underlying ResponseWriter does not support Hijack")
+}
+
+// Flush implements http.Flusher interface
+func (rec *responseRecorder) Flush() {
+	if f, ok := rec.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // handleCacheStats returns Redis cache statistics
 func handleCacheStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -1288,7 +1331,7 @@ func initSecurityServices() {
 
 	// Initialize IP Allowlist Manager
 	ipAllowConfig := ipallow.DefaultConfig()
-	ipAllowConfig.AllowLocalhost = true  // Allow localhost by default
+	ipAllowConfig.AllowLocalhost = true // Allow localhost by default
 	ipAllowMgr = ipallow.NewManager(ipAllowConfig, nil)
 	logger.Info("IP Allowlist Manager initialized")
 
@@ -1301,8 +1344,8 @@ func initSecurityServices() {
 
 	// Initialize Secrets Manager
 	secretsManager = secrets.NewManager()
-	// Load secrets from environment
-	if err := secretsManager.LoadFromEnvWithDefault(secrets.SecretJWT, "JWT_SECRET", ""); err != nil {
+	// Load secrets from environment (using correct env var name)
+	if err := secretsManager.LoadFromEnvWithDefault(secrets.SecretJWT, "OBSIDIAN_JWT_SECRET", ""); err != nil {
 		logger.Warn("JWT secret not loaded from environment")
 	}
 	logger.Info("Secrets Manager initialized")
@@ -1381,12 +1424,12 @@ func handleSecurityOverview(w http.ResponseWriter, r *http.Request) {
 			"last_reload":  secretStats.LastReload,
 		},
 		"graphql": map[string]interface{}{
-			"enabled":            graphqlAnalyzer != nil,
-			"max_depth":          graphqlAnalyzer.GetConfig().MaxDepth,
+			"enabled":             graphqlAnalyzer != nil,
+			"max_depth":           graphqlAnalyzer.GetConfig().MaxDepth,
 			"block_introspection": graphqlAnalyzer.GetConfig().BlockIntrospection,
 		},
 		"response_inspection": map[string]interface{}{
-			"enabled":           respBodyInspector != nil,
+			"enabled":            respBodyInspector != nil,
 			"block_on_detection": respBodyInspector.GetConfig().BlockOnDetection,
 		},
 		"version": AppVersion,
@@ -1497,11 +1540,11 @@ func handleSecretsRotateJWT(w http.ResponseWriter, r *http.Request) {
 	stats := secretsManager.GetStats()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":        true,
-		"message":        "JWT secret rotated successfully",
-		"version":        version,
-		"reload_count":   stats.ReloadCount,
-		"note":           "All existing tokens are now invalid",
+		"success":         true,
+		"message":         "JWT secret rotated successfully",
+		"version":         version,
+		"reload_count":    stats.ReloadCount,
+		"note":            "All existing tokens are now invalid",
 		"action_required": "Users must re-authenticate",
 	})
 }
@@ -1522,18 +1565,18 @@ func handleAPIKeysList(w http.ResponseWriter, r *http.Request) {
 	safeKeys := make([]map[string]interface{}, len(keys))
 	for i, k := range keys {
 		safeKeys[i] = map[string]interface{}{
-			"id":          k.ID,
-			"name":        k.Name,
-			"key_prefix":  k.KeyPrefix,
-			"scopes":      k.Scopes,
-			"created_by":  k.CreatedBy,
-			"created_at":  k.CreatedAt,
-			"expires_at":  k.ExpiresAt,
-			"last_used":   k.LastUsedAt,
+			"id":           k.ID,
+			"name":         k.Name,
+			"key_prefix":   k.KeyPrefix,
+			"scopes":       k.Scopes,
+			"created_by":   k.CreatedBy,
+			"created_at":   k.CreatedAt,
+			"expires_at":   k.ExpiresAt,
+			"last_used":    k.LastUsedAt,
 			"last_used_ip": k.LastUsedIP,
-			"enabled":     k.Enabled,
-			"rate_limit":  k.RateLimit,
-			"description": k.Description,
+			"enabled":      k.Enabled,
+			"rate_limit":   k.RateLimit,
+			"description":  k.Description,
 		}
 	}
 
@@ -1553,8 +1596,8 @@ func handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        string   `json:"name"`
 		Scopes      []string `json:"scopes"`
-		ExpiresIn   string   `json:"expires_in"`      // e.g., "720h" for 30 days
-		RateLimit   int      `json:"rate_limit"`      // Requests per minute
+		ExpiresIn   string   `json:"expires_in"` // e.g., "720h" for 30 days
+		RateLimit   int      `json:"rate_limit"` // Requests per minute
 		Description string   `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1607,15 +1650,15 @@ func handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":  true,
-		"key":      plainKey, // Only returned on creation - NEVER shown again!
-		"id":       key.ID,
-		"name":     key.Name,
-		"prefix":   key.KeyPrefix,
-		"scopes":   key.Scopes,
-		"created":  key.CreatedAt,
-		"expires":  key.ExpiresAt,
-		"warning":  "Save this key NOW. It will never be shown again!",
+		"success": true,
+		"key":     plainKey, // Only returned on creation - NEVER shown again!
+		"id":      key.ID,
+		"name":    key.Name,
+		"prefix":  key.KeyPrefix,
+		"scopes":  key.Scopes,
+		"created": key.CreatedAt,
+		"expires": key.ExpiresAt,
+		"warning": "Save this key NOW. It will never be shown again!",
 	})
 }
 

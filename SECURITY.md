@@ -1,6 +1,6 @@
 # Security Policy
 
-## Obsidian Sentinel WAF v2.2.2 Enterprise Edition
+## Obsidian Sentinel WAF v2.2.3 Enterprise Edition
 
 Obsidian Sentinel is a security-focused application designed to protect web applications. We take security vulnerabilities seriously and appreciate responsible disclosure from the security community.
 
@@ -24,6 +24,7 @@ Obsidian Sentinel v2.2.2 includes comprehensive enterprise-grade security measur
 - **Multi-Layer Authorization**: API-level, resource-level, and action-level permissions
 - **Session Management**: Redis-backed session tracking with automatic cleanup
 - **Password Security**: bcrypt cost factor 12 with password complexity requirements
+- **HIBP Integration**: Real-time password breach checking using Have I Been Pwned API
 - **Token Refresh**: Automatic token rotation with secure refresh mechanisms
 
 ### Network & Traffic Protection
@@ -43,6 +44,7 @@ Obsidian Sentinel v2.2.2 includes comprehensive enterprise-grade security measur
 
 ### Data Protection & Privacy
 - **PostgreSQL Encryption**: Database-level encryption for sensitive data
+- **Response Body DLP**: Data Loss Prevention for sensitive information in HTTP responses
 - **Audit Trail Integrity**: Tamper-evident logging with cryptographic hashing
 - **PII Detection**: Automatic detection and masking of personally identifiable information
 - **GDPR Compliance**: Data retention policies and right-to-deletion support

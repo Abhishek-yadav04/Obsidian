@@ -1,5 +1,51 @@
 # Changelog
 
+## Obsidian Sentinel v2.2.3 Enterprise Edition (2026-02-04)
+
+### 🚀 New Features
+
+#### Enhanced Database Persistence
+- **PostgreSQL Integration**: Full database persistence for WAF rules, threat intelligence, attack logs, and statistics
+- **Redis Rate Limiter**: Integrated Redis backend for distributed rate limiting across multiple instances
+- **Rule Synchronization**: Automatic synchronization of 59+ WAF rules to PostgreSQL database on startup
+- **Threat Intelligence Persistence**: Persistent storage of threat feeds with automatic cleanup and updates
+- **Audit Logging**: Comprehensive audit trail for all security events stored in PostgreSQL
+
+#### Advanced Security Integrations
+- **HIBP Password Checking**: Real-time password breach validation using Have I Been Pwned API with k-anonymity
+- **Response Body DLP**: Data Loss Prevention for sensitive information in HTTP response bodies
+- **Enhanced User Management**: Password validation against known breaches during user creation and updates
+
+#### UI/UX Improvements
+- **User Management Fixes**: Fixed Edit button functionality in admin panel with proper JavaScript escaping
+- **Real-Time Updates**: Improved user interface responsiveness and error handling
+- **Security Dashboard**: Enhanced security overview with breach detection status
+
+### 🔧 Technical Improvements
+
+#### Backend Enhancements
+- **Store Layer Refactoring**: Complete rewrite of data persistence layer with dual PostgreSQL/Redis support
+- **Rate Limiter Redis Adapter**: New Redis adapter for distributed rate limiting
+- **HIBP Service Integration**: Secure integration with HIBP API for password breach checking
+- **Concurrent-Safe Operations**: Enhanced thread safety for all database operations
+
+#### Performance Optimizations
+- **Database Connection Pooling**: Optimized PostgreSQL connection pooling for high throughput
+- **Redis Caching**: Efficient caching strategies for frequently accessed data
+- **Memory Management**: Reduced memory footprint for long-running operations
+
+### 🐛 Bug Fixes
+- **UI JavaScript Escaping**: Fixed onclick attribute escaping issues causing Edit button failures
+- **Database Connection Handling**: Improved error handling for database connectivity issues
+- **Rate Limiter Initialization**: Fixed Redis rate limiter initialization and fallback to in-memory mode
+
+### 📝 Documentation Updates
+- Updated README with database persistence and security integration details
+- Added deployment guides for PostgreSQL and Redis configurations
+- Enhanced API documentation for new security endpoints
+
+---
+
 ## Obsidian Sentinel v2.2.2 Enterprise Edition (2026-02-03)
 
 ### 🔐 Security Fixes

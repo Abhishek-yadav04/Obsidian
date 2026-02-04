@@ -1,4 +1,4 @@
-# 🛡️ OBSIDIAN Sentinel WAF v2.2.2 Enterprise Edition
+# 🛡️ OBSIDIAN Sentinel WAF v2.2.3 Enterprise Edition
 
 <p align="center">
   <img src="cmd/obsidian/ui/assets/logo.svg" alt="Obsidian Sentinel WAF" width="200"/>
@@ -61,6 +61,8 @@
 |---------|-------------|
 | **PostgreSQL Integration** | Enterprise-grade data persistence and analytics |
 | **Redis Clustering** | Distributed rate limiting and session management |
+| **HIBP Password Checking** | Real-time password breach validation using Have I Been Pwned |
+| **Response Body DLP** | Data Loss Prevention for sensitive information in HTTP responses |
 | **Webhook Alerting** | Real-time notifications to Slack, Teams, Discord, PagerDuty |
 | **Executive Reporting** | PDF/Excel reports with charts and threat analysis |
 | **Comprehensive Audit** | Complete security event trail with PostgreSQL storage |

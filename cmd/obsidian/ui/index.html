@@ -313,22 +313,29 @@
                     </div>
                     <div class="card-body">
                         <div class="alert alert-info border-secondary bg-dark text-muted mb-3">
-                            <i class="fas fa-info-circle me-2"></i>Rules are evaluated in order. OWASP Core Rule Set v4 is enabled.
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Rule Actions:</strong>
+                            <span class="badge bg-danger ms-2">DENY</span> Block with HTTP status |
+                            <span class="badge bg-dark ms-1">DROP</span> Silent drop |
+                            <span class="badge bg-info ms-1">LOG</span> Monitor only |
+                            <span class="badge bg-success ms-1">PASS</span> Allow
                         </div>
                         <div class="table-responsive">
-                            <table class="table table-dark table-striped">
-                                <thead>
+                            <table class="table table-dark table-striped table-hover">
+                                <thead class="table-secondary">
                                     <tr>
-                                        <th>ID</th>
-                                        <th>Description</th>
-                                        <th>Severity</th>
-                                        <th>Category</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
+                                        <th style="width: 80px;">ID</th>
+                                        <th>Description & Target</th>
+                                        <th style="width: 100px;">Severity</th>
+                                        <th style="width: 100px;">Category</th>
+                                        <th style="width: 120px;">Action / HTTP</th>
+                                        <th style="width: 80px;">Status</th>
+                                        <th style="width: 100px;">Matches</th>
+                                        <th style="width: 100px;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="rules-tbody">
-                                    <tr><td colspan="6" class="text-center text-muted">Loading rules...</td></tr>
+                                    <tr><td colspan="8" class="text-center text-muted">Loading rules...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -1246,7 +1253,7 @@
 
     <!-- Rule Modal -->
     <div class="modal fade" id="ruleModal" tabindex="-1">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content bg-dark text-light">
                 <div class="modal-header border-secondary">
                     <h5 class="modal-title" id="ruleModalTitle">Add New Rule</h5>
@@ -1255,37 +1262,144 @@
                 <div class="modal-body">
                     <form id="ruleForm">
                         <input type="hidden" id="ruleEditId">
-                        <div class="mb-3">
-                            <label class="form-label">Rule ID</label>
-                            <input type="number" class="form-control bg-dark text-light border-secondary" id="ruleId" required>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Rule ID</label>
+                                    <input type="number" class="form-control bg-dark text-light border-secondary" id="ruleId" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Category</label>
+                                    <select class="form-select bg-dark text-light border-secondary" id="ruleCategory">
+                                        <option value="XSS">XSS</option>
+                                        <option value="SQLi">SQL Injection</option>
+                                        <option value="RCE">Remote Code Execution</option>
+                                        <option value="LFI">Local File Inclusion</option>
+                                        <option value="RFI">Remote File Inclusion</option>
+                                        <option value="SSRF">Server-Side Request Forgery</option>
+                                        <option value="XXE">XML External Entity</option>
+                                        <option value="SSTI">Template Injection</option>
+                                        <option value="PHP">PHP Injection</option>
+                                        <option value="NodeJS">Node.js Injection</option>
+                                        <option value="Java">Java/Deserialization</option>
+                                        <option value="LDAP">LDAP Injection</option>
+                                        <option value="Session">Session Security</option>
+                                        <option value="Protocol">Protocol Violation</option>
+                                        <option value="Anomaly">Request Anomaly</option>
+                                        <option value="Reputation">Reputation</option>
+                                        <option value="Leakage">Data Leakage</option>
+                                        <option value="GraphQL">GraphQL</option>
+                                        <option value="API">API Security</option>
+                                        <option value="Log4j">Log4j/Log4Shell</option>
+                                        <option value="RateLimit">Rate Limiting</option>
+                                        <option value="Test">Test</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Description</label>
                             <input type="text" class="form-control bg-dark text-light border-secondary" id="ruleDesc" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Category</label>
-                            <select class="form-select bg-dark text-light border-secondary" id="ruleCategory">
-                                <option value="XSS">XSS</option>
-                                <option value="SQLi">SQL Injection</option>
-                                <option value="RCE">Remote Code Execution</option>
-                                <option value="LFI">Local File Inclusion</option>
-                                <option value="Protocol">Protocol Violation</option>
-                                <option value="Reputation">Reputation</option>
-                            </select>
+                            <label class="form-label">Pattern <small class="text-muted">(ModSecurity operator format: @rx regex)</small></label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary font-monospace" id="rulePattern" placeholder="@rx (?i)(union.*select|drop.*table)">
+                            <small class="text-muted">Examples: @rx for regex, @eq for equal, @contains for substring match</small>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Severity</label>
-                            <select class="form-select bg-dark text-light border-secondary" id="ruleSeverity">
-                                <option value="CRITICAL">Critical</option>
-                                <option value="HIGH">High</option>
-                                <option value="WARNING">Warning</option>
-                                <option value="NOTICE">Notice</option>
-                            </select>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Target Field</label>
+                                    <select class="form-select bg-dark text-light border-secondary" id="ruleTargetField">
+                                        <option value="REQUEST_URI">REQUEST_URI - Full URL path</option>
+                                        <option value="QUERY_STRING">QUERY_STRING - URL parameters</option>
+                                        <option value="REQUEST_BODY">REQUEST_BODY - POST data</option>
+                                        <option value="REQUEST_HEADERS">REQUEST_HEADERS - All headers</option>
+                                        <option value="REQUEST_HEADERS:User-Agent">User-Agent header</option>
+                                        <option value="REQUEST_HEADERS:Cookie">Cookie header</option>
+                                        <option value="REQUEST_HEADERS:Referer">Referer header</option>
+                                        <option value="REQUEST_HEADERS:X-Forwarded-For">X-Forwarded-For header</option>
+                                        <option value="REQUEST_METHOD">REQUEST_METHOD - GET/POST/etc</option>
+                                        <option value="REQUEST_FILENAME">REQUEST_FILENAME - File path</option>
+                                        <option value="ARGS">ARGS - All arguments</option>
+                                        <option value="ARGS_GET">ARGS_GET - GET parameters</option>
+                                        <option value="ARGS_POST">ARGS_POST - POST parameters</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Action</label>
+                                    <select class="form-select bg-dark text-light border-secondary" id="ruleAction">
+                                        <option value="deny">DENY - Block request (403)</option>
+                                        <option value="drop">DROP - Silently drop connection</option>
+                                        <option value="log">LOG - Log only (monitor mode)</option>
+                                        <option value="pass">PASS - Allow and continue</option>
+                                        <option value="redirect">REDIRECT - Redirect to URL</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="ruleEnabled" checked>
-                            <label class="form-check-label" for="ruleEnabled">Enabled</label>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Severity</label>
+                                    <select class="form-select bg-dark text-light border-secondary" id="ruleSeverity">
+                                        <option value="CRITICAL">Critical</option>
+                                        <option value="HIGH">High</option>
+                                        <option value="WARNING">Warning</option>
+                                        <option value="NOTICE">Notice</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Block Status <small class="text-muted">(HTTP code)</small></label>
+                                    <select class="form-select bg-dark text-light border-secondary" id="ruleBlockStatus">
+                                        <option value="403">403 - Forbidden</option>
+                                        <option value="400">400 - Bad Request</option>
+                                        <option value="404">404 - Not Found</option>
+                                        <option value="405">405 - Method Not Allowed</option>
+                                        <option value="429">429 - Too Many Requests</option>
+                                        <option value="500">500 - Internal Server Error</option>
+                                        <option value="503">503 - Service Unavailable</option>
+                                        <option value="0">0 - No blocking (log only)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Threshold <small class="text-muted">(for rate limiting)</small></label>
+                                    <input type="number" class="form-control bg-dark text-light border-secondary" id="ruleThreshold" value="0" min="0">
+                                    <small class="text-muted">0 = instant block</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Time Window <small class="text-muted">(seconds, for rate limiting)</small></label>
+                                    <input type="number" class="form-control bg-dark text-light border-secondary" id="ruleTimeWindow" value="60" min="1">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mt-4 pt-2">
+                                    <input class="form-check-input" type="checkbox" id="ruleEnabled" checked>
+                                    <label class="form-check-label" for="ruleEnabled">
+                                        <strong>Rule Enabled</strong> <small class="text-muted">- Uncheck to disable without deleting</small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="alert alert-info mt-3" role="alert">
+                            <i class="fas fa-info-circle"></i> <strong>How blocking works:</strong>
+                            <ul class="mb-0 mt-2">
+                                <li><strong>DENY</strong>: Returns specified HTTP status code immediately</li>
+                                <li><strong>LOG</strong>: Records match but allows request (monitoring mode)</li>
+                                <li><strong>Threshold > 0</strong>: Rule triggers after N matches within time window</li>
+                            </ul>
                         </div>
                     </form>
                 </div>

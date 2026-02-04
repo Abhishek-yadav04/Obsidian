@@ -62,13 +62,25 @@ type Stats struct {
 	ActiveRulesCount int   `json:"active_rules_count"`
 }
 
-// Rule represents a WAF rule (simplified for UI)
+// Rule represents a WAF rule with full configuration
 type Rule struct {
 	ID          int    `json:"id"`
 	Description string `json:"description"`
-	Severity    string `json:"severity"`
+	Severity    string `json:"severity"`  // CRITICAL, HIGH, MEDIUM, LOW, NOTICE
 	Enabled     bool   `json:"enabled"`
 	Category    string `json:"category"`
+	
+	// Rule Configuration (what to block and when)
+	Pattern       string `json:"pattern,omitempty"`        // Regex pattern to match
+	TargetField   string `json:"target_field,omitempty"`   // REQUEST_URI, QUERY_STRING, REQUEST_HEADERS, etc.
+	Action        string `json:"action,omitempty"`         // deny, log, pass, drop
+	BlockStatus   int    `json:"block_status,omitempty"`   // HTTP status code when blocking (403, 400, etc.)
+	Threshold     int    `json:"threshold,omitempty"`      // Number of matches before action
+	TimeWindow    int    `json:"time_window,omitempty"`    // Time window in seconds for threshold
+	
+	// Statistics
+	MatchCount    int64  `json:"match_count"`    // Total times this rule matched
+	LastMatch     string `json:"last_match,omitempty"` // Timestamp of last match
 }
 
 // SystemState is the root object for persistence

@@ -671,26 +671,57 @@ const ObsidianApp = {
                 ? '<span class="badge bg-success">Active</span>'
                 : '<span class="badge bg-secondary">Disabled</span>';
 
+            // Action badge with color coding
+            const actionColors = {
+                'deny': 'bg-danger',
+                'drop': 'bg-dark',
+                'log': 'bg-info',
+                'pass': 'bg-success',
+                'redirect': 'bg-warning text-dark'
+            };
+            const actionColor = actionColors[rule.action] || 'bg-secondary';
+            const actionBadge = rule.action 
+                ? `<span class="badge ${actionColor}">${escapeHtml(rule.action.toUpperCase())}</span>`
+                : '<span class="badge bg-secondary">N/A</span>';
+
+            // Block status display
+            const blockInfo = rule.block_status && rule.block_status > 0
+                ? `<code class="text-danger">${rule.block_status}</code>`
+                : '<span class="text-muted">-</span>';
+
             // Escape user-controlled data
             const safeId = escapeHtml(rule.id);
             const safeDesc = escapeHtml(rule.description);
             const safeSeverity = escapeHtml(rule.severity || 'NOTICE');
             const safeCategory = escapeHtml(rule.category || 'General');
+            const safeTarget = escapeHtml(rule.target_field || 'REQUEST_URI');
             const ruleIdNum = Number.parseInt(rule.id, 10) || 0;
+
+            // Match statistics
+            const matchCount = rule.match_count || 0;
+            const lastMatch = rule.last_match ? new Date(rule.last_match).toLocaleString() : 'Never';
 
             return `
                 <tr>
                     <td class="font-monospace">${safeId}</td>
-                    <td>${safeDesc}</td>
+                    <td>
+                        <div>${safeDesc}</div>
+                        <small class="text-muted">Target: <code>${safeTarget}</code></small>
+                    </td>
                     <td><span class="badge ${escapeAttr(sevClass)}">${safeSeverity}</span></td>
                     <td>${safeCategory}</td>
+                    <td>${actionBadge} ${blockInfo}</td>
                     <td>${statusBadge}</td>
                     <td>
+                        <small class="text-muted">${matchCount} hits</small><br>
+                        <small class="text-muted">${lastMatch}</small>
+                    </td>
+                    <td>
                         <button class="btn btn-sm btn-outline-info me-1" onclick="ObsidianApp.editRule(${ruleIdNum})" title="Edit Rule">
-                            <i class="fas fa-edit"></i> Edit
+                            <i class="fas fa-edit"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.deleteRule(${ruleIdNum})" title="Delete Rule">
-                            <i class="fas fa-trash"></i> Delete
+                            <i class="fas fa-trash"></i>
                         </button>
                     </td>
                 </tr>
@@ -819,6 +850,13 @@ const ObsidianApp = {
         document.getElementById('ruleSeverity').value = 'CRITICAL';
         document.getElementById('ruleEnabled').checked = true;
         document.getElementById('ruleId').disabled = !!ruleId;
+        // New fields
+        document.getElementById('rulePattern').value = '';
+        document.getElementById('ruleTargetField').value = 'REQUEST_URI';
+        document.getElementById('ruleAction').value = 'deny';
+        document.getElementById('ruleBlockStatus').value = '403';
+        document.getElementById('ruleThreshold').value = '0';
+        document.getElementById('ruleTimeWindow').value = '60';
 
         if (ruleId) {
             this.loadRuleForEdit(ruleId);
@@ -835,6 +873,13 @@ const ObsidianApp = {
             document.getElementById('ruleCategory').value = rule.category || 'XSS';
             document.getElementById('ruleSeverity').value = rule.severity || 'CRITICAL';
             document.getElementById('ruleEnabled').checked = rule.enabled !== false;
+            // New fields
+            document.getElementById('rulePattern').value = rule.pattern || '';
+            document.getElementById('ruleTargetField').value = rule.target_field || 'REQUEST_URI';
+            document.getElementById('ruleAction').value = rule.action || 'deny';
+            document.getElementById('ruleBlockStatus').value = String(rule.block_status || 403);
+            document.getElementById('ruleThreshold').value = String(rule.threshold || 0);
+            document.getElementById('ruleTimeWindow').value = String(rule.time_window || 60);
         }
     },
 
@@ -845,7 +890,14 @@ const ObsidianApp = {
             description: document.getElementById('ruleDesc').value,
             category: document.getElementById('ruleCategory').value,
             severity: document.getElementById('ruleSeverity').value,
-            enabled: document.getElementById('ruleEnabled').checked
+            enabled: document.getElementById('ruleEnabled').checked,
+            // New fields
+            pattern: document.getElementById('rulePattern').value,
+            target_field: document.getElementById('ruleTargetField').value,
+            action: document.getElementById('ruleAction').value,
+            block_status: Number.parseInt(document.getElementById('ruleBlockStatus').value, 10),
+            threshold: Number.parseInt(document.getElementById('ruleThreshold').value, 10) || 0,
+            time_window: Number.parseInt(document.getElementById('ruleTimeWindow').value, 10) || 60
         };
 
         const endpoint = editId ? '/api/rules/update' : '/api/rules/create';

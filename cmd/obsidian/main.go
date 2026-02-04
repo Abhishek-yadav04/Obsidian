@@ -4,13 +4,10 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha1"
 	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -19,7 +16,6 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -27,16 +23,22 @@ import (
 	"github.com/corazawaf/coraza/v3"
 	"github.com/corazawaf/coraza/v3/internal/app/alerts"
 	"github.com/corazawaf/coraza/v3/internal/app/api"
+	"github.com/corazawaf/coraza/v3/internal/app/apikeys"
 	"github.com/corazawaf/coraza/v3/internal/app/auth"
 	"github.com/corazawaf/coraza/v3/internal/app/cache"
 	"github.com/corazawaf/coraza/v3/internal/app/database"
 	"github.com/corazawaf/coraza/v3/internal/app/geoip"
+	"github.com/corazawaf/coraza/v3/internal/app/graphql"
+	"github.com/corazawaf/coraza/v3/internal/app/hibp"
+	"github.com/corazawaf/coraza/v3/internal/app/ipallow"
 	"github.com/corazawaf/coraza/v3/internal/app/logging"
 	"github.com/corazawaf/coraza/v3/internal/app/metrics"
 	"github.com/corazawaf/coraza/v3/internal/app/model"
 	"github.com/corazawaf/coraza/v3/internal/app/ratelimit"
 	"github.com/corazawaf/coraza/v3/internal/app/report"
 	"github.com/corazawaf/coraza/v3/internal/app/requestid"
+	"github.com/corazawaf/coraza/v3/internal/app/respbody"
+	"github.com/corazawaf/coraza/v3/internal/app/secrets"
 	"github.com/corazawaf/coraza/v3/internal/app/security"
 	"github.com/corazawaf/coraza/v3/internal/app/store"
 	"github.com/corazawaf/coraza/v3/internal/app/threat"
@@ -47,7 +49,7 @@ import (
 // Application version
 const (
 	AppName    = "Obsidian Sentinel WAF"
-	AppVersion = "2.2.2" // Enterprise Edition - Security Update
+	AppVersion = "2.3.0" // Enterprise Edition - Security Services Integration
 )
 
 // Metrics for observability
@@ -69,6 +71,14 @@ var (
 	metricsInst  *metrics.Metrics
 	dbManager    *database.Manager // Database connection manager
 	redisCache   *cache.Cache      // Redis cache for rate limiting & sessions
+
+	// Security Services (Enterprise Features)
+	apiKeyMgr    *apikeys.Manager  // API Key management with scopes
+	ipAllowMgr   *ipallow.Manager  // IP allowlist management
+	hibpChecker  *hibp.Checker     // Password breach checking (HIBP)
+	secretsManager *secrets.Manager // Secret hot-reload management
+	graphqlAnalyzer *graphql.Analyzer // GraphQL security analysis
+	respBodyInspector *respbody.Inspector // Response body DLP
 )
 
 // UserClaims for JWT authentication context
@@ -82,6 +92,7 @@ type UserClaims struct {
 type contextKey string
 
 const userContextKey contextKey = "user"
+const apiKeyContextKey contextKey = "api_key"
 
 //go:embed ui/*
 var uiAssets embed.FS
@@ -230,6 +241,9 @@ func main() {
 	})
 	alertService = alerts.NewService(alertCfg)
 
+	// Initialize Security Services (Enterprise Features)
+	initSecurityServices()
+
 	// Initialize WAF
 	wafEngine, err := waf.NewWAF(s)
 	if err != nil {
@@ -252,29 +266,30 @@ func main() {
 	mux.HandleFunc("/api/auth/github", handleOAuthGitHub)
 	mux.HandleFunc("/api/auth/callback", handleOAuthCallback)
 
-	// API Routes - Protected (auth required)
-	mux.HandleFunc("/api/stats", authMiddleware(apiHandler.HandleStats))
-	mux.HandleFunc("/api/logs", authMiddleware(apiHandler.HandleLogs))
-	mux.HandleFunc("/api/rules", authMiddleware(apiHandler.HandleRules))
-	mux.HandleFunc("/api/rules/create", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleCreateRule)))
-	mux.HandleFunc("/api/rules/update", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleUpdateRule)))
-	mux.HandleFunc("/api/rules/delete", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleDeleteRule)))
-	mux.HandleFunc("/api/rules/test", authMiddleware(apiHandler.HandleTestRule))
+	// API Routes - Protected (supports both JWT and API key auth)
+	// Read-only endpoints support API keys with "read" scope
+	mux.HandleFunc("/api/stats", authOrAPIKeyMiddleware(apikeys.ScopeRead, apiHandler.HandleStats))
+	mux.HandleFunc("/api/logs", authOrAPIKeyMiddleware(apikeys.ScopeRead, apiHandler.HandleLogs))
+	mux.HandleFunc("/api/rules", authOrAPIKeyMiddleware(apikeys.ScopeRead, apiHandler.HandleRules))
+	mux.HandleFunc("/api/rules/create", authOrAPIKeyMiddleware(apikeys.ScopeWrite, rbacMiddleware("Admin", apiHandler.HandleCreateRule)))
+	mux.HandleFunc("/api/rules/update", authOrAPIKeyMiddleware(apikeys.ScopeWrite, rbacMiddleware("Admin", apiHandler.HandleUpdateRule)))
+	mux.HandleFunc("/api/rules/delete", authOrAPIKeyMiddleware(apikeys.ScopeWrite, rbacMiddleware("Admin", apiHandler.HandleDeleteRule)))
+	mux.HandleFunc("/api/rules/test", authOrAPIKeyMiddleware(apikeys.ScopeRead, apiHandler.HandleTestRule))
 	mux.HandleFunc("/api/ws", apiHandler.HandleWS)
-	mux.HandleFunc("/api/export", authMiddleware(handleExport(s)))
+	mux.HandleFunc("/api/export", authOrAPIKeyMiddleware(apikeys.ScopeExport, handleExport(s)))
 	mux.HandleFunc("/api/admin/users", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleUsers)))
-	mux.HandleFunc("/api/admin/audit", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleAuditLogs)))
+	mux.HandleFunc("/api/admin/audit", authOrAPIKeyMiddleware(apikeys.ScopeAdmin, rbacMiddleware("Admin", apiHandler.HandleAuditLogs)))
 
 	// Prometheus Metrics endpoint
 	mux.Handle("/metrics", metricsInst.Handler())
 
-	// Internal metrics (JSON format)
-	mux.HandleFunc("/api/metrics", authMiddleware(handleMetrics))
+	// Internal metrics (JSON format) - supports API key with read scope
+	mux.HandleFunc("/api/metrics", authOrAPIKeyMiddleware(apikeys.ScopeRead, handleMetrics))
 
-	// Threat Intelligence Routes
-	mux.HandleFunc("/api/threats", authMiddleware(threatIntel.HandleThreats))
+	// Threat Intelligence Routes - read endpoints support API keys
+	mux.HandleFunc("/api/threats", authOrAPIKeyMiddleware(apikeys.ScopeThreat, threatIntel.HandleThreats))
 	mux.HandleFunc("/api/threats/block", authMiddleware(rbacMiddleware("Admin", threatIntel.HandleBlockIP)))
-	mux.HandleFunc("/api/threats/stats", authMiddleware(threatIntel.HandleStats))
+	mux.HandleFunc("/api/threats/stats", authOrAPIKeyMiddleware(apikeys.ScopeThreat, threatIntel.HandleStats))
 
 	// GeoIP Routes
 	if geoIPService != nil {
@@ -312,6 +327,15 @@ func main() {
 	mux.HandleFunc("/api/security/ipallowlist", authMiddleware(handleIPAllowlist))
 	mux.HandleFunc("/api/security/ipallowlist/add", authMiddleware(rbacMiddleware("Admin", handleIPAllowlistAdd)))
 	mux.HandleFunc("/api/security/ipallowlist/remove", authMiddleware(rbacMiddleware("Admin", handleIPAllowlistRemove)))
+	mux.HandleFunc("/api/security/ipallowlist/check", authMiddleware(handleIPAllowlistCheck))
+
+	// GraphQL Security Routes (Enterprise)
+	mux.HandleFunc("/api/security/graphql/analyze", authMiddleware(handleGraphQLAnalyze))
+	mux.HandleFunc("/api/security/graphql/config", authMiddleware(rbacMiddleware("Admin", handleGraphQLConfig)))
+
+	// Response Body Inspection Routes (Enterprise DLP)
+	mux.HandleFunc("/api/security/respbody/config", authMiddleware(rbacMiddleware("Admin", handleRespBodyConfig)))
+	mux.HandleFunc("/api/security/respbody/test", authMiddleware(rbacMiddleware("Admin", handleRespBodyTest)))
 
 	// Static Files (UI)
 	uiFS, err := fs.Sub(uiAssets, "ui")
@@ -691,6 +715,134 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		requestID := requestid.FromContext(r.Context())
 		logger.LogRequest(requestID, r.Method, r.URL.Path, extractClientIP(r), r.UserAgent(), rec.status, time.Since(start))
 	})
+}
+
+// apiKeyMiddleware validates API keys from X-API-Key header
+// This middleware can be used as an alternative or in addition to JWT auth
+func apiKeyMiddleware(requiredScope apikeys.Scope, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey == "" {
+			// No API key provided, return 401
+			http.Error(w, `{"error": "API key required", "hint": "Set X-API-Key header"}`, http.StatusUnauthorized)
+			return
+		}
+
+		// Validate the API key
+		clientIP := r.RemoteAddr
+		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+			clientIP = strings.Split(forwarded, ",")[0]
+		}
+
+		keyInfo, err := apiKeyMgr.ValidateKey(r.Context(), apiKey, requiredScope, clientIP)
+		if err != nil {
+			metricsInst.RecordAuthAttempt(false, "invalid_api_key")
+			switch err {
+			case apikeys.ErrKeyNotFound:
+				http.Error(w, `{"error": "Invalid API key"}`, http.StatusUnauthorized)
+			case apikeys.ErrKeyExpired:
+				http.Error(w, `{"error": "API key has expired"}`, http.StatusUnauthorized)
+			case apikeys.ErrKeyDisabled:
+				http.Error(w, `{"error": "API key is disabled"}`, http.StatusForbidden)
+			case apikeys.ErrInsufficientScope:
+				http.Error(w, fmt.Sprintf(`{"error": "API key lacks required scope: %s"}`, requiredScope), http.StatusForbidden)
+			case apikeys.ErrRateLimitExceeded:
+				http.Error(w, `{"error": "API key rate limit exceeded"}`, http.StatusTooManyRequests)
+			default:
+				http.Error(w, `{"error": "API key validation failed"}`, http.StatusUnauthorized)
+			}
+			return
+		}
+
+		metricsInst.RecordAuthAttempt(true, "api_key")
+		// Log the successful API key auth (using Info since Debug expects zap.Field)
+		logger.Info(fmt.Sprintf("API key auth: %s (scopes: %v)", keyInfo.Name, keyInfo.Scopes))
+
+		// Store key info in context for downstream use
+		ctx := context.WithValue(r.Context(), apiKeyContextKey, keyInfo)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
+// authOrAPIKeyMiddleware allows either JWT token or API key authentication
+func authOrAPIKeyMiddleware(apiScope apikeys.Scope, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Check for API key first (X-API-Key header)
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey != "" {
+			// Validate API key
+			clientIP := r.RemoteAddr
+			if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+				clientIP = strings.Split(forwarded, ",")[0]
+			}
+
+			keyInfo, err := apiKeyMgr.ValidateKey(r.Context(), apiKey, apiScope, clientIP)
+			if err == nil {
+				metricsInst.RecordAuthAttempt(true, "api_key")
+				ctx := context.WithValue(r.Context(), apiKeyContextKey, keyInfo)
+				// Create a pseudo user context for compatibility
+				userClaims := &UserClaims{
+					Username: "api:" + keyInfo.Name,
+					Role:     scopeToRole(keyInfo.Scopes),
+				}
+				ctx = context.WithValue(ctx, userContextKey, userClaims)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			// If API key validation fails, try JWT
+		}
+
+		// Fall back to JWT authentication
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			authHeader = "Bearer " + r.URL.Query().Get("token")
+		}
+
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			http.Error(w, `{"error": "Unauthorized", "hint": "Provide Authorization Bearer token or X-API-Key header"}`, http.StatusUnauthorized)
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+		claims, err := auth.VerifyJWT(tokenString)
+		if err != nil {
+			metricsInst.RecordAuthAttempt(false, "invalid_token")
+			http.Error(w, `{"error": "Invalid token"}`, http.StatusUnauthorized)
+			return
+		}
+
+		userClaims := &UserClaims{
+			UserID:   claims.UserID,
+			Username: claims.Username,
+			Role:     claims.Role,
+			Exp:      claims.Exp,
+		}
+
+		if userClaims.Exp < time.Now().Unix() {
+			metricsInst.RecordAuthAttempt(false, "token_expired")
+			http.Error(w, `{"error": "Token expired"}`, http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), userContextKey, userClaims)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
+// scopeToRole converts API key scopes to user role for RBAC compatibility
+func scopeToRole(scopes []apikeys.Scope) string {
+	for _, s := range scopes {
+		if s == apikeys.ScopeAdmin {
+			return "Admin"
+		}
+	}
+	for _, s := range scopes {
+		if s == apikeys.ScopeWrite {
+			return "Analyst"
+		}
+	}
+	return "Viewer"
 }
 
 // authMiddleware validates JWT tokens using cryptographic verification
@@ -1125,12 +1277,76 @@ func handleCacheHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 // ============================================
-// Security Settings Handlers
+// Security Settings Handlers (Enterprise)
 // ============================================
 
-// handleSecurityOverview returns security configuration overview
+// initSecurityServices initializes all enterprise security services
+func initSecurityServices() {
+	// Initialize API Key Manager (nil store = in-memory)
+	apiKeyMgr = apikeys.NewManager(nil)
+	logger.Info("API Key Manager initialized (in-memory storage)")
+
+	// Initialize IP Allowlist Manager
+	ipAllowConfig := ipallow.DefaultConfig()
+	ipAllowConfig.AllowLocalhost = true  // Allow localhost by default
+	ipAllowMgr = ipallow.NewManager(ipAllowConfig, nil)
+	logger.Info("IP Allowlist Manager initialized")
+
+	// Initialize HIBP Password Checker
+	hibpConfig := hibp.DefaultConfig()
+	hibpConfig.Enabled = true
+	hibpConfig.BreachThreshold = 1 // Reject passwords seen even once
+	hibpChecker = hibp.NewChecker(hibpConfig)
+	logger.Info("HIBP Password Breach Checker initialized")
+
+	// Initialize Secrets Manager
+	secretsManager = secrets.NewManager()
+	// Load secrets from environment
+	if err := secretsManager.LoadFromEnvWithDefault(secrets.SecretJWT, "JWT_SECRET", ""); err != nil {
+		logger.Warn("JWT secret not loaded from environment")
+	}
+	logger.Info("Secrets Manager initialized")
+
+	// Initialize GraphQL Security Analyzer
+	gqlConfig := graphql.DefaultConfig()
+	gqlConfig.Enabled = true
+	gqlConfig.MaxDepth = 10
+	gqlConfig.MaxComplexity = 1000
+	gqlConfig.BlockIntrospection = true // Block introspection in production
+	graphqlAnalyzer = graphql.NewAnalyzer(gqlConfig)
+	logger.Info("GraphQL Security Analyzer initialized")
+
+	// Initialize Response Body Inspector (DLP)
+	respConfig := respbody.DefaultConfig()
+	respConfig.Enabled = true
+	respConfig.DetectSSN = true
+	respConfig.DetectCreditCard = true
+	respConfig.DetectAPIKeys = true
+	respConfig.DetectAWSKeys = true
+	respConfig.DetectPrivateKeys = true
+	respConfig.DetectJWT = true
+	respConfig.BlockOnDetection = false // Log only by default, don't block
+	respBodyInspector = respbody.NewInspector(respConfig)
+	logger.Info("Response Body DLP Inspector initialized")
+
+	logger.Info("All Enterprise Security Services initialized successfully")
+}
+
+// handleSecurityOverview returns comprehensive security configuration overview
 func handleSecurityOverview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Get HIBP cache stats
+	hibpEntries, hibpHitRate := hibpChecker.GetCacheStats()
+
+	// Get secrets stats
+	secretStats := secretsManager.GetStats()
+
+	// Get API key count
+	apiKeyCount := len(apiKeyMgr.ListKeys())
+
+	// Get IP allowlist count
+	ipAllowEntries := ipAllowMgr.ListEntries()
 
 	overview := map[string]interface{}{
 		"oauth": map[string]interface{}{
@@ -1147,13 +1363,39 @@ func handleSecurityOverview(w http.ResponseWriter, r *http.Request) {
 			"rate_limit_active": rateLimiter != nil,
 			"threat_intel":      threatIntel != nil,
 		},
+		"api_keys": map[string]interface{}{
+			"enabled": apiKeyMgr != nil,
+			"count":   apiKeyCount,
+		},
+		"ip_allowlist": map[string]interface{}{
+			"enabled": ipAllowMgr != nil && ipAllowMgr.IsEnabled(),
+			"count":   len(ipAllowEntries),
+		},
+		"hibp": map[string]interface{}{
+			"enabled":        hibpChecker != nil && hibpChecker.IsEnabled(),
+			"cache_entries":  hibpEntries,
+			"cache_hit_rate": hibpHitRate,
+		},
+		"secrets": map[string]interface{}{
+			"reload_count": secretStats.ReloadCount,
+			"last_reload":  secretStats.LastReload,
+		},
+		"graphql": map[string]interface{}{
+			"enabled":            graphqlAnalyzer != nil,
+			"max_depth":          graphqlAnalyzer.GetConfig().MaxDepth,
+			"block_introspection": graphqlAnalyzer.GetConfig().BlockIntrospection,
+		},
+		"response_inspection": map[string]interface{}{
+			"enabled":           respBodyInspector != nil,
+			"block_on_detection": respBodyInspector.GetConfig().BlockOnDetection,
+		},
 		"version": AppVersion,
 	}
 
 	json.NewEncoder(w).Encode(overview)
 }
 
-// handlePasswordBreachCheck checks if a password has been compromised using k-anonymity
+// handlePasswordBreachCheck checks if a password has been compromised using HIBP k-anonymity
 func handlePasswordBreachCheck(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1176,54 +1418,25 @@ func handlePasswordBreachCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Hash the password using SHA-1 for HIBP API
-	hash := fmt.Sprintf("%X", sha1.Sum([]byte(req.Password)))
-	prefix := hash[:5]
-	suffix := hash[5:]
-
-	// Query HIBP API with timeout
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	hibpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.pwnedpasswords.com/range/"+prefix, nil)
+	// Use the rich HIBP package for breach checking
+	result, err := hibpChecker.CheckPassword(r.Context(), req.Password)
 	if err != nil {
+		logger.Error(fmt.Sprintf("HIBP check failed: %v", err))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error": "Failed to create request: " + err.Error(),
+			"error": "Failed to check password against breach database",
 		})
 		return
-	}
-
-	hibpClient := &http.Client{Timeout: 10 * time.Second}
-	resp, err := hibpClient.Do(hibpReq)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error": "Failed to check password: " + err.Error(),
-		})
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	lines := strings.Split(string(body), "\r\n")
-
-	var count int
-	for _, line := range lines {
-		parts := strings.Split(line, ":")
-		if len(parts) == 2 && strings.ToUpper(parts[0]) == suffix {
-			fmt.Sscanf(parts[1], "%d", &count)
-			break
-		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"compromised": count > 0,
-		"count":       count,
+		"compromised": result.IsBreached,
+		"count":       result.BreachCount,
+		"checked_at":  result.CheckedAt,
 		"message": func() string {
-			if count > 0 {
-				return fmt.Sprintf("Password found %d times in data breaches. Do not use!", count)
+			if result.IsBreached {
+				return fmt.Sprintf("Password found %d times in data breaches. Do not use!", result.BreachCount)
 			}
 			return "Password not found in known data breaches."
 		}(),
@@ -1237,14 +1450,24 @@ func handleSecretsReload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Note: Secrets reload is not fully implemented - requires application restart
-	// Return 501 to indicate this feature is not available
+	// Use the secrets manager for hot-reload
+	if err := secretsManager.ReloadAll(r.Context()); err != nil {
+		logger.Error(fmt.Sprintf("Secrets reload failed: %v", err))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Secrets reload failed",
+		})
+		return
+	}
+
+	stats := secretsManager.GetStats()
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": false,
-		"message": "Secrets reload requires application restart. Please update environment variables and restart the service.",
-		"action":  "restart_required",
+		"success":      true,
+		"message":      "Secrets reloaded successfully",
+		"reload_count": stats.ReloadCount,
 	})
 }
 
@@ -1255,41 +1478,37 @@ func handleSecretsRotateJWT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Note: JWT rotation is not fully implemented - secret is not persisted
-	// Return 501 to indicate this feature requires manual intervention
+	// Use the secrets manager for JWT rotation
+	newSecret, version, err := secretsManager.RotateJWTSecret()
+	if err != nil {
+		logger.Error(fmt.Sprintf("JWT rotation failed: %v", err))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "JWT secret rotation failed",
+		})
+		return
+	}
+
+	// Don't expose the actual secret - just confirm rotation
+	_ = newSecret
+
+	stats := secretsManager.GetStats()
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": false,
-		"message": "JWT secret rotation requires manual intervention. Update JWT_SECRET environment variable and restart the service to rotate secrets. All users must re-authenticate after restart.",
-		"action":  "manual_rotation_required",
-		"steps": []string{
-			"1. Generate new secret: openssl rand -hex 32",
-			"2. Update JWT_SECRET environment variable",
-			"3. Restart the service",
-			"4. All existing tokens will be invalidated",
-		},
+		"success":        true,
+		"message":        "JWT secret rotated successfully",
+		"version":        version,
+		"reload_count":   stats.ReloadCount,
+		"note":           "All existing tokens are now invalid",
+		"action_required": "Users must re-authenticate",
 	})
 }
 
 // ============================================
-// API Key Management Handlers
+// API Key Management Handlers (Enterprise)
 // ============================================
-
-// In-memory API key storage (in production, use database)
-var apiKeys = make(map[string]APIKey)
-var apiKeysMutex sync.RWMutex
-
-type APIKey struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	KeyPrefix string    `json:"key_prefix"`
-	Scopes    []string  `json:"scopes"`
-	CreatedAt time.Time `json:"created_at"`
-	ExpiresAt time.Time `json:"expires_at"`
-	LastUsed  time.Time `json:"last_used,omitempty"`
-	Enabled   bool      `json:"enabled"`
-}
 
 func handleAPIKeysList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -1297,17 +1516,31 @@ func handleAPIKeysList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKeysMutex.RLock()
-	keys := make([]APIKey, 0, len(apiKeys))
-	for _, k := range apiKeys {
-		keys = append(keys, k)
+	keys := apiKeyMgr.ListKeys()
+
+	// Sanitize - remove sensitive data from response
+	safeKeys := make([]map[string]interface{}, len(keys))
+	for i, k := range keys {
+		safeKeys[i] = map[string]interface{}{
+			"id":          k.ID,
+			"name":        k.Name,
+			"key_prefix":  k.KeyPrefix,
+			"scopes":      k.Scopes,
+			"created_by":  k.CreatedBy,
+			"created_at":  k.CreatedAt,
+			"expires_at":  k.ExpiresAt,
+			"last_used":   k.LastUsedAt,
+			"last_used_ip": k.LastUsedIP,
+			"enabled":     k.Enabled,
+			"rate_limit":  k.RateLimit,
+			"description": k.Description,
+		}
 	}
-	apiKeysMutex.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"keys":  keys,
-		"count": len(keys),
+		"keys":  safeKeys,
+		"count": len(safeKeys),
 	})
 }
 
@@ -1318,49 +1551,71 @@ func handleAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name      string   `json:"name"`
-		Scopes    []string `json:"scopes"`
-		ExpiresIn int      `json:"expires_in_days"`
+		Name        string   `json:"name"`
+		Scopes      []string `json:"scopes"`
+		ExpiresIn   string   `json:"expires_in"`      // e.g., "720h" for 30 days
+		RateLimit   int      `json:"rate_limit"`      // Requests per minute
+		Description string   `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Generate API key
-	keyBytes := make([]byte, 32)
-	if _, err := rand.Read(keyBytes); err != nil {
+	if req.Name == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "API key name is required",
+		})
+		return
+	}
+
+	// Parse expiration duration
+	expireIn := 30 * 24 * time.Hour // Default 30 days
+	if req.ExpiresIn != "" {
+		if d, err := time.ParseDuration(req.ExpiresIn); err == nil {
+			expireIn = d
+		}
+	}
+
+	// Convert string scopes to apikeys.Scope
+	scopes := make([]apikeys.Scope, len(req.Scopes))
+	for i, s := range req.Scopes {
+		scopes[i] = apikeys.Scope(s)
+	}
+
+	// Get username from JWT claims
+	createdBy := "admin"
+	if claims, ok := r.Context().Value(userContextKey).(*UserClaims); ok && claims.Username != "" {
+		createdBy = claims.Username
+	}
+
+	// Generate the key using the rich apikeys package
+	plainKey, key, err := apiKeyMgr.GenerateKey(r.Context(), req.Name, scopes, &expireIn, req.RateLimit, req.Description, createdBy)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to generate API key: %v", err))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
-			"error":   "Failed to generate secure API key",
+			"error":   "Failed to generate API key",
 		})
-		logger.Error("Failed to generate API key bytes")
 		return
 	}
-	fullKey := fmt.Sprintf("obs_%x", keyBytes)
-
-	key := APIKey{
-		ID:        fmt.Sprintf("key_%d", time.Now().UnixNano()),
-		Name:      req.Name,
-		KeyPrefix: fullKey[:12] + "...",
-		Scopes:    req.Scopes,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().AddDate(0, 0, req.ExpiresIn),
-		Enabled:   true,
-	}
-
-	apiKeysMutex.Lock()
-	apiKeys[key.ID] = key
-	apiKeysMutex.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":  true,
-		"key":      key,
-		"full_key": fullKey, // Only shown once!
-		"warning":  "Save this key now. It won't be shown again.",
+		"key":      plainKey, // Only returned on creation - NEVER shown again!
+		"id":       key.ID,
+		"name":     key.Name,
+		"prefix":   key.KeyPrefix,
+		"scopes":   key.Scopes,
+		"created":  key.CreatedAt,
+		"expires":  key.ExpiresAt,
+		"warning":  "Save this key NOW. It will never be shown again!",
 	})
 }
 
@@ -1378,31 +1633,37 @@ func handleAPIKeyRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKeysMutex.Lock()
-	delete(apiKeys, req.KeyID)
-	apiKeysMutex.Unlock()
+	if req.KeyID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "key_id is required",
+		})
+		return
+	}
+
+	if err := apiKeyMgr.RevokeKey(r.Context(), req.KeyID); err != nil {
+		logger.Error(fmt.Sprintf("Failed to revoke API key: %v", err))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Failed to revoke API key",
+		})
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"message": "API key revoked",
+		"message": "API key revoked successfully",
 	})
 }
 
 // ============================================
-// IP Allowlist Management Handlers
+// IP Allowlist Management Handlers (Enterprise)
 // ============================================
-
-var ipAllowlist = make(map[string]IPAllowEntry)
-var ipAllowlistMutex sync.RWMutex
-var ipAllowlistEnabled = false
-
-type IPAllowEntry struct {
-	IP          string    `json:"ip"`
-	Description string    `json:"description"`
-	AddedAt     time.Time `json:"added_at"`
-	AddedBy     string    `json:"added_by"`
-}
 
 func handleIPAllowlist(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -1410,17 +1671,11 @@ func handleIPAllowlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ipAllowlistMutex.RLock()
-	entries := make([]IPAllowEntry, 0, len(ipAllowlist))
-	for _, e := range ipAllowlist {
-		entries = append(entries, e)
-	}
-	enabled := ipAllowlistEnabled
-	ipAllowlistMutex.RUnlock()
+	entries := ipAllowMgr.ListEntries()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"enabled": enabled,
+		"enabled": ipAllowMgr.IsEnabled(),
 		"entries": entries,
 		"count":   len(entries),
 	})
@@ -1434,6 +1689,7 @@ func handleIPAllowlistAdd(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		IP          string `json:"ip"`
+		CIDR        string `json:"cidr"`
 		Description string `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1441,34 +1697,38 @@ func handleIPAllowlistAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trim and validate IP address
-	trimmedIP := strings.TrimSpace(req.IP)
-	if net.ParseIP(trimmedIP) == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Invalid IP address format",
-		})
-		return
-	}
-
 	// Get username from JWT claims
-	addedBy := "admin" // default fallback
+	addedBy := "admin"
 	if claims, ok := r.Context().Value(userContextKey).(*UserClaims); ok && claims.Username != "" {
 		addedBy = claims.Username
 	}
 
-	entry := IPAllowEntry{
-		IP:          trimmedIP,
-		Description: req.Description,
-		AddedAt:     time.Now(),
-		AddedBy:     addedBy,
+	var err error
+	var entry *ipallow.AllowlistEntry
+
+	if req.CIDR != "" {
+		entry, err = ipAllowMgr.AddCIDR(r.Context(), req.CIDR, req.Description, addedBy)
+	} else if req.IP != "" {
+		entry, err = ipAllowMgr.AddIP(r.Context(), req.IP, req.Description, addedBy)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Must provide 'ip' or 'cidr'",
+		})
+		return
 	}
 
-	ipAllowlistMutex.Lock()
-	ipAllowlist[trimmedIP] = entry
-	ipAllowlistMutex.Unlock()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1484,22 +1744,195 @@ func handleIPAllowlistRemove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		IP string `json:"ip"`
+		ID string `json:"id"`
+		IP string `json:"ip"` // Also support IP for backward compatibility
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	ipAllowlistMutex.Lock()
-	delete(ipAllowlist, req.IP)
-	ipAllowlistMutex.Unlock()
+	// Support both ID and IP for removal
+	removeID := req.ID
+	if removeID == "" {
+		removeID = req.IP
+	}
+
+	if removeID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "id or ip is required",
+		})
+		return
+	}
+
+	if err := ipAllowMgr.RemoveEntry(r.Context(), removeID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "IP removed from allowlist",
 	})
+}
+
+func handleIPAllowlistCheck(w http.ResponseWriter, r *http.Request) {
+	ip := r.URL.Query().Get("ip")
+	if ip == "" {
+		http.Error(w, "Missing 'ip' parameter", http.StatusBadRequest)
+		return
+	}
+
+	allowed := ipAllowMgr.IsAllowed(ip)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ip":      ip,
+		"allowed": allowed,
+	})
+}
+
+// ============================================
+// GraphQL Security Handlers (Enterprise)
+// ============================================
+
+func handleGraphQLAnalyze(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Query string `json:"query"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Query == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "GraphQL query is required",
+		})
+		return
+	}
+
+	// Build payload safely using json.Marshal to prevent JSON injection
+	payload := map[string]string{"query": req.Query}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to marshal GraphQL payload: %v", err))
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	result, err := graphqlAnalyzer.AnalyzeBody(payloadBytes)
+	if err != nil {
+		logger.Error(fmt.Sprintf("GraphQL analysis failed: %v", err))
+		http.Error(w, "Analysis failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func handleGraphQLConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(graphqlAnalyzer.GetConfig())
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		var config graphql.Config
+		if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+			http.Error(w, "Invalid config", http.StatusBadRequest)
+			return
+		}
+		graphqlAnalyzer.SetConfig(&config)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "GraphQL config updated",
+		})
+		return
+	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+// ============================================
+// Response Body DLP Handlers (Enterprise)
+// ============================================
+
+func handleRespBodyConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(respBodyInspector.GetConfig())
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		var config respbody.Config
+		if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+			http.Error(w, "Invalid config", http.StatusBadRequest)
+			return
+		}
+		respBodyInspector.SetConfig(&config)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "Response body inspection config updated",
+		})
+		return
+	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+func handleRespBodyTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Body        string `json:"body"`
+		ContentType string `json:"content_type"`
+		Path        string `json:"path"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Body == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Body content is required for testing",
+		})
+		return
+	}
+
+	result := respBodyInspector.Inspect([]byte(req.Body), req.ContentType, req.Path)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 // ============================================

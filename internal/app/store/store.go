@@ -246,99 +246,114 @@ func (l *HybridAuditLogger) Close() error { return nil }
 func defaultRules() []model.Rule {
 	return []model.Rule{
 		// 900xxx - Test Rules
-		{ID: 900001, Description: "Test Attack Detection", Severity: "CRITICAL", Enabled: true, Category: "Test"},
+		{ID: 900001, Description: "Test Attack Detection", Severity: "CRITICAL", Enabled: true, Category: "Test", Pattern: "@rx attack=test", TargetField: "QUERY_STRING", Action: "deny", BlockStatus: 403},
 
 		// 910xxx - Protocol Enforcement
-		{ID: 910100, Description: "Invalid HTTP Method", Severity: "WARNING", Enabled: true, Category: "Protocol"},
-		{ID: 910110, Description: "Null Byte Injection", Severity: "CRITICAL", Enabled: true, Category: "Protocol"},
-		{ID: 910120, Description: "HTTP Response Splitting", Severity: "CRITICAL", Enabled: true, Category: "Protocol"},
+		{ID: 910100, Description: "Invalid HTTP Method", Severity: "WARNING", Enabled: true, Category: "Protocol", Pattern: "!@rx ^(GET|HEAD|POST|PUT|DELETE|OPTIONS|PATCH)$", TargetField: "REQUEST_METHOD", Action: "deny", BlockStatus: 405},
+		{ID: 910110, Description: "Null Byte Injection", Severity: "CRITICAL", Enabled: true, Category: "Protocol", Pattern: "@rx %00", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 910120, Description: "HTTP Response Splitting", Severity: "CRITICAL", Enabled: true, Category: "Protocol", Pattern: "@rx %0[aAdD]", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
 
 		// 913xxx - Scanner/Bot Detection
-		{ID: 913100, Description: "Security Scanner Detection (sqlmap, nikto, burp)", Severity: "WARNING", Enabled: true, Category: "Reputation"},
-		{ID: 913110, Description: "Scripted User-Agent Detection", Severity: "NOTICE", Enabled: true, Category: "Reputation"},
-		{ID: 913120, Description: "Empty User-Agent Header", Severity: "NOTICE", Enabled: true, Category: "Reputation"},
+		{ID: 913100, Description: "Security Scanner Detection (sqlmap, nikto, burp)", Severity: "WARNING", Enabled: true, Category: "Reputation", Pattern: "@rx (?i)(nikto|sqlmap|nmap|masscan|burp|owasp|acunetix)", TargetField: "REQUEST_HEADERS:User-Agent", Action: "deny", BlockStatus: 403},
+		{ID: 913110, Description: "Scripted User-Agent Detection", Severity: "NOTICE", Enabled: true, Category: "Reputation", Pattern: "@rx (?i)(python-requests|python-urllib|perl|ruby|libwww)", TargetField: "REQUEST_HEADERS:User-Agent", Action: "log", BlockStatus: 0},
+		{ID: 913120, Description: "Empty User-Agent Header", Severity: "NOTICE", Enabled: true, Category: "Reputation", Pattern: "@rx ^$", TargetField: "REQUEST_HEADERS:User-Agent", Action: "log", BlockStatus: 0},
 
 		// 920xxx - Protocol Anomalies
-		{ID: 920100, Description: "Sensitive File Access (.env, .git, .htaccess)", Severity: "CRITICAL", Enabled: true, Category: "Anomaly"},
-		{ID: 920110, Description: "Server-Side Script Request", Severity: "NOTICE", Enabled: true, Category: "Anomaly"},
-		{ID: 920120, Description: "Backup File Access (.bak, .swp)", Severity: "WARNING", Enabled: true, Category: "Anomaly"},
-		{ID: 920130, Description: "Version Control Directory Access", Severity: "CRITICAL", Enabled: true, Category: "Anomaly"},
+		{ID: 920100, Description: "Sensitive File Access (.env, .git, .htaccess)", Severity: "CRITICAL", Enabled: true, Category: "Anomaly", Pattern: "@rx (?i)\\.(htaccess|htpasswd|git|svn|env|DS_Store|config|bak|sql|db|log)$", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 920110, Description: "Server-Side Script Request", Severity: "NOTICE", Enabled: true, Category: "Anomaly", Pattern: "@rx (?i)\\.(php|asp|aspx|jsp|cgi)$", TargetField: "REQUEST_URI", Action: "log", BlockStatus: 0},
+		{ID: 920120, Description: "Backup File Access (.bak, .swp)", Severity: "WARNING", Enabled: true, Category: "Anomaly", Pattern: "@rx ~$|\\.swp$|\\.bak$|\\.orig$|\\.old$", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 920130, Description: "Version Control Directory Access", Severity: "CRITICAL", Enabled: true, Category: "Anomaly", Pattern: "@rx (?i)/\\.(git|svn|hg|bzr)/", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
 
 		// 930xxx - Local File Inclusion (LFI)
-		{ID: 930100, Description: "Path Traversal Attack (../)", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
-		{ID: 930110, Description: "Linux Sensitive File Access (/etc/passwd)", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
-		{ID: 930120, Description: "Windows Sensitive File Access (boot.ini)", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
-		{ID: 930130, Description: "Proc Filesystem Access", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
-		{ID: 930140, Description: "PHP Wrapper Attack (php://, file://)", Severity: "CRITICAL", Enabled: true, Category: "LFI"},
+		{ID: 930100, Description: "Path Traversal Attack (../)", Severity: "CRITICAL", Enabled: true, Category: "LFI", Pattern: "@rx (\\.\\./|\\.\\.\\ %2f|%2e%2e%2f)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 930110, Description: "Linux Sensitive File Access (/etc/passwd)", Severity: "CRITICAL", Enabled: true, Category: "LFI", Pattern: "@rx (?i)(/etc/passwd|/etc/shadow|/etc/hosts)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 930120, Description: "Windows Sensitive File Access (boot.ini)", Severity: "CRITICAL", Enabled: true, Category: "LFI", Pattern: "@rx (?i)(boot\\.ini|windows/system32|winnt)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 930130, Description: "Proc Filesystem Access", Severity: "CRITICAL", Enabled: true, Category: "LFI", Pattern: "@rx (?i)/proc/(self|version|cmdline)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 930140, Description: "PHP Wrapper Attack (php://, file://)", Severity: "CRITICAL", Enabled: true, Category: "LFI", Pattern: "@rx (?i)(file://|php://|data://|expect://|zip://|phar://)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
 
 		// 931xxx - Remote File Inclusion (RFI)
-		{ID: 931100, Description: "Remote File Inclusion (http://)", Severity: "CRITICAL", Enabled: true, Category: "RFI"},
-		{ID: 931110, Description: "URL Encoded RFI Attempt", Severity: "CRITICAL", Enabled: true, Category: "RFI"},
+		{ID: 931100, Description: "Remote File Inclusion (http://)", Severity: "CRITICAL", Enabled: true, Category: "RFI", Pattern: "@rx (?i)(https?|ftp)://", TargetField: "QUERY_STRING", Action: "deny", BlockStatus: 403},
+		{ID: 931110, Description: "URL Encoded RFI Attempt", Severity: "CRITICAL", Enabled: true, Category: "RFI", Pattern: "@rx (?i)=(https?|ftp)%3a%2f%2f", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
 
 		// 932xxx - Command Injection (RCE)
-		{ID: 932100, Description: "OS Command Injection (cat, ls, wget)", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
-		{ID: 932110, Description: "Command Substitution Attack ($(), ``)", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
-		{ID: 932120, Description: "System Command Execution (whoami, id)", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
-		{ID: 932130, Description: "Code Execution Function", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
-		{ID: 932140, Description: "Shell Binary Access (/bin/bash)", Severity: "CRITICAL", Enabled: true, Category: "RCE"},
+		{ID: 932100, Description: "OS Command Injection (cat, ls, wget)", Severity: "CRITICAL", Enabled: true, Category: "RCE", Pattern: "@rx [;&|](cat|ls|dir|wget|curl|nc|bash|sh|cmd|powershell)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 932110, Description: "Command Substitution Attack ($(), ``)", Severity: "CRITICAL", Enabled: true, Category: "RCE", Pattern: "@rx (%24%28|%60)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 932120, Description: "System Command Execution (whoami, id)", Severity: "CRITICAL", Enabled: true, Category: "RCE", Pattern: "@rx (?i)(;|\\|)(whoami|id|uname|hostname|pwd|ifconfig)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 932130, Description: "Code Execution Function", Severity: "CRITICAL", Enabled: true, Category: "RCE", Pattern: "@rx (?i)(shell_exec|system|exec|passthru|popen|proc_open)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 932140, Description: "Shell Binary Access (/bin/bash)", Severity: "CRITICAL", Enabled: true, Category: "RCE", Pattern: "@rx (?i)(/bin/bash|/bin/sh|cmd\\.exe|powershell\\.exe)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
 
 		// 933xxx - PHP Injection
-		{ID: 933100, Description: "PHP Code Injection (<?php)", Severity: "CRITICAL", Enabled: true, Category: "PHP"},
-		{ID: 933110, Description: "PHP Dangerous Function (eval, assert)", Severity: "CRITICAL", Enabled: true, Category: "PHP"},
-		{ID: 933120, Description: "PHP Obfuscation Function (base64_decode)", Severity: "WARNING", Enabled: true, Category: "PHP"},
-		{ID: 933130, Description: "PHP File Inclusion Function", Severity: "WARNING", Enabled: true, Category: "PHP"},
+		{ID: 933100, Description: "PHP Code Injection (<?php)", Severity: "CRITICAL", Enabled: true, Category: "PHP", Pattern: "@rx (?i)(<\\?php|<\\?=|<%php)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 933110, Description: "PHP Dangerous Function (eval, assert)", Severity: "CRITICAL", Enabled: true, Category: "PHP", Pattern: "@rx (?i)(eval\\s*\\(|assert\\s*\\()", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 933120, Description: "PHP Obfuscation Function (base64_decode)", Severity: "WARNING", Enabled: true, Category: "PHP", Pattern: "@rx (?i)(base64_decode|gzinflate|gzuncompress|str_rot13)\\s*\\(", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 933130, Description: "PHP File Inclusion Function", Severity: "WARNING", Enabled: true, Category: "PHP", Pattern: "@rx (?i)(include|require|include_once|require_once)\\s*\\(", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
 
 		// 934xxx - Node.js Injection
-		{ID: 934100, Description: "Node.js Code Injection (require, exec)", Severity: "CRITICAL", Enabled: true, Category: "NodeJS"},
-		{ID: 934110, Description: "Node.js Process Manipulation", Severity: "CRITICAL", Enabled: true, Category: "NodeJS"},
+		{ID: 934100, Description: "Node.js Code Injection (require, exec)", Severity: "CRITICAL", Enabled: true, Category: "NodeJS", Pattern: "@rx (?i)(require\\s*\\(|child_process|\\.exec\\s*\\(|\\.spawn\\s*\\()", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 934110, Description: "Node.js Process Manipulation", Severity: "CRITICAL", Enabled: true, Category: "NodeJS", Pattern: "@rx (?i)(process\\.env|process\\.exit|process\\.kill)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
 
 		// 941xxx - XSS Protection
-		{ID: 941100, Description: "XSS Attack: Script Tag (<script>)", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
-		{ID: 941110, Description: "XSS Attack: JavaScript Protocol", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
-		{ID: 941120, Description: "XSS Attack: Event Handler (onload=)", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
-		{ID: 941130, Description: "XSS Attack: CSS Expression", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
-		{ID: 941140, Description: "XSS Attack: Dangerous JS Function", Severity: "CRITICAL", Enabled: true, Category: "XSS"},
-		{ID: 941150, Description: "XSS Attack: HTML Injection", Severity: "WARNING", Enabled: true, Category: "XSS"},
-		{ID: 941160, Description: "HTML Tag with External Reference", Severity: "NOTICE", Enabled: true, Category: "XSS"},
-		{ID: 941170, Description: "XSS Attack: JS Encoding (fromCharCode)", Severity: "WARNING", Enabled: true, Category: "XSS"},
+		{ID: 941100, Description: "XSS Attack: Script Tag (<script>)", Severity: "CRITICAL", Enabled: true, Category: "XSS", Pattern: "@rx (?i)(<script|%3Cscript|%3c%73%63%72%69%70%74)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 941110, Description: "XSS Attack: JavaScript Protocol", Severity: "CRITICAL", Enabled: true, Category: "XSS", Pattern: "@rx (?i)(javascript:|vbscript:|data:text/html)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 941120, Description: "XSS Attack: Event Handler (onload=)", Severity: "CRITICAL", Enabled: true, Category: "XSS", Pattern: "@rx (?i)(on(error|load|click|mouse|focus|blur|change|submit|reset|select)\\s*=)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 941130, Description: "XSS Attack: CSS Expression", Severity: "CRITICAL", Enabled: true, Category: "XSS", Pattern: "@rx (?i)(expression\\s*\\(|@import|behavior:)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 941140, Description: "XSS Attack: Dangerous JS Function", Severity: "CRITICAL", Enabled: true, Category: "XSS", Pattern: "@rx (?i)(alert|confirm|prompt|document\\.cookie|document\\.write|\\.innerHTML)\\s*[\\(\\=]", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 941150, Description: "XSS Attack: HTML Injection", Severity: "WARNING", Enabled: true, Category: "XSS", Pattern: "@rx (?i)(<iframe|<object|<embed|<applet|<form|<input|<button)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 941160, Description: "HTML Tag with External Reference", Severity: "NOTICE", Enabled: true, Category: "XSS", Pattern: "@rx (?i)(src\\s*=|href\\s*=)\\s*[\"']?https?://", TargetField: "REQUEST_URI", Action: "log", BlockStatus: 0},
+		{ID: 941170, Description: "XSS Attack: JS Encoding (fromCharCode)", Severity: "WARNING", Enabled: true, Category: "XSS", Pattern: "@rx (?i)(fromCharCode|String\\.fromCharCode)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
 
 		// 942xxx - SQL Injection
-		{ID: 942100, Description: "SQL Injection: Boolean Logic (1 or 1=1)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
-		{ID: 942110, Description: "SQL Injection: String Logic (' or ')", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
-		{ID: 942120, Description: "SQL Injection: UNION SELECT", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
-		{ID: 942130, Description: "SQL Injection: Comment Sequence (--)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
-		{ID: 942140, Description: "SQL Injection: SQL Statement", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
-		{ID: 942150, Description: "SQL Injection: Database Function (xp_, sp_)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
-		{ID: 942160, Description: "SQL Injection: Time-Based (SLEEP, BENCHMARK)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
-		{ID: 942170, Description: "SQL Injection: File/Schema Access", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
-		{ID: 942180, Description: "SQL Injection: String Function (CONCAT, CHAR)", Severity: "WARNING", Enabled: true, Category: "SQLi"},
-		{ID: 942190, Description: "SQL Injection: Blind SQLi (ORDER BY)", Severity: "CRITICAL", Enabled: true, Category: "SQLi"},
+		{ID: 942100, Description: "SQL Injection: Boolean Logic (1 or 1=1)", Severity: "CRITICAL", Enabled: true, Category: "SQLi", Pattern: "@rx (?i)(\\d[\\s\\+]+or[\\s\\+]+\\d|1[\\s\\+]*=[\\s\\+]*1|\\d[\\s\\+]+and[\\s\\+]+\\d)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 942110, Description: "SQL Injection: String Logic (' or ')", Severity: "CRITICAL", Enabled: true, Category: "SQLi", Pattern: "@rx (?i)('[\\s\\+]*(or|and)[\\s\\+]*')", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 942120, Description: "SQL Injection: UNION SELECT", Severity: "CRITICAL", Enabled: true, Category: "SQLi", Pattern: "@rx (?i)(union[\\s\\+]*(all[\\s\\+]*)?select)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 942130, Description: "SQL Injection: Comment Sequence (--)", Severity: "CRITICAL", Enabled: true, Category: "SQLi", Pattern: "@rx (--|#|%23|%2d%2d)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 942140, Description: "SQL Injection: SQL Statement", Severity: "CRITICAL", Enabled: true, Category: "SQLi", Pattern: "@rx (?i)(select[\\s\\+]+.*(from|into)|insert[\\s\\+]+into|update[\\s\\+]+.+set|delete[\\s\\+]+from|drop[\\s\\+]+(table|database))", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 942150, Description: "SQL Injection: Database Function (xp_, sp_)", Severity: "CRITICAL", Enabled: true, Category: "SQLi", Pattern: "@rx (?i)(exec[\\s\\+]+(xp_|sp_)|execute[\\s\\+]+immediate|dbms_|utl_)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 942160, Description: "SQL Injection: Time-Based (SLEEP, BENCHMARK)", Severity: "CRITICAL", Enabled: true, Category: "SQLi", Pattern: "@rx (?i)(benchmark\\s*\\(|sleep\\s*\\(|waitfor[\\s\\+]+delay|pg_sleep)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 942170, Description: "SQL Injection: File/Schema Access", Severity: "CRITICAL", Enabled: true, Category: "SQLi", Pattern: "@rx (?i)(load_file|into[\\s\\+]+(out|dump)file|information_schema)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 942180, Description: "SQL Injection: String Function (CONCAT, CHAR)", Severity: "WARNING", Enabled: true, Category: "SQLi", Pattern: "@rx (?i)(concat\\s*\\(|char\\s*\\(|chr\\s*\\(|ascii\\s*\\(|ord\\s*\\(|hex\\s*\\(|unhex\\s*\\()", TargetField: "REQUEST_URI", Action: "log", BlockStatus: 0},
+		{ID: 942190, Description: "SQL Injection: Blind SQLi (ORDER BY)", Severity: "CRITICAL", Enabled: true, Category: "SQLi", Pattern: "@rx (?i)((group[\\s\\+]+by|order[\\s\\+]+by)[\\s\\+]+\\d+|having[\\s\\+]+\\d)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
 
 		// 943xxx - Session Fixation
-		{ID: 943100, Description: "Session Fixation Attempt", Severity: "CRITICAL", Enabled: true, Category: "Session"},
-		{ID: 943110, Description: "Cookie Injection Attempt", Severity: "CRITICAL", Enabled: true, Category: "Session"},
+		{ID: 943100, Description: "Session Fixation Attempt", Severity: "CRITICAL", Enabled: true, Category: "Session", Pattern: "@rx (?i)(PHPSESSID|JSESSIONID|ASPSESSIONID|session_id)=", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 943110, Description: "Cookie Injection Attempt", Severity: "CRITICAL", Enabled: true, Category: "Session", Pattern: "@rx (?i)(set-cookie:|cookie:).*session", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
 
 		// 944xxx - Java/Deserialization
-		{ID: 944100, Description: "Java Class Injection", Severity: "CRITICAL", Enabled: true, Category: "Java"},
-		{ID: 944110, Description: "Java Serialized Object", Severity: "CRITICAL", Enabled: true, Category: "Java"},
+		{ID: 944100, Description: "Java Class Injection", Severity: "CRITICAL", Enabled: true, Category: "Java", Pattern: "@rx (?i)(java\\.(lang|io|util|net|security)\\.|Runtime\\.getRuntime)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 944110, Description: "Java Serialized Object", Severity: "CRITICAL", Enabled: true, Category: "Java", Pattern: "@rx (\\xac\\xed\\x00\\x05|rO0AB)", TargetField: "REQUEST_BODY", Action: "deny", BlockStatus: 403},
 
 		// 950xxx - Data Leakage
-		{ID: 950100, Description: "Potential Credential in URL", Severity: "WARNING", Enabled: true, Category: "Leakage"},
+		{ID: 950100, Description: "Potential Credential in URL", Severity: "WARNING", Enabled: true, Category: "Leakage", Pattern: "@rx (?i)(password|passwd|pwd|secret|token|api[_-]?key)\\s*=", TargetField: "QUERY_STRING", Action: "log", BlockStatus: 0},
 
 		// 951xxx - SSRF
-		{ID: 951100, Description: "SSRF: Internal IP Address", Severity: "CRITICAL", Enabled: true, Category: "SSRF"},
-		{ID: 951110, Description: "SSRF: Cloud Metadata Access", Severity: "CRITICAL", Enabled: true, Category: "SSRF"},
+		{ID: 951100, Description: "SSRF: Internal IP Address", Severity: "CRITICAL", Enabled: true, Category: "SSRF", Pattern: "@rx (?i)(127\\.0\\.0\\.|10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|\\.local|localhost)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 951110, Description: "SSRF: Cloud Metadata Access", Severity: "CRITICAL", Enabled: true, Category: "SSRF", Pattern: "@rx (?i)(169\\.254\\.169\\.254|metadata\\.google|metadata\\.azure)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
 
 		// 952xxx - XXE
-		{ID: 952100, Description: "XXE: DOCTYPE Declaration", Severity: "CRITICAL", Enabled: true, Category: "XXE"},
-		{ID: 952110, Description: "XXE: External Entity", Severity: "CRITICAL", Enabled: true, Category: "XXE"},
+		{ID: 952100, Description: "XXE: DOCTYPE Declaration", Severity: "CRITICAL", Enabled: true, Category: "XXE", Pattern: "@rx (?i)(<!DOCTYPE|<!ENTITY)", TargetField: "REQUEST_BODY", Action: "deny", BlockStatus: 403},
+		{ID: 952110, Description: "XXE: External Entity", Severity: "CRITICAL", Enabled: true, Category: "XXE", Pattern: "@rx (?i)(SYSTEM\\s+[\"']file://|SYSTEM\\s+[\"']http)", TargetField: "REQUEST_BODY", Action: "deny", BlockStatus: 403},
 
 		// 953xxx - LDAP Injection
-		{ID: 953100, Description: "LDAP Injection Attack", Severity: "CRITICAL", Enabled: true, Category: "LDAP"},
+		{ID: 953100, Description: "LDAP Injection Attack", Severity: "CRITICAL", Enabled: true, Category: "LDAP", Pattern: "@rx (?i)(\\(\\||\\|\\)|\\*\\)|\\(\\*|\\(cn=|\\(uid=|\\(objectClass=)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
 
 		// 954xxx - Template Injection (SSTI)
-		{ID: 954100, Description: "Template Syntax Detected", Severity: "NOTICE", Enabled: true, Category: "SSTI"},
-		{ID: 954110, Description: "Python SSTI Attack", Severity: "CRITICAL", Enabled: true, Category: "SSTI"},
+		{ID: 954100, Description: "Template Syntax Detected", Severity: "NOTICE", Enabled: true, Category: "SSTI", Pattern: "@rx (\\{\\{|\\{%|\\$\\{|<%=|#\\{)", TargetField: "REQUEST_URI", Action: "log", BlockStatus: 0},
+		{ID: 954110, Description: "Python SSTI Attack", Severity: "CRITICAL", Enabled: true, Category: "SSTI", Pattern: "@rx (?i)(__class__|__mro__|__subclasses__|__builtins__|__import__|__globals__)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+
+		// 955xxx - GraphQL Attacks (Enterprise)
+		{ID: 955100, Description: "GraphQL Introspection Attack", Severity: "WARNING", Enabled: true, Category: "GraphQL", Pattern: "@rx (?i)(__schema|__type|introspectionQuery)", TargetField: "REQUEST_BODY", Action: "log", BlockStatus: 0},
+		{ID: 955110, Description: "GraphQL Deep Query Attack", Severity: "CRITICAL", Enabled: true, Category: "GraphQL", Pattern: "@rx (\\{\\s*[a-zA-Z]+\\s*\\{){5,}", TargetField: "REQUEST_BODY", Action: "deny", BlockStatus: 403},
+
+		// 956xxx - API Security (Enterprise)
+		{ID: 956100, Description: "JWT Token in URL", Severity: "WARNING", Enabled: true, Category: "API", Pattern: "@rx (?i)(token|jwt|bearer)=[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+", TargetField: "QUERY_STRING", Action: "log", BlockStatus: 0},
+		{ID: 956110, Description: "API Version Enumeration", Severity: "NOTICE", Enabled: true, Category: "API", Pattern: "@rx /api/v(\\d+)/", TargetField: "REQUEST_URI", Action: "log", BlockStatus: 0},
+
+		// 957xxx - Log4j/Log4Shell (Enterprise)
+		{ID: 957100, Description: "Log4j JNDI Injection", Severity: "CRITICAL", Enabled: true, Category: "Log4j", Pattern: "@rx (?i)(\\$\\{jndi:|\\$\\{env:|\\$\\{lower:|\\$\\{upper:)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+		{ID: 957110, Description: "Log4j Obfuscated Attack", Severity: "CRITICAL", Enabled: true, Category: "Log4j", Pattern: "@rx (?i)(\\$\\{j\\$\\{|\\$\\{\\$\\{lower:|%24%7b)", TargetField: "REQUEST_URI", Action: "deny", BlockStatus: 403},
+
+		// 958xxx - Rate Limiting Bypass (Enterprise)
+		{ID: 958100, Description: "X-Forwarded-For Spoofing", Severity: "WARNING", Enabled: true, Category: "RateLimit", Pattern: "@rx ^(127\\.|10\\.|192\\.168\\.|172\\.)", TargetField: "REQUEST_HEADERS:X-Forwarded-For", Action: "log", BlockStatus: 0, Threshold: 10, TimeWindow: 60},
 	}
 }
 

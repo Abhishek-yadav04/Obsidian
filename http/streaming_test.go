@@ -19,17 +19,17 @@ import (
 )
 
 const (
-	contentTypeHeader             = "Content-Type"
-	contentTypeTextPlain          = "text/plain"
-	messageHello                  = "Hello "
-	messageWorld                  = "world!"
-	fmtWAFCreateFailed            = "failed to create WAF: %v"
-	fmtUnexpectedRequestErr       = "unexpected error performing request: %v"
-	fmtUnexpectedStatusCode       = "unexpected status code: %d"
-	fmtUnexpectedFirstChunk       = "unexpected first chunk: %q"
-	fmtUnexpectedRemainingBody    = "unexpected remaining body: %q"
-	fmtFailedReadingRemainingBody = "failed reading remaining body: %v"
-	msgFlushNotPropagated         = "Flush() was not propagated to the underlying response writer"
+	contentTypeHeader                = "Content-Type"
+	contentTypeTextPlain             = "text/plain"
+	messageHello                     = "Hello "
+	messageWorld                     = "world!"
+	fmtWAFCreateFailed               = "failed to create WAF: %v"
+	fmtUnexpectedStreamingRequestErr = "unexpected error performing request: %v"
+	fmtUnexpectedStreamingStatusCode = "unexpected status code: %d"
+	fmtUnexpectedFirstChunk          = "unexpected first chunk: %q"
+	fmtUnexpectedRemainingBody       = "unexpected remaining body: %q"
+	fmtFailedReadingRemainingBody    = "failed reading remaining body: %v"
+	msgFlushNotPropagated            = "Flush() was not propagated to the underlying response writer"
 )
 
 // We use a spy to verify Flush() is actually called on the underlying writer.
@@ -173,7 +173,7 @@ SecResponseBodyMimeType application/json`)
 
 	res, err := http.Get(ts.URL)
 	if err != nil {
-		t.Fatalf(fmtUnexpectedRequestErr, err)
+		t.Fatalf(fmtUnexpectedStreamingRequestErr, err)
 	}
 	defer res.Body.Close()
 
@@ -237,12 +237,12 @@ SecResponseBodyAccess Off`)
 
 	res, err := http.Get(ts.URL)
 	if err != nil {
-		t.Fatalf(fmtUnexpectedRequestErr, err)
+		t.Fatalf(fmtUnexpectedStreamingRequestErr, err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		t.Fatalf(fmtUnexpectedStatusCode, res.StatusCode)
+		t.Fatalf(fmtUnexpectedStreamingStatusCode, res.StatusCode)
 	}
 
 	// We expect to receive the first chunk promptly after Flush.
@@ -310,7 +310,7 @@ SecResponseBodyAccess Off`)
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusForbidden {
-		t.Fatalf(fmtUnexpectedStatusCode, res.StatusCode)
+		t.Fatalf(fmtUnexpectedStreamingStatusCode, res.StatusCode)
 	}
 
 	// Ensure Flush was NOT propagated

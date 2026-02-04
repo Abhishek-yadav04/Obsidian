@@ -1,5 +1,39 @@
 # Changelog
 
+## Obsidian Sentinel v2.2.2 Enterprise Edition (2026-02-03)
+
+### 🔐 Security Fixes
+
+#### Critical XSS Vulnerabilities Fixed
+- **Onclick XSS Prevention**: Fixed XSS vulnerabilities in admin UI onclick handlers by replacing `escapeAttr()` with `JSON.stringify()` for safe JavaScript string literals
+- **User Management XSS**: Fixed XSS in user edit modal onclick handlers (`openUserEditModal`)
+- **Threat Intelligence XSS**: Fixed XSS in IP block onclick handlers (`blockIP`)
+
+#### IP Validation Security Enhancements
+- **IP Trimming Consistency**: Fixed inconsistent IP trimming in rate limiter handlers - now trims IP once and reuses the trimmed value for both validation and storage
+- **Blacklist Handler Security**: POST and DELETE blacklist handlers now properly trim IP addresses before validation and storage
+- **Allowlist Handler Security**: IP allowlist add handler now trims IP consistently before validation and entry creation
+
+#### OAuth Security Improvements
+- **Token Cleanup**: Fixed OAuth callback error handling to properly clear all authentication tokens (token, user, refresh_token) on malformed payloads
+- **Session Security**: Enhanced remembered session validation to remove all auth data on invalid tokens
+- **Error Handling**: Improved OAuth error handling to prevent token persistence on authentication failures
+
+#### Infrastructure Security
+- **Release Pipeline Security**: Fixed GitHub Actions release workflow to ensure docker images exist before release job runs
+- **Nginx Security Headers**: Consolidated security headers in nginx configuration, added missing HSTS header to static assets location
+
+### 🐛 Bug Fixes
+- **IP Validation**: Fixed inconsistent IP trimming across all handlers that could lead to validation bypass
+- **Token Management**: Fixed incomplete token cleanup in error scenarios
+- **Workflow Dependencies**: Fixed release job dependency ordering in CI/CD pipeline
+
+### 📝 Documentation Updates
+- Updated CHANGELOG with security fixes
+- Version bump to v2.2.2
+
+---
+
 ## Obsidian Sentinel v2.2.0 Enterprise Edition (2026-02-03)
 
 ### 🚀 New Features

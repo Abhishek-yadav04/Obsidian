@@ -49,7 +49,7 @@ metadata:
   namespace: obsidian-waf
   labels:
     app.kubernetes.io/name: obsidian-waf
-    app.kubernetes.io/version: "2.2.1"
+    app.kubernetes.io/version: "2.2.2"
 spec:
   replicas: 3
   selector:
@@ -71,7 +71,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: obsidian
-          image: ghcr.io/corazawaf/obsidian-waf:2.2.1
+          image: ghcr.io/corazawaf/obsidian-waf:2.2.2
           imagePullPolicy: Always
           ports:
             - containerPort: 8082

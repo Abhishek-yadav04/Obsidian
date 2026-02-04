@@ -1,6 +1,6 @@
 # Security Policy
 
-## Obsidian Sentinel WAF v2.1.0 Enterprise Edition
+## Obsidian Sentinel WAF v2.2.2 Enterprise Edition
 
 Obsidian Sentinel is a security-focused application designed to protect web applications. We take security vulnerabilities seriously and appreciate responsible disclosure from the security community.
 
@@ -16,7 +16,7 @@ Versions currently being supported with security updates.
 
 ## Enterprise Security Features
 
-Obsidian Sentinel v2.1.0 includes comprehensive enterprise-grade security measures:
+Obsidian Sentinel v2.2.2 includes comprehensive enterprise-grade security measures:
 
 ### Authentication & Authorization
 - **Enhanced JWT Security**: HMAC-SHA256 signed tokens with improved entropy generation

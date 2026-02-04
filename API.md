@@ -1,4 +1,4 @@
-# Obsidian Sentinel WAF v2.1.0 - API Documentation
+# Obsidian Sentinel WAF v2.2.2 - API Documentation
 
 This document provides comprehensive API documentation for the Obsidian Sentinel WAF Enterprise Edition.
 

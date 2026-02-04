@@ -107,6 +107,9 @@ type RateLimiter struct {
 	whitelist sync.Map // map[string]bool
 	blacklist sync.Map // map[string]bool
 
+	// Redis backend for distributed rate limiting (optional)
+	redisBackend *RedisRateLimiter
+
 	// Metrics
 	totalAllowed  atomic.Int64
 	totalBlocked  atomic.Int64
@@ -206,6 +209,16 @@ func (rl *RateLimiter) cleanup() {
 	}
 }
 
+// SetRedisBackend sets a Redis backend for distributed rate limiting
+func (rl *RateLimiter) SetRedisBackend(backend *RedisRateLimiter) {
+	rl.redisBackend = backend
+}
+
+// HasRedisBackend returns true if Redis backend is configured
+func (rl *RateLimiter) HasRedisBackend() bool {
+	return rl.redisBackend != nil
+}
+
 // Allow checks if a request from IP should be allowed
 func (rl *RateLimiter) Allow(ip string) bool {
 	return rl.AllowEndpoint(ip, "")
@@ -230,6 +243,17 @@ func (rl *RateLimiter) AllowEndpoint(ip, endpoint string) bool {
 	if _, ok := rl.blacklist.Load(ip); ok {
 		rl.totalBlocked.Add(1)
 		return false
+	}
+
+	// Use Redis backend if available
+	if rl.redisBackend != nil {
+		allowed := rl.redisBackend.AllowEndpoint(ip, endpoint)
+		if allowed {
+			rl.totalAllowed.Add(1)
+		} else {
+			rl.totalBlocked.Add(1)
+		}
+		return allowed
 	}
 
 	// Determine rate limit config for this endpoint

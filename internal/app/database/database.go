@@ -768,3 +768,358 @@ func (m *Manager) InsertAttackLog(ctx context.Context, clientIP, method, uri str
 
 	return nil
 }
+
+// GetAttackLogs retrieves attack logs with pagination
+func (m *Manager) GetAttackLogs(ctx context.Context, limit, offset int) ([]map[string]interface{}, error) {
+	if m.pgPool == nil {
+		return nil, errors.New("PostgreSQL not connected")
+	}
+
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	rows, err := m.pgPool.Query(ctx, `
+		SELECT id, time, client_ip, method, uri, rule_id, rule_msg, severity, action, response_status
+		FROM attack_logs
+		ORDER BY time DESC
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query attack logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []map[string]interface{}
+	for rows.Next() {
+		var id, ruleID, responseStatus int
+		var logTime time.Time
+		var clientIP, method, uri, ruleMsg, severity, action string
+
+		if err := rows.Scan(&id, &logTime, &clientIP, &method, &uri, &ruleID, &ruleMsg, &severity, &action, &responseStatus); err != nil {
+			continue
+		}
+
+		logs = append(logs, map[string]interface{}{
+			"id":              id,
+			"time":            logTime,
+			"client_ip":       clientIP,
+			"method":          method,
+			"uri":             uri,
+			"rule_id":         ruleID,
+			"rule_msg":        ruleMsg,
+			"severity":        severity,
+			"action":          action,
+			"response_status": responseStatus,
+		})
+	}
+
+	return logs, nil
+}
+
+// =============================================================================
+// WAF Rules CRUD Operations
+// =============================================================================
+
+// SaveWAFRule inserts or updates a WAF rule in PostgreSQL
+func (m *Manager) SaveWAFRule(ctx context.Context, ruleID int, name, description, pattern string, phase int, severity string, enabled bool) error {
+	if m.pgPool == nil {
+		return errors.New("PostgreSQL not connected")
+	}
+
+	_, err := m.pgPool.Exec(ctx, `
+		INSERT INTO waf_rules (rule_id, name, description, pattern, phase, severity, enabled, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+		ON CONFLICT (rule_id) DO UPDATE SET
+			name = EXCLUDED.name,
+			description = EXCLUDED.description,
+			pattern = EXCLUDED.pattern,
+			phase = EXCLUDED.phase,
+			severity = EXCLUDED.severity,
+			enabled = EXCLUDED.enabled,
+			updated_at = NOW()
+	`, ruleID, name, description, pattern, phase, severity, enabled)
+	if err != nil {
+		return fmt.Errorf("failed to save WAF rule: %w", err)
+	}
+
+	return nil
+}
+
+// GetWAFRules retrieves all WAF rules from PostgreSQL
+func (m *Manager) GetWAFRules(ctx context.Context) ([]map[string]interface{}, error) {
+	if m.pgPool == nil {
+		return nil, errors.New("PostgreSQL not connected")
+	}
+
+	rows, err := m.pgPool.Query(ctx, `
+		SELECT id, rule_id, name, description, pattern, phase, severity, enabled, created_at, updated_at
+		FROM waf_rules
+		ORDER BY rule_id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query WAF rules: %w", err)
+	}
+	defer rows.Close()
+
+	var rules []map[string]interface{}
+	for rows.Next() {
+		var id, ruleID, phase int
+		var name, description, pattern, severity string
+		var enabled bool
+		var createdAt, updatedAt time.Time
+
+		if err := rows.Scan(&id, &ruleID, &name, &description, &pattern, &phase, &severity, &enabled, &createdAt, &updatedAt); err != nil {
+			continue
+		}
+
+		rules = append(rules, map[string]interface{}{
+			"id":          id,
+			"rule_id":     ruleID,
+			"name":        name,
+			"description": description,
+			"pattern":     pattern,
+			"phase":       phase,
+			"severity":    severity,
+			"enabled":     enabled,
+			"created_at":  createdAt,
+			"updated_at":  updatedAt,
+		})
+	}
+
+	return rules, nil
+}
+
+// DeleteWAFRule removes a WAF rule from PostgreSQL
+func (m *Manager) DeleteWAFRule(ctx context.Context, ruleID int) error {
+	if m.pgPool == nil {
+		return errors.New("PostgreSQL not connected")
+	}
+
+	_, err := m.pgPool.Exec(ctx, `DELETE FROM waf_rules WHERE rule_id = $1`, ruleID)
+	if err != nil {
+		return fmt.Errorf("failed to delete WAF rule: %w", err)
+	}
+
+	return nil
+}
+
+// =============================================================================
+// Threat Intelligence CRUD Operations
+// =============================================================================
+
+// SaveThreatIntel inserts or updates a threat intel entry
+func (m *Manager) SaveThreatIntel(ctx context.Context, ipAddress, threatLevel, source, reason string, blocked bool) error {
+	if m.pgPool == nil {
+		return errors.New("PostgreSQL not connected")
+	}
+
+	_, err := m.pgPool.Exec(ctx, `
+		INSERT INTO threat_intel (ip_address, threat_level, source, reason, blocked, last_seen, hit_count)
+		VALUES ($1, $2, $3, $4, $5, NOW(), 1)
+		ON CONFLICT (ip_address) DO UPDATE SET
+			threat_level = EXCLUDED.threat_level,
+			source = EXCLUDED.source,
+			reason = EXCLUDED.reason,
+			blocked = EXCLUDED.blocked,
+			last_seen = NOW(),
+			hit_count = threat_intel.hit_count + 1
+	`, ipAddress, threatLevel, source, reason, blocked)
+	if err != nil {
+		return fmt.Errorf("failed to save threat intel: %w", err)
+	}
+
+	return nil
+}
+
+// GetThreatIntel retrieves all threat intel entries
+func (m *Manager) GetThreatIntel(ctx context.Context) ([]map[string]interface{}, error) {
+	if m.pgPool == nil {
+		return nil, errors.New("PostgreSQL not connected")
+	}
+
+	rows, err := m.pgPool.Query(ctx, `
+		SELECT id, ip_address, threat_level, source, reason, blocked, first_seen, last_seen, hit_count
+		FROM threat_intel
+		ORDER BY last_seen DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query threat intel: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []map[string]interface{}
+	for rows.Next() {
+		var id, hitCount int
+		var ipAddress, threatLevel, source, reason string
+		var blocked bool
+		var firstSeen, lastSeen time.Time
+
+		if err := rows.Scan(&id, &ipAddress, &threatLevel, &source, &reason, &blocked, &firstSeen, &lastSeen, &hitCount); err != nil {
+			continue
+		}
+
+		entries = append(entries, map[string]interface{}{
+			"id":           id,
+			"ip_address":   ipAddress,
+			"threat_level": threatLevel,
+			"source":       source,
+			"reason":       reason,
+			"blocked":      blocked,
+			"first_seen":   firstSeen,
+			"last_seen":    lastSeen,
+			"hit_count":    hitCount,
+		})
+	}
+
+	return entries, nil
+}
+
+// GetBlockedIPs returns list of blocked IP addresses
+func (m *Manager) GetBlockedIPs(ctx context.Context) ([]string, error) {
+	if m.pgPool == nil {
+		return nil, errors.New("PostgreSQL not connected")
+	}
+
+	rows, err := m.pgPool.Query(ctx, `SELECT ip_address FROM threat_intel WHERE blocked = true`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query blocked IPs: %w", err)
+	}
+	defer rows.Close()
+
+	var ips []string
+	for rows.Next() {
+		var ip string
+		if err := rows.Scan(&ip); err != nil {
+			continue
+		}
+		ips = append(ips, ip)
+	}
+
+	return ips, nil
+}
+
+// =============================================================================
+// Stats Operations
+// =============================================================================
+
+// IncrementStat increments a stat counter in PostgreSQL
+func (m *Manager) IncrementStat(ctx context.Context, statName string, delta int64) error {
+	if m.pgPool == nil {
+		return errors.New("PostgreSQL not connected")
+	}
+
+	_, err := m.pgPool.Exec(ctx, `
+		INSERT INTO stats (stat_name, stat_value, updated_at)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (stat_name) DO UPDATE SET
+			stat_value = stats.stat_value + $2,
+			updated_at = NOW()
+	`, statName, delta)
+	if err != nil {
+		return fmt.Errorf("failed to increment stat: %w", err)
+	}
+
+	return nil
+}
+
+// GetAllStats retrieves all stats from PostgreSQL
+func (m *Manager) GetAllStats(ctx context.Context) (map[string]int64, error) {
+	if m.pgPool == nil {
+		return nil, errors.New("PostgreSQL not connected")
+	}
+
+	rows, err := m.pgPool.Query(ctx, `SELECT stat_name, stat_value FROM stats`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query stats: %w", err)
+	}
+	defer rows.Close()
+
+	stats := make(map[string]int64)
+	for rows.Next() {
+		var name string
+		var value int64
+		if err := rows.Scan(&name, &value); err != nil {
+			continue
+		}
+		stats[name] = value
+	}
+
+	return stats, nil
+}
+
+// =============================================================================
+// Redis Rate Limiter Adapter
+// =============================================================================
+
+// RedisRateLimitAdapter wraps the go-redis client to implement the ratelimit.RedisClient interface
+type RedisRateLimitAdapter struct {
+	client *redis.Client
+}
+
+// NewRedisRateLimitAdapter creates a new adapter for rate limiting
+func (m *Manager) NewRedisRateLimitAdapter() *RedisRateLimitAdapter {
+	if m.redisClient == nil {
+		return nil
+	}
+	return &RedisRateLimitAdapter{client: m.redisClient}
+}
+
+// Incr atomically increments a key
+func (a *RedisRateLimitAdapter) Incr(ctx context.Context, key string) (int64, error) {
+	return a.client.Incr(ctx, key).Result()
+}
+
+// Expire sets key expiration
+func (a *RedisRateLimitAdapter) Expire(ctx context.Context, key string, expiration time.Duration) error {
+	return a.client.Expire(ctx, key, expiration).Err()
+}
+
+// Get retrieves a value
+func (a *RedisRateLimitAdapter) Get(ctx context.Context, key string) (string, error) {
+	return a.client.Get(ctx, key).Result()
+}
+
+// Set sets a value with optional expiration
+func (a *RedisRateLimitAdapter) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+	return a.client.Set(ctx, key, value, expiration).Err()
+}
+
+// Del deletes keys
+func (a *RedisRateLimitAdapter) Del(ctx context.Context, keys ...string) error {
+	return a.client.Del(ctx, keys...).Err()
+}
+
+// Exists checks if key exists
+func (a *RedisRateLimitAdapter) Exists(ctx context.Context, keys ...string) (int64, error) {
+	return a.client.Exists(ctx, keys...).Result()
+}
+
+// Eval runs a Lua script
+func (a *RedisRateLimitAdapter) Eval(ctx context.Context, script string, keys []string, args ...interface{}) (interface{}, error) {
+	return a.client.Eval(ctx, script, keys, args...).Result()
+}
+
+// TTL gets remaining TTL
+func (a *RedisRateLimitAdapter) TTL(ctx context.Context, key string) (time.Duration, error) {
+	return a.client.TTL(ctx, key).Result()
+}
+
+// Scan iterates keys
+func (a *RedisRateLimitAdapter) Scan(ctx context.Context, cursor uint64, match string, count int64) ([]string, uint64, error) {
+	return a.client.Scan(ctx, cursor, match, count).Result()
+}
+
+// Ping checks connectivity
+func (a *RedisRateLimitAdapter) Ping(ctx context.Context) error {
+	return a.client.Ping(ctx).Err()
+}
+
+// Close closes the connection (no-op as the Manager owns the connection)
+func (a *RedisRateLimitAdapter) Close() error {
+	// Don't close the underlying client - the Manager owns it
+	return nil
+}

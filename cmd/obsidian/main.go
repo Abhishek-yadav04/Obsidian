@@ -186,6 +186,14 @@ func main() {
 		logger.Warn("Store running without PostgreSQL - authentication will fail!")
 	}
 	s := store.NewStore("data.json", storeOpts...)
+
+	// Sync WAF rules to PostgreSQL on startup
+	if dbManager != nil && dbManager.HasPostgres() {
+		if err := s.SyncRulesToDB(); err != nil {
+			logger.Warn("Failed to sync WAF rules to PostgreSQL: " + err.Error())
+		}
+	}
+
 	if *dev {
 		logger.Info("Running in Development Mode")
 	}
@@ -198,7 +206,26 @@ func main() {
 		threat.WithPersistPath("threats.json"),
 	)
 
-	rateLimiter = ratelimit.NewRateLimiter(ratelimit.DefaultConfig())
+	// Initialize Rate Limiter - use Redis if available, fallback to in-memory
+	if dbManager != nil && dbManager.HasRedis() {
+		redisAdapter := dbManager.NewRedisRateLimitAdapter()
+		if redisAdapter != nil {
+			redisRateLimiter, err := ratelimit.NewRedisRateLimiter(redisAdapter, ratelimit.DefaultRedisRateLimiterConfig())
+			if err != nil {
+				logger.Warn("Failed to create Redis rate limiter, falling back to in-memory: " + err.Error())
+				rateLimiter = ratelimit.NewRateLimiter(ratelimit.DefaultConfig())
+			} else {
+				// Use Redis rate limiter - create wrapper that implements same interface
+				rateLimiter = ratelimit.NewRateLimiter(ratelimit.DefaultConfig())
+				rateLimiter.SetRedisBackend(redisRateLimiter)
+				logger.Info("Rate limiter configured with Redis backend")
+			}
+		} else {
+			rateLimiter = ratelimit.NewRateLimiter(ratelimit.DefaultConfig())
+		}
+	} else {
+		rateLimiter = ratelimit.NewRateLimiter(ratelimit.DefaultConfig())
+	}
 
 	reportGen = report.NewGenerator()
 
@@ -260,6 +287,11 @@ func main() {
 
 	// Initialize API
 	apiHandler := api.NewAPI(s)
+
+	// Wire up HIBP checker to API handler if initialized
+	if hibpChecker != nil {
+		apiHandler.SetHIBPChecker(&hibpCheckerAdapter{checker: hibpChecker})
+	}
 
 	// Router
 	mux := http.NewServeMux()
@@ -354,7 +386,7 @@ func main() {
 	mux.Handle("/", fileServer)
 
 	// Build middleware stack
-	// Order: Request ID -> Security Headers -> Metrics -> Rate Limit -> GeoIP -> Logging -> WAF -> Router
+	// Order: Request ID -> Security Headers -> IP Allowlist -> Metrics -> Rate Limit -> GeoIP -> Logging -> WAF -> Router
 	var finalHandler http.Handler = mux
 
 	// WAF middleware
@@ -370,6 +402,9 @@ func main() {
 
 	// Rate limiting middleware
 	finalHandler = rateLimiter.Middleware(finalHandler)
+
+	// IP Allowlist middleware (enforces admin endpoint restrictions)
+	finalHandler = ipAllowlistMiddleware(finalHandler)
 
 	// Metrics middleware
 	finalHandler = metricsInst.Middleware(finalHandler)
@@ -487,6 +522,44 @@ func main() {
 	}
 }
 
+// ipAllowlistMiddleware enforces IP allowlist for admin endpoints
+func ipAllowlistMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only enforce for admin endpoints when IP allowlist is enabled
+		if ipAllowMgr != nil && ipAllowMgr.IsEnabled() {
+			// Check if this is an admin endpoint
+			path := r.URL.Path
+			if strings.HasPrefix(path, "/api/admin/") ||
+				strings.HasPrefix(path, "/api/security/") ||
+				strings.HasPrefix(path, "/api/apikeys") {
+				// Extract client IP
+				clientIP := ipallow.ExtractIP(r.RemoteAddr, r.Header.Get("X-Forwarded-For"))
+
+				// Check if IP is allowed
+				if !ipAllowMgr.IsAllowed(clientIP) {
+					// Check bypass header
+					if bypassHeader := r.Header.Get("X-IP-Bypass"); bypassHeader != "" {
+						if ipAllowMgr.CheckBypassHeader(bypassHeader) {
+							next.ServeHTTP(w, r)
+							return
+						}
+					}
+
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+					json.NewEncoder(w).Encode(map[string]interface{}{
+						"error":   "IP address not in allowlist",
+						"ip":      clientIP,
+						"message": "Contact administrator to add your IP to the allowlist",
+					})
+					return
+				}
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // securityHeadersMiddleware adds security headers to all responses
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -547,6 +620,16 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 				StatusCode: http.StatusForbidden,
 				UserAgent:  userAgent,
 			})
+
+			// Persist attack log to PostgreSQL
+			_ = s.AddAttackLog(ip, r.Method, r.URL.Path, 0, fmt.Sprintf("Threat Intelligence: %s", entry.Category), "high", "deny", http.StatusForbidden)
+
+			// Persist threat to database
+			_ = s.AddThreat(ip, "high", entry.Source, entry.Category, true)
+
+			// Increment blocked stats in database
+			s.IncrementDBStat("blocked_requests", 1)
+			s.IncrementDBStat("threats_detected", 1)
 
 			w.WriteHeader(http.StatusForbidden)
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -643,9 +726,13 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 				StatusCode: rec.statusCode,
 				UserAgent:  userAgent,
 			})
+			// Increment total requests in database
+			s.IncrementDBStat("total_requests", 1)
 		} else if !tx.IsInterrupted() && isStaticAsset {
 			// Just increment counter for static assets without logging
 			s.IncrementSafeRequest()
+			// Still count static assets in database stats
+			s.IncrementDBStat("total_requests", 1)
 		}
 	})
 }
@@ -662,7 +749,7 @@ func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store
 	// Send alert for high-severity blocks
 	_ = alertService.AlertWAFBlock(it.RuleID, ip, r.URL.Path, it.Action)
 
-	// Log blocked request
+	// Log blocked request to in-memory store
 	s.AddLog(model.LogEntry{
 		ID:         fmt.Sprintf("block-%d", time.Now().UnixNano()),
 		Timestamp:  time.Now(),
@@ -677,6 +764,13 @@ func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store
 		UserAgent:  r.UserAgent(),
 	})
 
+	// Persist attack log to PostgreSQL
+	_ = s.AddAttackLog(ip, r.Method, r.URL.Path, it.RuleID, fmt.Sprintf("WAF Rule %d triggered", it.RuleID), "medium", it.Action, http.StatusForbidden)
+
+	// Increment blocked stats in database
+	s.IncrementDBStat("blocked_requests", 1)
+	s.IncrementDBStat("threats_detected", 1)
+
 	w.Header().Set("X-Request-ID", requestID)
 	w.WriteHeader(http.StatusForbidden)
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -685,6 +779,25 @@ func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store
 		"action":     it.Action,
 		"request_id": requestID,
 	})
+}
+
+// hibpCheckerAdapter wraps hibp.Checker to implement api.HIBPPasswordChecker interface
+type hibpCheckerAdapter struct {
+	checker *hibp.Checker
+}
+
+// CheckPassword checks if a password has been breached
+func (a *hibpCheckerAdapter) CheckPassword(ctx context.Context, password string) (breached bool, count int, err error) {
+	result, err := a.checker.CheckPassword(ctx, password)
+	if err != nil {
+		return false, 0, err
+	}
+	return result.IsBreached, result.BreachCount, nil
+}
+
+// IsEnabled returns whether breach checking is enabled
+func (a *hibpCheckerAdapter) IsEnabled() bool {
+	return a.checker.IsEnabled()
 }
 
 // statusRecorder wraps http.ResponseWriter to capture the status code

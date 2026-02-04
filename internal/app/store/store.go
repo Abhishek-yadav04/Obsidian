@@ -579,7 +579,7 @@ func (s *Store) GetAuditLogs(limit, offset int) ([]map[string]interface{}, error
 	return s.dbManager.GetAuditLogs(ctx, limit, offset)
 }
 
-// CreateRule adds a new WAF rule
+// CreateRule adds a new WAF rule and persists to PostgreSQL
 func (s *Store) CreateRule(rule model.Rule) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -594,11 +594,20 @@ func (s *Store) CreateRule(rule model.Rule) error {
 	s.state.Rules = append(s.state.Rules, rule)
 	s.state.Stats.ActiveRulesCount = len(s.state.Rules)
 
+	// Persist to PostgreSQL if available
+	if s.dbManager != nil && s.dbManager.HasPostgres() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.dbManager.SaveWAFRule(ctx, rule.ID, rule.Description, rule.Category, rule.Pattern, 1, rule.Severity, rule.Enabled); err != nil {
+			fmt.Printf("[Store] Warning: failed to persist rule %d to DB: %v\n", rule.ID, err)
+		}
+	}
+
 	// Persist to file synchronously (data already copied under lock)
 	return s.persistState()
 }
 
-// UpdateRule modifies an existing WAF rule
+// UpdateRule modifies an existing WAF rule and persists to PostgreSQL
 func (s *Store) UpdateRule(rule model.Rule) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -606,6 +615,16 @@ func (s *Store) UpdateRule(rule model.Rule) error {
 	for i, r := range s.state.Rules {
 		if r.ID == rule.ID {
 			s.state.Rules[i] = rule
+
+			// Persist to PostgreSQL if available
+			if s.dbManager != nil && s.dbManager.HasPostgres() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := s.dbManager.SaveWAFRule(ctx, rule.ID, rule.Description, rule.Category, rule.Pattern, 1, rule.Severity, rule.Enabled); err != nil {
+					fmt.Printf("[Store] Warning: failed to update rule %d in DB: %v\n", rule.ID, err)
+				}
+			}
+
 			return s.persistState()
 		}
 	}
@@ -613,7 +632,7 @@ func (s *Store) UpdateRule(rule model.Rule) error {
 	return fmt.Errorf("rule with ID %d not found", rule.ID)
 }
 
-// DeleteRule removes a WAF rule
+// DeleteRule removes a WAF rule and deletes from PostgreSQL
 func (s *Store) DeleteRule(id int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -622,6 +641,16 @@ func (s *Store) DeleteRule(id int) error {
 		if r.ID == id {
 			s.state.Rules = append(s.state.Rules[:i], s.state.Rules[i+1:]...)
 			s.state.Stats.ActiveRulesCount = len(s.state.Rules)
+
+			// Delete from PostgreSQL if available
+			if s.dbManager != nil && s.dbManager.HasPostgres() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := s.dbManager.DeleteWAFRule(ctx, id); err != nil {
+					fmt.Printf("[Store] Warning: failed to delete rule %d from DB: %v\n", id, err)
+				}
+			}
+
 			return s.persistState()
 		}
 	}
@@ -649,5 +678,127 @@ func (s *Store) persistState() error {
 		return os.WriteFile(s.filePath, data, 0600)
 	}
 
+	return nil
+}
+
+// =============================================================================
+// Threat Intelligence Methods - Persist to PostgreSQL
+// =============================================================================
+
+// AddThreat records a threat in the database
+func (s *Store) AddThreat(ipAddress, threatLevel, source, reason string, blocked bool) error {
+	if s.dbManager == nil || !s.dbManager.HasPostgres() {
+		return nil // Silently skip if no database
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return s.dbManager.SaveThreatIntel(ctx, ipAddress, threatLevel, source, reason, blocked)
+}
+
+// GetThreats retrieves all threat intel entries from the database
+func (s *Store) GetThreats() ([]map[string]interface{}, error) {
+	if s.dbManager == nil || !s.dbManager.HasPostgres() {
+		return []map[string]interface{}{}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	return s.dbManager.GetThreatIntel(ctx)
+}
+
+// GetBlockedIPs retrieves all blocked IP addresses from the database
+func (s *Store) GetBlockedIPs() ([]string, error) {
+	if s.dbManager == nil || !s.dbManager.HasPostgres() {
+		return []string{}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return s.dbManager.GetBlockedIPs(ctx)
+}
+
+// =============================================================================
+// Attack Log Methods - Persist to PostgreSQL
+// =============================================================================
+
+// AddAttackLog records an attack in the database
+func (s *Store) AddAttackLog(clientIP, method, uri string, ruleID int, ruleMsg, severity, action string, responseStatus int) error {
+	if s.dbManager == nil || !s.dbManager.HasPostgres() {
+		return nil // Silently skip if no database
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return s.dbManager.InsertAttackLog(ctx, clientIP, method, uri, ruleID, ruleMsg, severity, action, responseStatus)
+}
+
+// GetAttackLogs retrieves attack logs from the database
+func (s *Store) GetAttackLogs(limit, offset int) ([]map[string]interface{}, error) {
+	if s.dbManager == nil || !s.dbManager.HasPostgres() {
+		return []map[string]interface{}{}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	return s.dbManager.GetAttackLogs(ctx, limit, offset)
+}
+
+// =============================================================================
+// Statistics Methods - Persist to PostgreSQL
+// =============================================================================
+
+// IncrementDBStat increments a stat counter in the database
+func (s *Store) IncrementDBStat(statName string, delta int64) {
+	if s.dbManager == nil || !s.dbManager.HasPostgres() {
+		return // Silently skip if no database
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if err := s.dbManager.IncrementStat(ctx, statName, delta); err != nil {
+		fmt.Printf("[Store] Warning: failed to increment stat %s: %v\n", statName, err)
+	}
+}
+
+// GetDBStats retrieves all stats from the database
+func (s *Store) GetDBStats() (map[string]int64, error) {
+	if s.dbManager == nil || !s.dbManager.HasPostgres() {
+		return map[string]int64{}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return s.dbManager.GetAllStats(ctx)
+}
+
+// SyncRulesToDB syncs all in-memory rules to the database
+func (s *Store) SyncRulesToDB() error {
+	if s.dbManager == nil || !s.dbManager.HasPostgres() {
+		return nil
+	}
+
+	s.mu.RLock()
+	rules := make([]model.Rule, len(s.state.Rules))
+	copy(rules, s.state.Rules)
+	s.mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	for _, rule := range rules {
+		if err := s.dbManager.SaveWAFRule(ctx, rule.ID, rule.Description, rule.Category, rule.Pattern, 1, rule.Severity, rule.Enabled); err != nil {
+			fmt.Printf("[Store] Warning: failed to sync rule %d to DB: %v\n", rule.ID, err)
+		}
+	}
+
+	fmt.Printf("[Store] Synced %d rules to PostgreSQL\n", len(rules))
 	return nil
 }

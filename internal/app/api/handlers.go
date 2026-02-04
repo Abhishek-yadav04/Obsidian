@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -37,6 +38,14 @@ type API struct {
 	Store *store.Store
 	// Upgrader for websockets
 	Upgrader websocket.Upgrader
+	// HIBPChecker for password breach checking (optional)
+	HIBPChecker HIBPPasswordChecker
+}
+
+// HIBPPasswordChecker interface for password breach checking
+type HIBPPasswordChecker interface {
+	CheckPassword(ctx context.Context, password string) (breached bool, count int, err error)
+	IsEnabled() bool
 }
 
 func NewAPI(s *store.Store) *API {
@@ -73,6 +82,11 @@ func NewAPI(s *store.Store) *API {
 			},
 		},
 	}
+}
+
+// SetHIBPChecker sets the HIBP password checker for breach detection
+func (a *API) SetHIBPChecker(checker HIBPPasswordChecker) {
+	a.HIBPChecker = checker
 }
 
 func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
@@ -358,6 +372,25 @@ func (a *API) HandleUsers(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 			return
+		}
+
+		// Check password against HIBP if changing password and HIBP checker is available
+		if req.Password != "" && a.HIBPChecker != nil && a.HIBPChecker.IsEnabled() {
+			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+			defer cancel()
+
+			breached, count, err := a.HIBPChecker.CheckPassword(ctx, req.Password)
+			if err == nil && breached {
+				w.Header().Set(contentTypeHeader, contentTypeJSON)
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"success":      false,
+					"message":      "Password has been found in data breaches. Please choose a different password.",
+					"breach_count": count,
+					"hibp_warning": true,
+				})
+				return
+			}
 		}
 
 		// Update user in the store

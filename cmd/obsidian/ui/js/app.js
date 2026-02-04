@@ -743,15 +743,15 @@ const ObsidianApp = {
             usersTbody.innerHTML = users.map(u => {
                 const safeUsername = escapeHtml(u.username);
                 const safeRole = escapeHtml(u.role);
-                // Use JSON.stringify for safe JS string literals in onclick
-                const usernameJson = JSON.stringify(u.username);
-                const roleJson = JSON.stringify(u.role);
+                // Use single quotes for onclick and escape any single quotes in the data
+                const usernameEsc = u.username.replace(/'/g, "\\'");
+                const roleEsc = u.role.replace(/'/g, "\\'");
                 return `
                 <tr>
                     <td>${safeUsername}</td>
                     <td><span class="badge bg-info">${safeRole}</span></td>
                     <td>${u.enabled ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-danger">Disabled</span>'}</td>
-                    <td><button class="btn btn-sm btn-outline-secondary" onclick="ObsidianApp.openUserEditModal(${usernameJson}, ${roleJson}, ${!!u.enabled})" title="Edit User"><i class="fas fa-edit"></i> Edit</button></td>
+                    <td><button class="btn btn-sm btn-outline-secondary" onclick="ObsidianApp.openUserEditModal('${usernameEsc}', '${roleEsc}', ${!!u.enabled})" title="Edit User"><i class="fas fa-edit"></i> Edit</button></td>
                 </tr>
             `}).join('');
         }

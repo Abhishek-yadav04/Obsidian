@@ -11,7 +11,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -157,12 +159,12 @@ func NewService(cfg Config) (*Service, error) {
 func (s *Service) Lookup(ipStr string) (*GeoIPInfo, error) {
 	// Check cache first
 	if cached, ok := s.ipCache.Load(ipStr); ok {
-		s.metrics.CacheHits++
+		atomic.AddInt64(&s.metrics.CacheHits, 1)
 		return cached.(*GeoIPInfo), nil
 	}
 
-	s.metrics.CacheMisses++
-	s.metrics.TotalLookups++
+	atomic.AddInt64(&s.metrics.CacheMisses, 1)
+	atomic.AddInt64(&s.metrics.TotalLookups, 1)
 
 	// Parse IP
 	ip := net.ParseIP(ipStr)
@@ -393,10 +395,15 @@ func (s *Service) ShouldBlock(ipStr string) (*LookupResult, error) {
 	}
 
 	// Check if country has specific rule
-	if rule, ok := s.countryRules[info.CountryCode]; ok {
+	s.mu.RLock()
+	rule, ok := s.countryRules[info.CountryCode]
+	whitelist := s.whitelistMode
+	s.mu.RUnlock()
+
+	if ok {
 		result.Action = rule.Action
 		result.Reason = rule.Reason
-	} else if s.whitelistMode {
+	} else if whitelist {
 		// In whitelist mode, block countries not in allowed list
 		result.Action = ActionBlock
 		result.Reason = "Country not in allowed list"
@@ -454,11 +461,25 @@ func (s *Service) GetBlockedCountries() []CountryRule {
 	return rules
 }
 
-// GetMetrics returns service metrics
+// GetMetrics returns service metrics (deep copy to avoid shared map references)
 func (s *Service) GetMetrics() Metrics {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.metrics
+
+	result := Metrics{
+		TotalLookups:      atomic.LoadInt64(&s.metrics.TotalLookups),
+		CacheHits:         atomic.LoadInt64(&s.metrics.CacheHits),
+		CacheMisses:       atomic.LoadInt64(&s.metrics.CacheMisses),
+		BlockedByCountry:  make(map[string]int64, len(s.metrics.BlockedByCountry)),
+		RequestsByCountry: make(map[string]int64, len(s.metrics.RequestsByCountry)),
+	}
+	for k, v := range s.metrics.BlockedByCountry {
+		result.BlockedByCountry[k] = v
+	}
+	for k, v := range s.metrics.RequestsByCountry {
+		result.RequestsByCountry[k] = v
+	}
+	return result
 }
 
 // ClearCache clears the IP lookup cache
@@ -487,8 +508,11 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 			w.Header().Set("X-Block-Reason", "geo-blocked")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprintf(w, `{"error":"Access denied from your region","country":"%s","reason":"%s"}`,
-				result.Info.CountryCode, result.Reason)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error":   "Access denied from your region",
+				"country": result.Info.CountryCode,
+				"reason":  result.Reason,
+			})
 			return
 		}
 
@@ -553,14 +577,19 @@ func (s *Service) HandleBlockedCountries(w http.ResponseWriter, r *http.Request)
 	case http.MethodGet:
 		countries := s.GetBlockedCountries()
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"blocked_countries":%d,"countries":[`, len(countries))
-		for i, c := range countries {
-			if i > 0 {
-				fmt.Fprint(w, ",")
-			}
-			fmt.Fprintf(w, `{"code":"%s","name":"%s","reason":"%s"}`, c.CountryCode, c.CountryName, c.Reason)
+		type countryEntry struct {
+			Code   string `json:"code"`
+			Name   string `json:"name"`
+			Reason string `json:"reason"`
 		}
-		fmt.Fprint(w, "]}")
+		entries := make([]countryEntry, len(countries))
+		for i, c := range countries {
+			entries[i] = countryEntry{Code: c.CountryCode, Name: c.CountryName, Reason: c.Reason}
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"blocked_countries": len(countries),
+			"countries":         entries,
+		})
 
 	case http.MethodPost:
 		var req struct {
@@ -573,7 +602,10 @@ func (s *Service) HandleBlockedCountries(w http.ResponseWriter, r *http.Request)
 		}
 		s.AddBlockedCountry(req.CountryCode, req.Reason)
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"success":true,"message":"Country %s added to block list"}`, req.CountryCode)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("Country %s added to block list", req.CountryCode),
+		})
 
 	case http.MethodDelete:
 		countryCode := r.URL.Query().Get("code")
@@ -583,7 +615,10 @@ func (s *Service) HandleBlockedCountries(w http.ResponseWriter, r *http.Request)
 		}
 		s.RemoveBlockedCountry(countryCode)
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"success":true,"message":"Country %s removed from block list"}`, countryCode)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("Country %s removed from block list", countryCode),
+		})
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -609,7 +644,7 @@ func extractIP(r *http.Request) string {
 			}
 			parts = append(parts, xff[i])
 		}
-		return string(parts)
+		return strings.TrimSpace(string(parts))
 	}
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
 		return xri

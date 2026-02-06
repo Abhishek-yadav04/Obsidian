@@ -183,6 +183,7 @@ const ObsidianApp = {
                 break;
             case 'health':
                 await this.fetchHealthData();
+                await this.fetchCacheStats();
                 break;
         }
     },
@@ -775,12 +776,12 @@ const ObsidianApp = {
                     
                     // Get severity badge if available
                     const severityBadge = log.severity ? 
-                        `<span class="badge bg-${log.severity === 'HIGH' ? 'danger' : log.severity === 'MEDIUM' ? 'warning' : 'info'} ms-2">${log.severity}</span>` : '';
+                        `<span class="badge bg-${log.severity === 'HIGH' ? 'danger' : log.severity === 'MEDIUM' ? 'warning' : 'info'} ms-2">${escapeHtml(log.severity)}</span>` : '';
                     
                     return `
                         <li class="list-group-item bg-transparent border-secondary text-light">
-                            <small class="text-muted">${formattedTime}</small>${severityBadge}<br>
-                            <strong>${action}</strong>${resource ? ' on ' + resource : ''}
+                            <small class="text-muted">${escapeHtml(formattedTime)}</small>${severityBadge}<br>
+                            <strong>${escapeHtml(action)}</strong>${resource ? ' on ' + escapeHtml(resource) : ''}
                         </li>
                     `;
                 }).join('');
@@ -1002,8 +1003,8 @@ const ObsidianApp = {
             if (topCountries && countries.length > 0) {
                 topCountries.innerHTML = countries.slice(0, 5).map(c => `
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span><i class="fas fa-flag me-2"></i>${c.name || c.code}</span>
-                        <span class="badge bg-danger">${c.blocked_count || 0} blocked</span>
+                        <span><i class="fas fa-flag me-2"></i>${escapeHtml(c.name || c.code)}</span>
+                        <span class="badge bg-danger">${escapeHtml(c.blocked_count || 0)} blocked</span>
                     </div>
                 `).join('');
             } else {
@@ -1018,11 +1019,11 @@ const ObsidianApp = {
             if (countries.length > 0) {
                 tbody.innerHTML = countries.map(c => `
                     <tr>
-                        <td>${c.name || c.country_name || c.code}</td>
-                        <td class="font-monospace">${c.code || c.country_code}</td>
-                        <td>${c.blocked_count || 0}</td>
+                        <td>${escapeHtml(c.name || c.country_name || c.code)}</td>
+                        <td class="font-monospace">${escapeHtml(c.code || c.country_code)}</td>
+                        <td>${escapeHtml(c.blocked_count || 0)}</td>
                         <td>
-                            <button class="btn btn-sm btn-outline-success" onclick="ObsidianApp.unblockCountry('${c.code || c.country_code}')" title="Unblock">
+                            <button class="btn btn-sm btn-outline-success" onclick="ObsidianApp.unblockCountry('${escapeAttr(c.code || c.country_code)}')" title="Unblock">
                                 <i class="fas fa-unlock"></i>
                             </button>
                         </td>
@@ -1139,10 +1140,10 @@ const ObsidianApp = {
                 if (rl.blacklist.length > 0) {
                     blacklistTbody.innerHTML = rl.blacklist.map(ip => `
                         <tr>
-                            <td class="font-monospace">${ip}</td>
+                            <td class="font-monospace">${escapeHtml(ip)}</td>
                             <td class="small text-muted">-</td>
                             <td>
-                                <button class="btn btn-sm btn-outline-success" onclick="ObsidianApp.removeFromBlacklist('${ip}')" title="Remove">
+                                <button class="btn btn-sm btn-outline-success" onclick="ObsidianApp.removeFromBlacklist('${escapeAttr(ip)}')" title="Remove">
                                     <i class="fas fa-times"></i>
                                 </button>
                             </td>
@@ -1159,10 +1160,10 @@ const ObsidianApp = {
                 if (rl.whitelist.length > 0) {
                     whitelistTbody.innerHTML = rl.whitelist.map(ip => `
                         <tr>
-                            <td class="font-monospace">${ip}</td>
+                            <td class="font-monospace">${escapeHtml(ip)}</td>
                             <td class="small text-muted">-</td>
                             <td>
-                                <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.removeFromWhitelist('${ip}')" title="Remove">
+                                <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.removeFromWhitelist('${escapeAttr(ip)}')" title="Remove">
                                     <i class="fas fa-times"></i>
                                 </button>
                             </td>
@@ -1258,7 +1259,7 @@ const ObsidianApp = {
             const select = document.getElementById('test-webhook-select');
             if (select) {
                 select.innerHTML = '<option value="">Select webhook...</option>' + 
-                    webhooks.map(w => `<option value="${w.name}">${w.name} (${w.type || 'generic'})</option>`).join('');
+                    webhooks.map(w => `<option value="${escapeAttr(w.name)}">${escapeHtml(w.name)} (${escapeHtml(w.type || 'generic')})</option>`).join('');
             }
 
             // Render webhooks table
@@ -1278,13 +1279,13 @@ const ObsidianApp = {
                         
                         return `
                             <tr>
-                                <td>${w.name}</td>
-                                <td>${typeIcons[w.type] || '<i class="fas fa-globe text-secondary"></i>'} ${w.type || 'generic'}</td>
-                                <td class="font-monospace small">${truncatedUrl}</td>
-                                <td><span class="badge bg-${w.min_severity === 'critical' ? 'danger' : w.min_severity === 'error' ? 'warning' : 'info'}">${w.min_severity || 'all'}</span></td>
+                                <td>${escapeHtml(w.name)}</td>
+                                <td>${typeIcons[w.type] || '<i class="fas fa-globe text-secondary"></i>'} ${escapeHtml(w.type || 'generic')}</td>
+                                <td class="font-monospace small">${escapeHtml(truncatedUrl)}</td>
+                                <td><span class="badge bg-${w.min_severity === 'critical' ? 'danger' : w.min_severity === 'error' ? 'warning' : 'info'}">${escapeHtml(w.min_severity || 'all')}</span></td>
                                 <td>${w.enabled ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Disabled</span>'}</td>
                                 <td>
-                                    <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.deleteWebhook('${w.name}')" title="Delete">
+                                    <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.deleteWebhook('${escapeAttr(w.name)}')" title="Delete">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </td>
@@ -1599,7 +1600,7 @@ const ObsidianApp = {
                     endpointsTbody.innerHTML = topEndpoints.map(([uri, stats]) => {
                         const rate = stats.total > 0 ? ((stats.blocked / stats.total) * 100).toFixed(0) : 0;
                         return `<tr>
-                            <td><code class="text-info">${uri.substring(0, 40)}${uri.length > 40 ? '...' : ''}</code></td>
+                            <td><code class="text-info">${escapeHtml(uri.substring(0, 40))}${uri.length > 40 ? '...' : ''}</code></td>
                             <td><span class="badge bg-danger">${stats.blocked}</span></td>
                             <td>${rate}%</td>
                         </tr>`;
@@ -1628,10 +1629,10 @@ const ObsidianApp = {
                     attackersTbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No attackers detected</td></tr>';
                 } else {
                     attackersTbody.innerHTML = topAttackers.map(([ip, stats]) => `<tr>
-                        <td><code>${ip}</code></td>
-                        <td>${stats.country}</td>
+                        <td><code>${escapeHtml(ip)}</code></td>
+                        <td>${escapeHtml(stats.country)}</td>
                         <td><span class="badge bg-danger">${stats.count}</span></td>
-                        <td><button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.blacklistIP('${ip}')"><i class="fas fa-ban"></i></button></td>
+                        <td><button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.blacklistIP('${escapeAttr(ip)}')"><i class="fas fa-ban"></i></button></td>
                     </tr>`).join('');
                 }
             }
@@ -1886,10 +1887,10 @@ const ObsidianApp = {
                     
                     return `
                         <tr>
-                            <td class="text-muted">${formattedTime}</td>
-                            <td>${eventType}</td>
-                            <td class="small">${details}</td>
-                            <td><span class="badge bg-${statusClass}">${severity.toLowerCase()}</span></td>
+                            <td class="text-muted">${escapeHtml(formattedTime)}</td>
+                            <td>${escapeHtml(eventType)}</td>
+                            <td class="small">${escapeHtml(details)}</td>
+                            <td><span class="badge bg-${escapeAttr(statusClass)}">${escapeHtml(severity.toLowerCase())}</span></td>
                         </tr>
                     `;
                 }).join('');
@@ -1941,10 +1942,10 @@ const ObsidianApp = {
         
         tbody.innerHTML = events.map(e => `
             <tr>
-                <td class="text-muted">${e.time}</td>
-                <td>${e.event}</td>
-                <td class="small">${e.details}</td>
-                <td><span class="badge bg-${e.status}">${e.status}</span></td>
+                <td class="text-muted">${escapeHtml(e.time)}</td>
+                <td>${escapeHtml(e.event)}</td>
+                <td class="small">${escapeHtml(e.details)}</td>
+                <td><span class="badge bg-${escapeAttr(e.status)}">${escapeHtml(e.status)}</span></td>
             </tr>
         `).join('');
     },
@@ -1990,13 +1991,13 @@ const ObsidianApp = {
         
         tbody.innerHTML = data.keys.map(key => `
             <tr>
-                <td>${key.name}</td>
-                <td><code>${key.key_prefix}</code></td>
-                <td>${key.scopes ? key.scopes.join(', ') : '-'}</td>
+                <td>${escapeHtml(key.name)}</td>
+                <td><code>${escapeHtml(key.key_prefix)}</code></td>
+                <td>${key.scopes ? escapeHtml(key.scopes.join(', ')) : '-'}</td>
                 <td>${new Date(key.created_at).toLocaleDateString()}</td>
                 <td>${new Date(key.expires_at).toLocaleDateString()}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.revokeAPIKey('${key.id}')">
+                    <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.revokeAPIKey('${escapeAttr(key.id)}')">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
@@ -2067,11 +2068,11 @@ const ObsidianApp = {
         
         tbody.innerHTML = data.entries.map(entry => `
             <tr>
-                <td><code>${entry.ip}</code></td>
-                <td>${entry.description || '-'}</td>
+                <td><code>${escapeHtml(entry.ip)}</code></td>
+                <td>${escapeHtml(entry.description || '-')}</td>
                 <td>${new Date(entry.added_at).toLocaleDateString()}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.removeIPFromAllowlist('${entry.ip}')">
+                    <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.removeIPFromAllowlist('${escapeAttr(entry.ip)}')">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
@@ -2183,7 +2184,7 @@ const ObsidianApp = {
             }
             
             if (res.error) {
-                resultDiv.innerHTML = `<div class="alert alert-warning">${res.error}</div>`;
+                resultDiv.innerHTML = `<div class="alert alert-warning">${escapeHtml(res.error)}</div>`;
                 return;
             }
             
@@ -2204,7 +2205,7 @@ const ObsidianApp = {
             }
         } catch (e) {
             console.error('Password check error:', e);
-            resultDiv.innerHTML = `<div class="alert alert-warning">Failed to check password: ${e.message}</div>`;
+            resultDiv.innerHTML = `<div class="alert alert-warning">Failed to check password: ${escapeHtml(e.message)}</div>`;
         }
     },
     
@@ -2260,6 +2261,135 @@ const ObsidianApp = {
         localStorage.removeItem('obsidian_token');
         localStorage.removeItem('obsidian_user');
         globalThis.location.href = '/login.html';
+    },
+
+    // ============================================
+    // GRAPHQL ANALYSIS
+    // ============================================
+    async analyzeGraphQL() {
+        const query = document.getElementById('graphql-query')?.value?.trim();
+        const resultDiv = document.getElementById('graphql-result');
+        if (!query) {
+            this.showToast('Error', 'Please enter a GraphQL query', true);
+            return;
+        }
+        resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-warning"></div> Analyzing...';
+        try {
+            const res = await this.api('/api/security/graphql/analyze', {
+                method: 'POST',
+                body: JSON.stringify({ query })
+            });
+            if (!res) { resultDiv.innerHTML = '<div class="alert alert-warning">Analysis failed</div>'; return; }
+            const depthClass = res.depth > 8 ? 'danger' : res.depth > 5 ? 'warning' : 'success';
+            const complexClass = res.complexity > 80 ? 'danger' : res.complexity > 40 ? 'warning' : 'success';
+            resultDiv.innerHTML = `
+                <div class="row g-3 mt-2">
+                    <div class="col-md-3"><div class="stat-card text-center"><div class="stat-title">Depth</div><div class="h3 text-${depthClass}">${escapeHtml(String(res.depth || 0))}</div></div></div>
+                    <div class="col-md-3"><div class="stat-card text-center"><div class="stat-title">Complexity</div><div class="h3 text-${complexClass}">${escapeHtml(String(res.complexity || 0))}</div></div></div>
+                    <div class="col-md-3"><div class="stat-card text-center"><div class="stat-title">Aliases</div><div class="h3 text-info">${escapeHtml(String(res.aliases || 0))}</div></div></div>
+                    <div class="col-md-3"><div class="stat-card text-center"><div class="stat-title">Fields</div><div class="h3 text-muted">${escapeHtml(String(res.fields || 0))}</div></div></div>
+                </div>
+                ${res.blocked ? '<div class="alert alert-danger mt-3"><i class="fas fa-ban me-2"></i>This query would be <strong>BLOCKED</strong> by current limits.</div>' : '<div class="alert alert-success mt-3"><i class="fas fa-check me-2"></i>This query passes all security checks.</div>'}
+            `;
+        } catch (e) {
+            resultDiv.innerHTML = `<div class="alert alert-danger">${escapeHtml(e.message)}</div>`;
+        }
+    },
+
+    async updateGraphQLConfig() {
+        const config = {
+            max_depth: parseInt(document.getElementById('gql-max-depth')?.value || '10'),
+            max_complexity: parseInt(document.getElementById('gql-max-complexity')?.value || '100'),
+            max_aliases: parseInt(document.getElementById('gql-max-aliases')?.value || '10')
+        };
+        const res = await this.api('/api/security/graphql/config', {
+            method: 'POST',
+            body: JSON.stringify(config)
+        });
+        if (res?.success) {
+            this.showToast('Success', 'GraphQL limits updated');
+        } else {
+            this.showToast('Error', res?.error || 'Failed to update config', true);
+        }
+    },
+
+    // ============================================
+    // RESPONSE BODY INSPECTION
+    // ============================================
+    async updateRespBodyConfig() {
+        const config = {
+            enabled: document.getElementById('respbody-enabled')?.checked ?? true,
+            max_size: parseInt(document.getElementById('respbody-maxsize')?.value || '1048576'),
+            custom_regex: document.getElementById('respbody-regex')?.value || ''
+        };
+        const res = await this.api('/api/security/respbody/config', {
+            method: 'POST',
+            body: JSON.stringify(config)
+        });
+        if (res?.success) {
+            this.showToast('Success', 'Response body config updated');
+        } else {
+            this.showToast('Error', res?.error || 'Failed to update config', true);
+        }
+    },
+
+    async testRespBody() {
+        const body = document.getElementById('respbody-test-input')?.value?.trim();
+        const resultDiv = document.getElementById('respbody-result');
+        if (!body) {
+            this.showToast('Error', 'Please enter response body content to test', true);
+            return;
+        }
+        resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-warning"></div> Scanning...';
+        try {
+            const res = await this.api('/api/security/respbody/test', {
+                method: 'POST',
+                body: JSON.stringify({ body })
+            });
+            if (!res) { resultDiv.innerHTML = '<div class="alert alert-warning">Test failed</div>'; return; }
+            if (res.findings && res.findings.length > 0) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i><strong>${res.findings.length} sensitive data pattern(s) detected!</strong></div>
+                    <ul class="list-group">${res.findings.map(f => `<li class="list-group-item bg-dark border-secondary text-light"><i class="fas fa-bug text-danger me-2"></i>${escapeHtml(f.type || f)}: ${escapeHtml(f.match || '')}</li>`).join('')}</ul>
+                `;
+            } else {
+                resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check me-2"></i>No sensitive data patterns found.</div>';
+            }
+        } catch (e) {
+            resultDiv.innerHTML = `<div class="alert alert-danger">${escapeHtml(e.message)}</div>`;
+        }
+    },
+
+    // ============================================
+    // CACHE & RATE LIMIT ADMIN
+    // ============================================
+    async fetchCacheStats() {
+        try {
+            const stats = await this.api('/api/cache/stats');
+            if (stats) {
+                const hitRate = (stats.hits && stats.misses) 
+                    ? ((stats.hits / (stats.hits + stats.misses)) * 100).toFixed(1) + '%' 
+                    : '-';
+                document.getElementById('cache-hit-rate').textContent = hitRate;
+                document.getElementById('cache-total-keys').textContent = stats.total_keys || '-';
+                document.getElementById('cache-memory').textContent = stats.memory_used || '-';
+            }
+        } catch (e) {
+            console.log('Cache stats not available');
+        }
+    },
+
+    async resetRateLimits() {
+        if (!confirm('Reset all rate limit counters? This will allow previously rate-limited IPs to access the system again.')) return;
+        const resultDiv = document.getElementById('ratelimit-reset-result');
+        const res = await this.api('/api/admin/ratelimit/reset', { method: 'POST' });
+        if (res?.success) {
+            this.showToast('Success', 'All rate limits have been reset');
+            if (resultDiv) resultDiv.innerHTML = '<div class="alert alert-success mt-2"><i class="fas fa-check me-2"></i>Rate limits cleared.</div>';
+        } else {
+            this.showToast('Error', res?.error || 'Failed to reset rate limits', true);
+            if (resultDiv) resultDiv.innerHTML = '<div class="alert alert-danger mt-2">Reset failed.</div>';
+        }
     }
 };
 

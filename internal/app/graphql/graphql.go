@@ -19,6 +19,13 @@ var (
 	ErrMalformedQuery       = errors.New("malformed GraphQL query")
 )
 
+// Precompiled regexes for hot-path use (avoid MustCompile per call)
+var (
+	aliasPattern = regexp.MustCompile(`\w+\s*:\s*\w+`)
+	fieldPattern = regexp.MustCompile(`\b(\w+)\b`)
+	wordPattern  = regexp.MustCompile(`\b([a-zA-Z_]\w*)\b`)
+)
+
 // Config for GraphQL security
 type Config struct {
 	// Enabled turns GraphQL protection on/off
@@ -260,15 +267,12 @@ func (a *Analyzer) calculateDepth(query string) int {
 
 // countAliases counts the number of field aliases in a query
 func (a *Analyzer) countAliases(query string) int {
-	// Simple regex to match alias patterns: "aliasName: fieldName"
-	aliasPattern := regexp.MustCompile(`\w+\s*:\s*\w+`)
 	matches := aliasPattern.FindAllString(query, -1)
 	return len(matches)
 }
 
 // hasLongField checks if any field/alias exceeds max length
 func (a *Analyzer) hasLongField(query string) bool {
-	fieldPattern := regexp.MustCompile(`\b(\w+)\b`)
 	matches := fieldPattern.FindAllString(query, -1)
 
 	for _, match := range matches {
@@ -318,7 +322,6 @@ func (a *Analyzer) countFields(query string) int {
 		"null": true, "type": true,
 	}
 
-	wordPattern := regexp.MustCompile(`\b([a-zA-Z_]\w*)\b`)
 	matches := wordPattern.FindAllString(query, -1)
 
 	count := 0

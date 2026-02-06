@@ -172,8 +172,8 @@ func (c *Checker) checkCache(prefix, suffix string) (int, bool) {
 		return 0, false
 	}
 
-	count, found := entry.suffixes[suffix]
-	return count, found || true // Return true even if suffix not found (means count=0)
+	count, _ := entry.suffixes[suffix]
+	return count, true // Prefix is cached and not expired; count=0 means no breach found
 }
 
 // cacheResult stores HIBP response in cache

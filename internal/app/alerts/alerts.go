@@ -283,6 +283,8 @@ func (s *Service) processAlert(ctx context.Context, alert *Alert) error {
 			s.metrics.TotalFailed++
 			s.mu.Unlock()
 		} else {
+			// Increment rate-limit counters only on successful send
+			s.incrementRateLimitCounters(wh.Name)
 			s.mu.Lock()
 			s.metrics.TotalSent++
 			s.metrics.ByType[alert.Type]++
@@ -362,11 +364,34 @@ func (s *Service) checkRateLimit(webhookName string, cfg *RateLimitConfig) bool 
 		return false
 	}
 
-	// Increment counters
+	return true
+}
+
+// incrementRateLimitCounters increments rate-limit counters after a successful send
+func (s *Service) incrementRateLimitCounters(webhookName string) {
+	state, ok := s.states[webhookName]
+	if !ok {
+		return
+	}
+	state.mu.Lock()
 	state.minuteCount++
 	state.hourCount++
+	state.mu.Unlock()
+}
 
-	return true
+// getRoutingKey returns the PagerDuty routing key from webhook headers
+func (s *Service) getRoutingKey(alert *Alert) string {
+	// Routing key is stored in the webhook headers for PagerDuty
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, wh := range s.webhooks {
+		if wh.Type == WebhookPagerDuty {
+			if key, ok := wh.Headers["routing_key"]; ok {
+				return key
+			}
+		}
+	}
+	return ""
 }
 
 // sendToWebhook sends an alert to a specific webhook
@@ -533,7 +558,7 @@ func (s *Service) formatPagerDutyPayload(alert *Alert) ([]byte, error) {
 	}
 
 	payload := map[string]interface{}{
-		"routing_key":  "", // Set via webhook headers
+		"routing_key":  s.getRoutingKey(alert),
 		"event_action": "trigger",
 		"payload": map[string]interface{}{
 			"summary":   alert.Title,
@@ -618,11 +643,25 @@ func (s *Service) GetWebhooks() []WebhookConfig {
 	return webhooks
 }
 
-// GetMetrics returns service metrics
+// GetMetrics returns service metrics (deep copy to prevent races)
 func (s *Service) GetMetrics() Metrics {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.metrics
+
+	copy := s.metrics
+	copy.ByType = make(map[AlertType]int64, len(s.metrics.ByType))
+	for k, v := range s.metrics.ByType {
+		copy.ByType[k] = v
+	}
+	copy.BySeverity = make(map[Severity]int64, len(s.metrics.BySeverity))
+	for k, v := range s.metrics.BySeverity {
+		copy.BySeverity[k] = v
+	}
+	copy.ByWebhook = make(map[string]int64, len(s.metrics.ByWebhook))
+	for k, v := range s.metrics.ByWebhook {
+		copy.ByWebhook[k] = v
+	}
+	return copy
 }
 
 // TestWebhook sends a test alert to a specific webhook
@@ -673,7 +712,7 @@ func (s *Service) HandleWebhooks(w http.ResponseWriter, r *http.Request) {
 		}
 		s.AddWebhook(wh)
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"success":true,"message":"Webhook %s added"}`, wh.Name)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Webhook added", "name": wh.Name})
 
 	case http.MethodDelete:
 		name := r.URL.Query().Get("name")
@@ -683,7 +722,7 @@ func (s *Service) HandleWebhooks(w http.ResponseWriter, r *http.Request) {
 		}
 		s.RemoveWebhook(name)
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"success":true,"message":"Webhook %s removed"}`, name)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Webhook removed", "name": name})
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -780,17 +819,27 @@ func (s *Service) AlertThreatIntel(clientIP, category, details string) error {
 
 // AlertAuthFailure sends an authentication failure alert
 func (s *Service) AlertAuthFailure(username, clientIP, reason string) error {
+	// Mask username to avoid PII leakage in alerts
+	maskedUser := maskUsername(username)
 	return s.Send(&Alert{
 		Type:     AlertTypeAuth,
 		Severity: SeverityMedium,
 		Title:    "Authentication Failure",
-		Message:  fmt.Sprintf("Failed login attempt for user %s from %s: %s", username, clientIP, reason),
+		Message:  fmt.Sprintf("Failed login attempt for user %s from %s: %s", maskedUser, clientIP, reason),
 		ClientIP: clientIP,
 		Details: map[string]interface{}{
-			"username": username,
-			"reason":   reason,
+			"username_masked": maskedUser,
+			"reason":          reason,
 		},
 	})
+}
+
+// maskUsername masks a username for safe logging
+func maskUsername(u string) string {
+	if len(u) <= 2 {
+		return "***"
+	}
+	return u[:1] + "***" + u[len(u)-1:]
 }
 
 // AlertSystemEvent sends a system-level alert

@@ -188,11 +188,15 @@ func (m *Manager) ExtractClientIP(remoteAddr string, xForwardedFor string, xReal
 	return directIP, nil
 }
 
-// isTrustedProxy checks if an IP is in the trusted proxy list
+// isTrustedProxy checks if an IP is in the trusted proxy list.
+// Acquires RLock to be safe against concurrent AddTrustedProxy calls.
 func (m *Manager) isTrustedProxy(ipStr string) bool {
 	// Handle IPv6 brackets
 	ipStr = strings.TrimPrefix(ipStr, "[")
 	ipStr = strings.TrimSuffix(ipStr, "]")
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	// Check direct IP match
 	if m.trustedIPs[ipStr] {

@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	testSecretValue      = "test-secret-1234567890"
+	testSecretValue      = "test-secret-1234567890-abcdefghij" // 32+ chars required
 	errGenerateJWTFormat = "generate jwt error: %v"
 )
 
@@ -26,13 +26,16 @@ func TestValidatePassword(t *testing.T) {
 		password string
 		wantErr  bool
 	}{
-		{name: "too_short", password: "Ab12", wantErr: true},
-		{name: "single_class_lower", password: "password", wantErr: true},
-		{name: "single_class_upper", password: "PASSWORD", wantErr: true},
-		{name: "single_class_number", password: "12345678", wantErr: true},
-		{name: "upper_lower", password: "Password", wantErr: false},
-		{name: "lower_number", password: "password1", wantErr: false},
-		{name: "upper_number", password: "PASSWORD1", wantErr: false},
+		{name: "too_short", password: "Ab1!x", wantErr: true},
+		{name: "single_class_lower", password: "passwordpassword", wantErr: true},
+		{name: "single_class_upper", password: "PASSWORDPASSWORD", wantErr: true},
+		{name: "single_class_number", password: "123456789012", wantErr: true},
+		{name: "no_special_char", password: "Password1234", wantErr: true},
+		{name: "no_number", password: "Password!abc", wantErr: true},
+		{name: "no_uppercase", password: "password1!ab", wantErr: true},
+		{name: "no_lowercase", password: "PASSWORD1!AB", wantErr: true},
+		{name: "valid_all_classes", password: "StrongPass1!", wantErr: false},
+		{name: "valid_long", password: "MyP@ssw0rd!XY", wantErr: false},
 	}
 
 	for _, tc := range cases {
@@ -49,7 +52,7 @@ func TestValidatePassword(t *testing.T) {
 }
 
 func TestHashAndVerifyPassword(t *testing.T) {
-	password := "StrongPass1"
+	password := "StrongPass1!"
 	hash, err := HashPassword(password)
 	if err != nil {
 		t.Fatalf("hash error: %v", err)
@@ -60,7 +63,7 @@ func TestHashAndVerifyPassword(t *testing.T) {
 	if err := VerifyPassword(hash, password); err != nil {
 		t.Fatalf("verify error: %v", err)
 	}
-	if err := VerifyPassword(hash, "WrongPass1"); err == nil {
+	if err := VerifyPassword(hash, "WrongPass123!"); err == nil {
 		t.Fatal("expected error for wrong password")
 	}
 }

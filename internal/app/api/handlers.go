@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"github.com/corazawaf/coraza/v3/internal/app/model"
 	"github.com/corazawaf/coraza/v3/internal/app/store"
 	"github.com/gorilla/websocket"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // AllowedOrigins contains the list of allowed WebSocket origins
@@ -112,8 +114,8 @@ func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	// Authenticate user
 	user, err := a.Store.AuthenticateUser(req.Username, req.Password)
 	if err != nil {
-		// Add slight delay to prevent timing attacks
-		time.Sleep(100 * time.Millisecond)
+		// Perform dummy bcrypt work to prevent timing-based user enumeration
+		_ = bcrypt.CompareHashAndPassword([]byte("$2a$12$000000000000000000000000000000000000000000000000000000"), []byte(req.Password))
 		w.Header().Set(contentTypeHeader, contentTypeJSON)
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid credentials"})
@@ -184,13 +186,14 @@ func extractClientIP(r *http.Request) string {
 		return strings.TrimSpace(parts[0])
 	}
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
+		return strings.TrimSpace(xri)
 	}
-	ip := r.RemoteAddr
-	if idx := strings.LastIndex(ip, ":"); idx != -1 {
-		ip = ip[:idx]
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		// RemoteAddr might not have a port (unlikely but handle gracefully)
+		return strings.Trim(r.RemoteAddr, "[]")
 	}
-	return strings.Trim(ip, "[]")
+	return host
 }
 
 func (a *API) HandleStats(w http.ResponseWriter, r *http.Request) {
@@ -380,7 +383,10 @@ func (a *API) HandleUsers(w http.ResponseWriter, r *http.Request) {
 			defer cancel()
 
 			breached, count, err := a.HIBPChecker.CheckPassword(ctx, req.Password)
-			if err == nil && breached {
+			if err != nil {
+				// Log the error and continue (fail-open by default)
+				fmt.Printf("[WARN] HIBP password check failed: %v\n", err)
+			} else if breached {
 				w.Header().Set(contentTypeHeader, contentTypeJSON)
 				w.WriteHeader(http.StatusBadRequest)
 				json.NewEncoder(w).Encode(map[string]interface{}{

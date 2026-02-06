@@ -45,6 +45,7 @@ import (
 	"github.com/corazawaf/coraza/v3/internal/app/threat"
 	"github.com/corazawaf/coraza/v3/internal/app/waf"
 	"github.com/corazawaf/coraza/v3/types"
+	"go.uber.org/zap"
 )
 
 // Application version
@@ -517,7 +518,7 @@ func main() {
 	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Error("Server failed to start")
+		logger.Error("Server failed to start", zap.Error(err))
 		os.Exit(1)
 	}
 }
@@ -872,7 +873,11 @@ func apiKeyMiddleware(requiredScope apikeys.Scope, next http.HandlerFunc) http.H
 		// Validate the API key
 		clientIP := r.RemoteAddr
 		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-			clientIP = strings.Split(forwarded, ",")[0]
+			clientIP = strings.TrimSpace(strings.Split(forwarded, ",")[0])
+		} else {
+			if host, _, err := net.SplitHostPort(clientIP); err == nil {
+				clientIP = host
+			}
 		}
 
 		keyInfo, err := apiKeyMgr.ValidateKey(r.Context(), apiKey, requiredScope, clientIP)
@@ -1315,14 +1320,12 @@ func extractClientIP(r *http.Request) string {
 		return strings.TrimSpace(parts[0])
 	}
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
+		return strings.TrimSpace(xri)
 	}
 	ip := r.RemoteAddr
-	if idx := strings.LastIndex(ip, ":"); idx != -1 {
-		ip = ip[:idx]
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		return host
 	}
-	ip = strings.TrimPrefix(ip, "[")
-	ip = strings.TrimSuffix(ip, "]")
 	return ip
 }
 
@@ -2145,10 +2148,15 @@ SUPABASE_KEY=your-anon-public-key</pre>
 	if r.TLS != nil {
 		scheme = "https"
 	}
-	redirectTo := fmt.Sprintf("%s://%s/api/auth/callback", scheme, r.Host)
+	// Validate Host header to prevent open redirect attacks
+	host := r.Host
+	if allowedHost := os.Getenv("OBSIDIAN_ALLOWED_HOST"); allowedHost != "" {
+		host = allowedHost
+	}
+	redirectTo := fmt.Sprintf("%s://%s/api/auth/callback", scheme, host)
 
 	authURL := fmt.Sprintf("%s/auth/v1/authorize?provider=google&redirect_to=%s",
-		supabaseURL, redirectTo)
+		supabaseURL, url.QueryEscape(redirectTo))
 
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 }
@@ -2203,10 +2211,15 @@ SUPABASE_KEY=your-anon-public-key</pre>
 	if r.TLS != nil {
 		scheme = "https"
 	}
-	redirectTo := fmt.Sprintf("%s://%s/api/auth/callback", scheme, r.Host)
+	// Validate Host header to prevent open redirect attacks
+	host := r.Host
+	if allowedHost := os.Getenv("OBSIDIAN_ALLOWED_HOST"); allowedHost != "" {
+		host = allowedHost
+	}
+	redirectTo := fmt.Sprintf("%s://%s/api/auth/callback", scheme, host)
 
 	authURL := fmt.Sprintf("%s/auth/v1/authorize?provider=github&redirect_to=%s",
-		supabaseURL, redirectTo)
+		supabaseURL, url.QueryEscape(redirectTo))
 
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 }

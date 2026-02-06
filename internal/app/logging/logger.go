@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -223,10 +224,11 @@ func (l *Logger) WithFields(fields map[string]interface{}) *Logger {
 	}
 }
 
-// isSensitive checks if a field name should be redacted
+// isSensitive checks if a field name should be redacted (case-insensitive)
 func (l *Logger) isSensitive(field string) bool {
+	lower := strings.ToLower(field)
 	for _, sensitive := range l.config.SensitiveFields {
-		if field == sensitive {
+		if lower == strings.ToLower(sensitive) {
 			return true
 		}
 	}

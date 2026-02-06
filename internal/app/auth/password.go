@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -28,16 +29,33 @@ var cachedSecretKey string
 // isDevelopmentMode tracks whether we're running in dev mode
 var isDevelopmentMode bool
 
+// devModeMu protects reads/writes to isDevelopmentMode and cachedSecretKey
+var devModeMu sync.RWMutex
+
 // SetDevelopmentMode enables/disables development mode for JWT secret handling
 // In production, JWT secret MUST be set via OBSIDIAN_JWT_SECRET environment variable
 func SetDevelopmentMode(dev bool) {
+	devModeMu.Lock()
 	isDevelopmentMode = dev
+	// Reset cached key so getSecretKey regenerates the correct key for this mode
+	cachedSecretKey = ""
+	devModeMu.Unlock()
 }
 
 // getSecretKey retrieves JWT secret from environment
 // SECURITY: In production mode, this will panic if OBSIDIAN_JWT_SECRET is not set
 func getSecretKey() string {
-	// Return cached key if already set
+	devModeMu.RLock()
+	if cachedSecretKey != "" {
+		defer devModeMu.RUnlock()
+		return cachedSecretKey
+	}
+	devModeMu.RUnlock()
+
+	devModeMu.Lock()
+	defer devModeMu.Unlock()
+
+	// Double-check after acquiring write lock
 	if cachedSecretKey != "" {
 		return cachedSecretKey
 	}
@@ -46,7 +64,6 @@ func getSecretKey() string {
 	if key == "" {
 		if isDevelopmentMode {
 			// Development only - use a stable default key
-			// This ensures tokens remain valid for the application lifetime
 			key = "obsidian-development-secret-key-change-in-production"
 			fmt.Println("⚠️  WARNING: Using default JWT secret (DEVELOPMENT MODE ONLY)")
 		} else {

@@ -157,12 +157,11 @@ metadata:
   name: obsidian-waf
   namespace: obsidian-waf
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/rate-limit: "100"
-    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - waf.example.com  # REPLACE with your domain

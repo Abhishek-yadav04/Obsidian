@@ -5,6 +5,7 @@ package respbody
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -152,6 +153,9 @@ var (
 
 	// Phone numbers (various formats)
 	phonePattern = regexp.MustCompile(`\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`)
+
+	// Non-digit pattern for credit card validation
+	nonDigitPattern = regexp.MustCompile(`\D`)
 )
 
 // Inspector performs response body inspection
@@ -199,12 +203,22 @@ func (i *Inspector) Inspect(body []byte, contentType, path string) *InspectionRe
 		Detections: make([]*Detection, 0),
 	}
 
-	if !i.config.Enabled {
+	// Snapshot config under read lock to avoid race with SetConfig
+	i.mu.RLock()
+	cfg := i.config
+	// Copy custom regex map under lock
+	customRe := make(map[string]*regexp.Regexp, len(i.customRe))
+	for k, v := range i.customRe {
+		customRe[k] = v
+	}
+	i.mu.RUnlock()
+
+	if !cfg.Enabled {
 		return result
 	}
 
 	// Check exclusions
-	if i.shouldExclude(contentType, path) {
+	if i.shouldExcludeCfg(cfg, contentType, path) {
 		return result
 	}
 
@@ -212,8 +226,8 @@ func (i *Inspector) Inspect(body []byte, contentType, path string) *InspectionRe
 	result.BodySize = int64(len(body))
 
 	// Truncate if too large
-	if result.BodySize > i.config.MaxBodySize {
-		body = body[:i.config.MaxBodySize]
+	if result.BodySize > cfg.MaxBodySize {
+		body = body[:cfg.MaxBodySize]
 		result.Truncated = true
 	}
 
@@ -221,47 +235,47 @@ func (i *Inspector) Inspect(body []byte, contentType, path string) *InspectionRe
 	content := string(body)
 
 	// Run detectors
-	if i.config.DetectSSN {
+	if cfg.DetectSSN {
 		i.detectPattern(content, ssnPattern, LeakageSSN, "critical", result)
 	}
 
-	if i.config.DetectCreditCard {
+	if cfg.DetectCreditCard {
 		i.detectCreditCard(content, result)
 	}
 
-	if i.config.DetectAPIKeys {
+	if cfg.DetectAPIKeys {
 		for _, pattern := range apiKeyPatterns {
 			i.detectPattern(content, pattern, LeakageAPIKey, "high", result)
 		}
 	}
 
-	if i.config.DetectAWSKeys {
+	if cfg.DetectAWSKeys {
 		i.detectPattern(content, awsKeyPattern, LeakageAWSKey, "critical", result)
 		i.detectPattern(content, awsSecretPattern, LeakageAWSKey, "critical", result)
 	}
 
-	if i.config.DetectPrivateKeys {
+	if cfg.DetectPrivateKeys {
 		i.detectPattern(content, privateKeyPattern, LeakagePrivateKey, "critical", result)
 	}
 
-	if i.config.DetectJWT {
+	if cfg.DetectJWT {
 		i.detectPattern(content, jwtPattern, LeakageJWT, "medium", result)
 	}
 
-	if i.config.DetectPasswordFields {
+	if cfg.DetectPasswordFields {
 		i.detectPattern(content, passwordFieldPattern, LeakagePassword, "high", result)
 	}
 
-	if i.config.DetectBulkEmail {
+	if cfg.DetectBulkEmail {
 		i.detectBulk(content, emailPattern, LeakageEmail, 5, "medium", result)
 	}
 
-	if i.config.DetectBulkIP {
+	if cfg.DetectBulkIP {
 		i.detectBulk(content, ipPattern, LeakageIPAddress, 10, "low", result)
 	}
 
 	// Custom patterns
-	for name, re := range i.customRe {
+	for name, re := range customRe {
 		det := &Detection{
 			Type:     LeakageCustom,
 			Pattern:  name,
@@ -286,8 +300,8 @@ func (i *Inspector) Inspect(body []byte, contentType, path string) *InspectionRe
 	}
 
 	// Determine if we should block
-	if i.config.BlockOnDetection && len(result.Detections) > 0 {
-		if severityLevel(result.HighestSeverity) >= severityLevel(i.config.MinSeverityToBlock) {
+	if cfg.BlockOnDetection && len(result.Detections) > 0 {
+		if severityLevel(result.HighestSeverity) >= severityLevel(cfg.MinSeverityToBlock) {
 			result.ShouldBlock = true
 		}
 	}
@@ -318,7 +332,7 @@ func (i *Inspector) detectCreditCard(content string, result *InspectionResult) {
 
 	for _, match := range matches {
 		// Remove separators
-		digits := regexp.MustCompile(`\D`).ReplaceAllString(match, "")
+		digits := nonDigitPattern.ReplaceAllString(match, "")
 		if len(digits) >= 13 && len(digits) <= 19 && luhnCheck(digits) {
 			validCount++
 			if sample == "" {
@@ -348,23 +362,23 @@ func (i *Inspector) detectBulk(content string, pattern *regexp.Regexp, leakType 
 			Pattern:  "bulk_exposure",
 			Count:    len(matches),
 			Severity: severity,
-			Redacted: redact(matches[0]) + " (and " + string(rune(len(matches)-1)) + " more)",
+			Redacted: redact(matches[0]) + fmt.Sprintf(" (and %d more)", len(matches)-1),
 		}
 		result.Detections = append(result.Detections, det)
 	}
 }
 
-// shouldExclude checks if the request should be excluded from inspection
-func (i *Inspector) shouldExclude(contentType, path string) bool {
+// shouldExcludeCfg checks if the request should be excluded from inspection using the given config.
+func (i *Inspector) shouldExcludeCfg(cfg *Config, contentType, path string) bool {
 	// Check content type
-	for _, ct := range i.config.ExcludeContentTypes {
+	for _, ct := range cfg.ExcludeContentTypes {
 		if strings.HasPrefix(contentType, ct) {
 			return true
 		}
 	}
 
 	// Check path
-	for _, p := range i.config.ExcludePaths {
+	for _, p := range cfg.ExcludePaths {
 		if strings.HasPrefix(path, p) {
 			return true
 		}
@@ -437,6 +451,8 @@ type ResponseWriter struct {
 
 // GetConfig returns the current configuration
 func (i *Inspector) GetConfig() *Config {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 	return i.config
 }
 

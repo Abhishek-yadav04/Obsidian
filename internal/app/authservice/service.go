@@ -5,8 +5,11 @@ package authservice
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -106,6 +109,9 @@ type Service struct {
 	logger   Logger
 	config   Config
 
+	// mu protects attempts and lockedUsers maps from concurrent access
+	mu sync.RWMutex
+
 	// In-memory tracking for login attempts (could be Redis-backed in production)
 	attempts    map[string][]LoginAttempt // username -> attempts
 	lockedUsers map[string]time.Time      // username -> locked until
@@ -126,8 +132,10 @@ func NewService(store persistence.Store, secMgr *security.Manager, logger Logger
 // Authenticate validates credentials and returns tokens
 func (s *Service) Authenticate(ctx context.Context, username, password, clientIP, userAgent string) (*AuthResult, error) {
 	// Check if account is locked
+	s.mu.Lock()
 	if lockedUntil, locked := s.lockedUsers[username]; locked {
 		if time.Now().Before(lockedUntil) {
+			s.mu.Unlock()
 			s.recordAttempt(username, clientIP, false, "account_locked")
 			s.logger.LogAuth(username, clientIP, "account_locked", false)
 			return nil, ErrTooManyAttempts
@@ -135,6 +143,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientIP
 		// Lockout expired, remove
 		delete(s.lockedUsers, username)
 	}
+	s.mu.Unlock()
 
 	// Get user from database
 	user, err := s.store.GetUser(ctx, username)
@@ -171,10 +180,12 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientIP
 	s.logger.LogAuth(username, clientIP, "success", true)
 
 	// Clear failed attempts on success
+	s.mu.Lock()
 	delete(s.attempts, username)
+	s.mu.Unlock()
 
-	// Generate tokens using the security manager's secret
-	secret := s.security.GetJWTSecret()
+	// Ensure JWT secret is initialized via the security manager
+	_ = s.security.GetJWTSecret()
 
 	accessToken, err := auth.GenerateJWT(user.ID, user.Username, user.Role, s.config.TokenExpiry)
 	if err != nil {
@@ -186,8 +197,12 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientIP
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
-	// Create session
-	sessionID := fmt.Sprintf("sess-%d-%d", user.ID, time.Now().UnixNano())
+	// Create session with cryptographically random session ID
+	sessBytes := make([]byte, 16)
+	if _, err := rand.Read(sessBytes); err != nil {
+		return nil, fmt.Errorf("failed to generate session ID: %w", err)
+	}
+	sessionID := "sess-" + hex.EncodeToString(sessBytes)
 	session := &model.Session{
 		ID:           sessionID,
 		UserID:       user.ID,
@@ -205,9 +220,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientIP
 	}
 
 	if err := s.store.CreateSession(ctx, session); err != nil {
-		s.logger.Warn("failed to create session",
-			zap.String("session_id", sessionID),
-		)
+		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
 	// Update last login
@@ -227,8 +240,6 @@ func (s *Service) Authenticate(ctx context.Context, username, password, clientIP
 	if s.config.PasswordExpiryDays > 0 {
 		// Check password age (would need password_changed_at field in user model)
 	}
-
-	_ = secret // Used implicitly by auth.GenerateJWT which reads from getSecretKey
 
 	return &AuthResult{
 		User:                   user,
@@ -280,22 +291,13 @@ func (s *Service) LogoutAll(ctx context.Context, userID int, clientIP string) er
 
 // ChangePassword changes user password with validation
 func (s *Service) ChangePassword(ctx context.Context, userID int, currentPassword, newPassword, clientIP string) error {
-	// Get user
-	users, err := s.store.ListUsers(ctx)
+	// Get user by ID
+	user, err := s.store.GetUserByID(ctx, userID)
 	if err != nil {
-		return fmt.Errorf("failed to get user: %w", err)
-	}
-
-	var user *model.User
-	for i := range users {
-		if users[i].ID == userID {
-			user = &users[i]
-			break
+		if errors.Is(err, persistence.ErrUserNotFound) {
+			return ErrUserNotFound
 		}
-	}
-
-	if user == nil {
-		return ErrUserNotFound
+		return fmt.Errorf("failed to get user: %w", err)
 	}
 
 	// Verify current password
@@ -369,6 +371,9 @@ func (s *Service) recordAttempt(username, clientIP string, success bool, reason 
 		FailReason: reason,
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.attempts[username] = append(s.attempts[username], attempt)
 
 	// Keep only recent attempts (last hour)
@@ -384,6 +389,9 @@ func (s *Service) recordAttempt(username, clientIP string, success bool, reason 
 
 // checkLockout checks if account should be locked
 func (s *Service) checkLockout(username string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	attempts := s.attempts[username]
 
 	// Count recent failed attempts
@@ -442,16 +450,33 @@ func (s *Service) ValidateSession(ctx context.Context, sessionID string) (*model
 		return nil, ErrSessionExpired
 	}
 
+	// Refresh last activity timestamp
+	session.LastActivity = time.Now()
+	if err := s.store.UpdateSession(ctx, session); err != nil {
+		s.logger.Warn("failed to refresh session activity",
+			zap.String("session_id", sessionID),
+		)
+	}
+
 	return session, nil
 }
 
 // GetLoginAttempts returns recent login attempts for monitoring
 func (s *Service) GetLoginAttempts(username string) []LoginAttempt {
-	return s.attempts[username]
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	src := s.attempts[username]
+	result := make([]LoginAttempt, len(src))
+	copy(result, src)
+	return result
 }
 
 // IsAccountLocked checks if an account is locked
 func (s *Service) IsAccountLocked(username string) (bool, time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if lockedUntil, locked := s.lockedUsers[username]; locked {
 		if time.Now().Before(lockedUntil) {
 			return true, lockedUntil

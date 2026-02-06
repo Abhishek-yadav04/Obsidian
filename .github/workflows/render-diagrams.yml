@@ -26,17 +26,25 @@ jobs:
       run: |
         cd cmd/obsidian/docs
         echo "Rendering architecture diagram..."
-        plantuml architecture.puml
+        plantuml -tsvg architecture.puml
         echo "SVG generated successfully"
 
     - name: Check for changes
       id: verify-changed-files
       run: |
+        CHANGED="false"
+        # Check for modifications to tracked file
         if [ -n "$(git diff --name-only cmd/obsidian/docs/architecture.svg)" ]; then
-          echo "changed=true" >> $GITHUB_OUTPUT
+          CHANGED="true"
+        fi
+        # Check for untracked/new file
+        if [ -n "$(git status --porcelain -- cmd/obsidian/docs/architecture.svg)" ]; then
+          CHANGED="true"
+        fi
+        echo "changed=${CHANGED}" >> $GITHUB_OUTPUT
+        if [ "${CHANGED}" = "true" ]; then
           echo "Architecture diagram updated"
         else
-          echo "changed=false" >> $GITHUB_OUTPUT
           echo "No changes to architecture diagram"
         fi
 
@@ -45,6 +53,7 @@ jobs:
       run: |
         git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
+        git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
         git add cmd/obsidian/docs/architecture.svg
         git commit -m "docs: regenerate architecture diagram [auto]"
         git push

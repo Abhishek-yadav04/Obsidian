@@ -8,11 +8,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/corazawaf/coraza/v3/internal/app/model"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -60,8 +62,12 @@ type Store interface {
 	// Session operations
 	CreateSession(ctx context.Context, session *model.Session) error
 	GetSession(ctx context.Context, id string) (*model.Session, error)
+	UpdateSession(ctx context.Context, session *model.Session) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteUserSessions(ctx context.Context, userID int) error
+
+	// User lookup by ID
+	GetUserByID(ctx context.Context, id int) (*model.User, error)
 
 	// Health check
 	Ping(ctx context.Context) error
@@ -367,6 +373,10 @@ func (s *PostgresStore) ListUsers(ctx context.Context) ([]model.User, error) {
 		users = append(users, user)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating users: %w", err)
+	}
+
 	return users, nil
 }
 
@@ -462,9 +472,14 @@ func (s *PostgresStore) GetLogsFiltered(ctx context.Context, filter LogFilter) (
 		argNum++
 	}
 
-	// Order by
+	// Order by - whitelist allowed columns to prevent SQL injection
+	allowedOrderBy := map[string]bool{
+		"timestamp": true, "client_ip": true, "method": true,
+		"uri": true, "rule_id": true, "action": true,
+		"status": true, "status_code": true,
+	}
 	orderBy := "timestamp"
-	if filter.OrderBy != "" {
+	if filter.OrderBy != "" && allowedOrderBy[filter.OrderBy] {
 		orderBy = filter.OrderBy
 	}
 	order := "DESC"
@@ -517,6 +532,11 @@ func scanLogs(rows pgx.Rows) ([]model.LogEntry, error) {
 		}
 		logs = append(logs, log)
 	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating logs: %w", err)
+	}
+
 	return logs, nil
 }
 
@@ -607,6 +627,10 @@ func (s *PostgresStore) ListRules(ctx context.Context) ([]model.Rule, error) {
 		rules = append(rules, rule)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rules: %w", err)
+	}
+
 	return rules, nil
 }
 
@@ -638,6 +662,10 @@ func (s *PostgresStore) GetStats(ctx context.Context) (*model.Stats, error) {
 		}
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating stats: %w", err)
+	}
+
 	// Get active rules count
 	var ruleCount int
 	err = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM waf_rules WHERE enabled = true`).Scan(&ruleCount)
@@ -649,11 +677,12 @@ func (s *PostgresStore) GetStats(ctx context.Context) (*model.Stats, error) {
 	return stats, nil
 }
 
-// IncrementStat atomically increments a statistic
+// IncrementStat atomically increments a statistic (upserts if not exists)
 func (s *PostgresStore) IncrementStat(ctx context.Context, stat string, delta int64) error {
 	_, err := s.pool.Exec(ctx,
-		`UPDATE waf_stats SET stat_value = stat_value + $1, updated_at = $2 WHERE stat_name = $3`,
-		delta, time.Now(), stat,
+		`INSERT INTO waf_stats (stat_name, stat_value, updated_at) VALUES ($1, $2, $3)
+		ON CONFLICT (stat_name) DO UPDATE SET stat_value = waf_stats.stat_value + $2, updated_at = $3`,
+		stat, delta, time.Now(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to increment stat %s: %w", stat, err)
@@ -679,6 +708,9 @@ func (s *PostgresStore) GetAuditLogs(ctx context.Context, limit, offset int) ([]
 	if limit <= 0 {
 		limit = 100
 	}
+	if limit > 1000 {
+		limit = 1000
+	}
 
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, user_id, action, resource, details, ip_address, timestamp 
@@ -702,6 +734,10 @@ func (s *PostgresStore) GetAuditLogs(ctx context.Context, limit, offset int) ([]
 			log.UserID = &id
 		}
 		logs = append(logs, log)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating audit logs: %w", err)
 	}
 
 	return logs, nil
@@ -754,12 +790,57 @@ func (s *PostgresStore) DeleteUserSessions(ctx context.Context, userID int) erro
 	return err
 }
 
-// isPgDuplicateError checks if an error is a PostgreSQL unique constraint violation
+// GetUserByID retrieves a user by their numeric ID
+func (s *PostgresStore) GetUserByID(ctx context.Context, id int) (*model.User, error) {
+	var user model.User
+	var lastLogin sql.NullTime
+
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, username, password_hash, email, role, enabled, created_at, last_login 
+		FROM users WHERE id = $1`,
+		id,
+	).Scan(
+		&user.ID, &user.Username, &user.PasswordHash, &user.Email,
+		&user.Role, &user.Enabled, &user.CreatedAt, &lastLogin,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to get user by ID: %w", err)
+	}
+
+	if lastLogin.Valid {
+		user.LastLogin = &lastLogin.Time
+	}
+
+	return &user, nil
+}
+
+// UpdateSession updates an existing session's mutable fields (e.g., last_activity)
+func (s *PostgresStore) UpdateSession(ctx context.Context, session *model.Session) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE sessions SET last_activity = $1 WHERE id = $2`,
+		session.LastActivity, session.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+	return nil
+}
+
+// isPgDuplicateError checks if an error is a PostgreSQL unique constraint violation (code 23505)
 func isPgDuplicateError(err error) bool {
 	if err == nil {
 		return false
 	}
-	// Check for unique_violation error code (23505)
-	return err.Error() != "" && (err.Error()[0:5] == "23505" ||
-		len(err.Error()) > 20 && err.Error()[16:21] == "23505")
+	// Use proper pgconn type assertion instead of fragile string matching
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505"
+	}
+	// Fallback for wrapped errors that don't unwrap to PgError
+	errMsg := err.Error()
+	return strings.Contains(errMsg, "23505")
 }

@@ -5,6 +5,7 @@ package ipallow
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net"
@@ -128,13 +129,6 @@ func (m *Manager) AddIP(ctx context.Context, ip, description, createdBy string) 
 	// Normalize IP string
 	ip = parsedIP.String()
 
-	m.mu.Lock()
-	if _, exists := m.entries[ip]; exists {
-		m.mu.Unlock()
-		return nil, ErrAlreadyExists
-	}
-	m.mu.Unlock()
-
 	entry := &AllowlistEntry{
 		ID:          generateID(),
 		IP:          ip,
@@ -144,16 +138,24 @@ func (m *Manager) AddIP(ctx context.Context, ip, description, createdBy string) 
 		Enabled:     true,
 	}
 
-	// Persist
+	// Hold the lock across check-and-insert to prevent TOCTOU races
+	m.mu.Lock()
+	if _, exists := m.entries[ip]; exists {
+		m.mu.Unlock()
+		return nil, ErrAlreadyExists
+	}
+	m.entries[ip] = entry
+	m.mu.Unlock()
+
+	// Persist (rollback memory on failure)
 	if m.store != nil {
 		if err := m.store.SaveEntry(ctx, entry); err != nil {
+			m.mu.Lock()
+			delete(m.entries, ip)
+			m.mu.Unlock()
 			return nil, err
 		}
 	}
-
-	m.mu.Lock()
-	m.entries[ip] = entry
-	m.mu.Unlock()
 
 	return entry, nil
 }
@@ -169,13 +171,6 @@ func (m *Manager) AddCIDR(ctx context.Context, cidr, description, createdBy stri
 	// Normalize CIDR string
 	cidr = ipNet.String()
 
-	m.mu.Lock()
-	if _, exists := m.entries[cidr]; exists {
-		m.mu.Unlock()
-		return nil, ErrAlreadyExists
-	}
-	m.mu.Unlock()
-
 	entry := &AllowlistEntry{
 		ID:          generateID(),
 		IP:          cidr,
@@ -186,17 +181,29 @@ func (m *Manager) AddCIDR(ctx context.Context, cidr, description, createdBy stri
 		Enabled:     true,
 	}
 
-	// Persist
-	if m.store != nil {
-		if err := m.store.SaveEntry(ctx, entry); err != nil {
-			return nil, err
-		}
-	}
-
+	// Hold the lock across check-and-insert to prevent TOCTOU races
 	m.mu.Lock()
+	if _, exists := m.entries[cidr]; exists {
+		m.mu.Unlock()
+		return nil, ErrAlreadyExists
+	}
 	m.entries[cidr] = entry
 	m.cidrs = append(m.cidrs, entry)
 	m.mu.Unlock()
+
+	// Persist (rollback memory on failure)
+	if m.store != nil {
+		if err := m.store.SaveEntry(ctx, entry); err != nil {
+			m.mu.Lock()
+			delete(m.entries, cidr)
+			// Remove last appended CIDR entry
+			if len(m.cidrs) > 0 {
+				m.cidrs = m.cidrs[:len(m.cidrs)-1]
+			}
+			m.mu.Unlock()
+			return nil, err
+		}
+	}
 
 	return entry, nil
 }
@@ -287,12 +294,13 @@ func (m *Manager) IsAllowed(ip string) bool {
 	return false
 }
 
-// CheckBypassHeader checks if bypass header is valid
+// CheckBypassHeader checks if bypass header is valid.
+// Uses constant-time comparison to prevent timing attacks.
 func (m *Manager) CheckBypassHeader(headerValue string) bool {
 	if m.config.BypassHeader == "" || m.config.BypassSecret == "" {
 		return false
 	}
-	return headerValue == m.config.BypassSecret
+	return subtle.ConstantTimeCompare([]byte(headerValue), []byte(m.config.BypassSecret)) == 1
 }
 
 // recordHit updates hit statistics

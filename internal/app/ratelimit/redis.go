@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -136,6 +137,7 @@ func DefaultRedisRateLimiterConfig() RedisRateLimiterConfig {
 
 // RedisRateLimiter implements distributed rate limiting using Redis
 type RedisRateLimiter struct {
+	mu        sync.RWMutex
 	client    RedisClient
 	config    RedisRateLimiterConfig
 	whitelist map[string]bool
@@ -241,8 +243,11 @@ func (rl *RedisRateLimiter) AllowEndpoint(ip, endpoint string) bool {
 	// Normalize IP
 	normalizedIP := normalizeIP(ip)
 
-	// Check whitelist
-	if rl.whitelist[ip] || rl.whitelist[normalizedIP] {
+	// Check whitelist (protected by RLock)
+	rl.mu.RLock()
+	whitelisted := rl.whitelist[ip] || rl.whitelist[normalizedIP]
+	rl.mu.RUnlock()
+	if whitelisted {
 		return true
 	}
 
@@ -309,7 +314,9 @@ func (rl *RedisRateLimiter) Blacklist(ip string) error {
 
 // Whitelist adds an IP to the whitelist
 func (rl *RedisRateLimiter) Whitelist(ip string) {
+	rl.mu.Lock()
 	rl.whitelist[ip] = true
+	rl.mu.Unlock()
 
 	// Remove from blacklist if present
 	ctx, cancel := context.WithTimeout(context.Background(), rl.config.Redis.WriteTimeout)

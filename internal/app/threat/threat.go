@@ -26,6 +26,7 @@ type ThreatIntel struct {
 	feeds        []ThreatFeed
 	lastUpdate   time.Time
 	updateTicker *time.Ticker
+	done         chan struct{}
 	persistPath  string
 	httpClient   *http.Client
 }
@@ -138,14 +139,22 @@ func (ti *ThreatIntel) saveToDisk() error {
 	}
 
 	ti.mu.RLock()
+	// Deep copy blockedIPs to avoid holding the lock during I/O
+	blocked := make(map[string]*ThreatEntry, len(ti.blockedIPs))
+	for k, v := range ti.blockedIPs {
+		copy := *v
+		blocked[k] = &copy
+	}
+	lastUpdate := ti.lastUpdate
+	ti.mu.RUnlock()
+
 	state := struct {
 		BlockedIPs map[string]*ThreatEntry `json:"blocked_ips"`
 		LastUpdate time.Time               `json:"last_update"`
 	}{
-		BlockedIPs: ti.blockedIPs,
-		LastUpdate: ti.lastUpdate,
+		BlockedIPs: blocked,
+		LastUpdate: lastUpdate,
 	}
-	ti.mu.RUnlock()
 
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
@@ -163,12 +172,18 @@ func (ti *ThreatIntel) saveToDisk() error {
 // startBackgroundUpdates periodically refreshes threat feeds
 func (ti *ThreatIntel) startBackgroundUpdates() {
 	ti.updateTicker = time.NewTicker(1 * time.Hour)
+	ti.done = make(chan struct{})
 	go func() {
-		// Initial refresh on startup (non-blocking)
-		go ti.RefreshFeeds()
+		// Initial refresh on startup
+		ti.RefreshFeeds()
 
-		for range ti.updateTicker.C {
-			ti.RefreshFeeds()
+		for {
+			select {
+			case <-ti.done:
+				return
+			case <-ti.updateTicker.C:
+				ti.RefreshFeeds()
+			}
 		}
 	}()
 }
@@ -178,17 +193,28 @@ func (ti *ThreatIntel) Stop() {
 	if ti.updateTicker != nil {
 		ti.updateTicker.Stop()
 	}
+	if ti.done != nil {
+		close(ti.done)
+	}
 	_ = ti.saveToDisk()
 }
 
 // RefreshFeeds updates threat intelligence from all enabled feeds
 func (ti *ThreatIntel) RefreshFeeds() {
-	for i := range ti.feeds {
-		if !ti.feeds[i].Enabled || ti.feeds[i].URL == "" {
+	// Clear CIDR blocks before refreshing to prevent unbounded growth
+	ti.mu.Lock()
+	ti.cidrBlocks = ti.cidrBlocks[:0]
+	// Snapshot feeds under lock to avoid race
+	feeds := make([]ThreatFeed, len(ti.feeds))
+	copy(feeds, ti.feeds)
+	ti.mu.Unlock()
+
+	for i := range feeds {
+		if !feeds[i].Enabled || feeds[i].URL == "" {
 			continue
 		}
 
-		count, err := ti.fetchFeed(&ti.feeds[i])
+		count, err := ti.fetchFeed(&feeds[i])
 		if err != nil {
 			// Log error but continue with other feeds
 			continue

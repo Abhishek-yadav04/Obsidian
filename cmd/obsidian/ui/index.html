@@ -8,6 +8,7 @@
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
     
     <!-- External CSS -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="css/styles.css" rel="stylesheet">
@@ -852,6 +853,16 @@
                             <i class="fas fa-lock me-2"></i>Secrets
                         </button>
                     </li>
+                    <li class="nav-item">
+                        <button class="nav-link bg-dark text-light border-secondary" data-bs-toggle="tab" data-bs-target="#sec-graphql">
+                            <i class="fas fa-project-diagram me-2"></i>GraphQL
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link bg-dark text-light border-secondary" data-bs-toggle="tab" data-bs-target="#sec-respbody">
+                            <i class="fas fa-file-code me-2"></i>Response Body
+                        </button>
+                    </li>
                 </ul>
 
                 <div class="tab-content">
@@ -1001,12 +1012,83 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- GraphQL Analysis Tab -->
+                    <div class="tab-pane fade" id="sec-graphql">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header border-secondary bg-transparent">
+                                <h5 class="mb-0"><i class="fas fa-project-diagram me-2"></i>GraphQL Query Analyzer</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted mb-3">Analyze GraphQL queries for depth, complexity, and potential abuse patterns.</p>
+                                <div class="mb-3">
+                                    <label class="form-label">GraphQL Query</label>
+                                    <textarea class="form-control bg-dark text-light border-secondary font-monospace" id="graphql-query" rows="6" placeholder="{ user(id: 1) { name posts { title comments { body } } } }"></textarea>
+                                </div>
+                                <button class="btn btn-primary" onclick="ObsidianApp.analyzeGraphQL()">
+                                    <i class="fas fa-search me-2"></i>Analyze Query
+                                </button>
+                                <div id="graphql-result" class="mt-3"></div>
+                                <hr class="border-secondary mt-4">
+                                <h6 class="text-muted mb-3">GraphQL Security Limits</h6>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label small">Max Depth</label>
+                                        <input type="number" class="form-control bg-dark text-light border-secondary" id="gql-max-depth" value="10" min="1" max="50">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small">Max Complexity</label>
+                                        <input type="number" class="form-control bg-dark text-light border-secondary" id="gql-max-complexity" value="100" min="1" max="1000">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small">Max Aliases</label>
+                                        <input type="number" class="form-control bg-dark text-light border-secondary" id="gql-max-aliases" value="10" min="1" max="100">
+                                    </div>
+                                </div>
+                                <button class="btn btn-outline-warning btn-sm mt-3" onclick="ObsidianApp.updateGraphQLConfig()">
+                                    <i class="fas fa-save me-2"></i>Save Limits
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Response Body Inspection Tab -->
+                    <div class="tab-pane fade" id="sec-respbody">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header border-secondary bg-transparent">
+                                <h5 class="mb-0"><i class="fas fa-file-code me-2"></i>Response Body Inspection</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted mb-3">Configure outbound response body scanning for sensitive data leaks (credit cards, SSNs, etc.).</p>
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="respbody-enabled" checked>
+                                    <label class="form-check-label" for="respbody-enabled">Enable Response Body Inspection</label>
+                                </div>
+                                <div class="row g-3 mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Max Body Size (bytes)</label>
+                                        <input type="number" class="form-control bg-dark text-light border-secondary" id="respbody-maxsize" value="1048576">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Custom Regex Pattern</label>
+                                        <input type="text" class="form-control bg-dark text-light border-secondary font-monospace" id="respbody-regex" placeholder="\b(?:secret|token)\b">
+                                    </div>
+                                </div>
+                                <button class="btn btn-outline-warning btn-sm" onclick="ObsidianApp.updateRespBodyConfig()">
+                                    <i class="fas fa-save me-2"></i>Save Config
+                                </button>
+                                <hr class="border-secondary mt-4">
+                                <h6 class="text-muted mb-3">Test Response Body</h6>
+                                <textarea class="form-control bg-dark text-light border-secondary font-monospace mb-3" id="respbody-test-input" rows="4" placeholder="Paste response body content to scan..."></textarea>
+                                <button class="btn btn-primary btn-sm" onclick="ObsidianApp.testRespBody()">
+                                    <i class="fas fa-vial me-2"></i>Test Scan
+                                </button>
+                                <div id="respbody-result" class="mt-3"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-
-            <!-- ============================================ -->
-            <!-- ANALYTICS VIEW -->
-            <!-- ============================================ -->
             <div id="view-analytics" class="view-section d-none fade-in">
                 <div class="row g-4 mb-4">
                     <div class="col-lg-3 col-md-6">
@@ -1247,6 +1329,47 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Cache Statistics -->
+                <div class="row g-4 mt-2">
+                    <div class="col-lg-6">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header border-secondary bg-transparent">
+                                <h5 class="mb-0"><i class="fas fa-server me-2 text-warning"></i>Cache Statistics</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row text-center" id="cache-stats">
+                                    <div class="col-4">
+                                        <div class="stat-title">Hit Rate</div>
+                                        <div class="h4 text-success" id="cache-hit-rate">-</div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="stat-title">Total Keys</div>
+                                        <div class="h4 text-info" id="cache-total-keys">-</div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="stat-title">Memory Used</div>
+                                        <div class="h4 text-warning" id="cache-memory">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header border-secondary bg-transparent d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0"><i class="fas fa-tachometer-alt me-2 text-info"></i>Rate Limiter</h5>
+                                <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.resetRateLimits()">
+                                    <i class="fas fa-undo me-1"></i>Reset All Limits
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="text-muted small mb-2">Reset all rate limit counters across all IPs and endpoints.</div>
+                                <div id="ratelimit-reset-result"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -1266,7 +1389,7 @@
                             <div class="col-md-6">
                                 <div class="mb-3">
                                     <label class="form-label">Rule ID</label>
-                                    <input type="number" class="form-control bg-dark text-light border-secondary" id="ruleId" required>
+                                    <input type="number" class="form-control bg-dark text-light border-secondary" id="ruleId" min="1" required>
                                 </div>
                             </div>
                             <div class="col-md-6">

@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -533,13 +534,43 @@ func (w *responseWrapper) Flush() {
 	}
 }
 
-// normalizePath normalizes URL paths for metric labels to prevent cardinality explosion
+// normalizePath normalizes URL paths for metric labels to prevent cardinality explosion.
+// Replaces numeric and UUID path segments with ":id" placeholders.
 func normalizePath(path string) string {
-	// Normalize common patterns
-	// /api/logs/123 -> /api/logs/:id
-	// This prevents high cardinality in metrics
+	parts := strings.Split(path, "/")
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		// Replace numeric segments: /api/logs/123 -> /api/logs/:id
+		if isNumeric(part) {
+			parts[i] = ":id"
+			continue
+		}
+		// Replace UUID-like segments: /api/users/550e8400-... -> /api/users/:id
+		if len(part) >= 32 && isHexLike(part) {
+			parts[i] = ":id"
+		}
+	}
+	return strings.Join(parts, "/")
+}
 
-	// For now, return the path as-is
-	// In production, implement path normalization based on your API routes
-	return path
+// isNumeric checks if a string contains only digits
+func isNumeric(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return len(s) > 0
+}
+
+// isHexLike checks if a string looks like a hex ID or UUID
+func isHexLike(s string) bool {
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == '-') {
+			return false
+		}
+	}
+	return true
 }

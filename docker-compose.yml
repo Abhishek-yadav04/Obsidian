@@ -12,8 +12,8 @@ services:
       - OBSIDIAN_PORT=8082
       - OBSIDIAN_LOG_LEVEL=${LOG_LEVEL:-info}
       - OBSIDIAN_LOG_FORMAT=${LOG_FORMAT:-json}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-obsidian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-obsidian}?sslmode=disable}
-      - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:-}@redis:6379}
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required. Set it in .env e.g. postgresql://obsidian:pass@postgres:5432/obsidian?sslmode=disable}
+      - REDIS_URL=${REDIS_URL:?REDIS_URL is required. Set it in .env e.g. redis://:password@redis:6379}
       - OBSIDIAN_JWT_SECRET=${OBSIDIAN_JWT_SECRET:?OBSIDIAN_JWT_SECRET is required}
       - SUPABASE_URL=${SUPABASE_URL:-}
       - SUPABASE_KEY=${SUPABASE_KEY:-}
@@ -57,11 +57,18 @@ services:
   redis:
     image: redis:7-alpine
     container_name: obsidian-redis
-    command: redis-server --requirepass ${REDIS_PASSWORD:-}
+    command: >-
+      sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then
+        redis-server --requirepass "$$REDIS_PASSWORD";
+      else
+        redis-server;
+      fi'
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli ${REDIS_PASSWORD:+-a $REDIS_PASSWORD} ping | grep PONG"]
+      test: ["CMD-SHELL", "redis-cli $${REDIS_PASSWORD:+-a $$REDIS_PASSWORD} ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 5

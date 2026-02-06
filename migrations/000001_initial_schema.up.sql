@@ -17,13 +17,10 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Default users (passwords MUST be changed in production)
--- admin="ObsidianAdmin#2024", analyst="ObsidianAnalyst#2024", viewer="ObsidianViewer#2024"
-INSERT INTO users (username, email, password_hash, role, enabled) VALUES
-    ('admin', 'admin@obsidian.local', '$2a$12$2xXI1FJm/E7ShS.99UBp9OHSznLgbdzTPrjnh6dopp5YS.y7Fovt2', 'Admin', true),
-    ('analyst', 'analyst@obsidian.local', '$2a$12$lV4oLgU..jCLVqFYFqwZ9um0cEyKqf5eUWlehYBLan5JVbEPLxKfu', 'Analyst', true),
-    ('viewer', 'viewer@obsidian.local', '$2a$12$vWaIVdKEfvkodk9sxY2zne.mFqyjqtoNi914.K.lNk4uFiVR6vYZC', 'Viewer', true)
-ON CONFLICT (username) DO NOTHING;
+-- Default users are provisioned by the application bootstrap process.
+-- Credentials are read from environment variables: DEFAULT_ADMIN_PW, DEFAULT_ANALYST_PW, DEFAULT_VIEWER_PW.
+-- If no env vars are set, temporary random passwords are generated and logged at first startup.
+-- All default accounts require a password change on first login.
 
 -- =============================================================================
 -- SESSIONS TABLE - JWT Token Management
@@ -68,7 +65,7 @@ CREATE TABLE IF NOT EXISTS attack_logs (
     client_ip VARCHAR(45) NOT NULL,
     method VARCHAR(10),
     uri TEXT,
-    rule_id INTEGER,
+    rule_id VARCHAR(50),
     rule_msg TEXT,
     severity VARCHAR(20),
     action VARCHAR(20),
@@ -127,5 +124,5 @@ CREATE TABLE IF NOT EXISTS threat_intel (
     hit_count INTEGER DEFAULT 1
 );
 
-CREATE INDEX IF NOT EXISTS idx_threat_intel_ip ON threat_intel(ip_address);
+-- idx_threat_intel_ip is not needed: the UNIQUE constraint on ip_address already creates an implicit index.
 CREATE INDEX IF NOT EXISTS idx_threat_intel_blocked ON threat_intel(blocked) WHERE blocked = true;

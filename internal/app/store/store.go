@@ -111,6 +111,11 @@ func (s *Store) load() {
 func (s *Store) Save() error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.saveUnlocked()
+}
+
+// saveUnlocked persists state to disk. Caller must hold at least an RLock on s.mu.
+func (s *Store) saveUnlocked() error {
 	data, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {
 		return err
@@ -177,9 +182,10 @@ func (s *Store) AddSafeLog(entry model.LogEntry) {
 func (s *Store) GetStats() model.Stats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	// Ensure active rules count is accurate
-	s.state.Stats.ActiveRulesCount = len(s.state.Rules)
-	return s.state.Stats
+	// Compute active rules count without mutating shared state (avoids write-under-RLock)
+	stats := s.state.Stats
+	stats.ActiveRulesCount = len(s.state.Rules)
+	return stats
 }
 
 func (s *Store) GetLogs() []model.LogEntry {
@@ -509,8 +515,10 @@ func (s *Store) UpdateUser(username, role string, enabled bool, newPassword stri
 				}
 				s.state.Users[i].PasswordHash = passwordHash
 			}
-			// Save state to persist changes
-			go s.Save()
+			// Persist changes synchronously to prevent data race
+			if err := s.saveUnlocked(); err != nil {
+				fmt.Printf("[Store] Warning: failed to persist state: %v\n", err)
+			}
 			return nil
 		}
 	}
@@ -557,9 +565,9 @@ func (s *Store) AddAuditLog(log model.AuditLog) error {
 
 	// Insert into audit_logs table using the model.AuditLog structure
 	_, err := s.dbManager.PostgresPool().Exec(ctx, `
-		INSERT INTO audit_logs (rule_id, severity, message, type, client_ip, request_uri, user_agent)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`, log.Action, "", log.Details, log.Resource, log.IPAddress, log.Resource, "")
+		INSERT INTO audit_logs (action, resource, details, client_ip, user_id, timestamp)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, log.Action, log.Resource, log.Details, log.IPAddress, log.UserID, log.Timestamp)
 	if err != nil {
 		return fmt.Errorf("failed to insert audit log: %w", err)
 	}

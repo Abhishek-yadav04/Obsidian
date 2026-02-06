@@ -65,11 +65,13 @@ func (c *Cache) Increment(ctx context.Context, key string) (int64, error) {
 	return c.client.Incr(ctx, c.key(key)).Result()
 }
 
-// IncrementWithExpiry increments and sets expiry if key is new
+// IncrementWithExpiry increments and sets expiry only if key is new (NX)
 func (c *Cache) IncrementWithExpiry(ctx context.Context, key string, expiry time.Duration) (int64, error) {
+	fullKey := c.key(key)
 	pipe := c.client.Pipeline()
-	incr := pipe.Incr(ctx, c.key(key))
-	pipe.Expire(ctx, c.key(key), expiry)
+	incr := pipe.Incr(ctx, fullKey)
+	// ExpireNX only sets the TTL if one is not already set, preventing TTL reset
+	pipe.ExpireNX(ctx, fullKey, expiry)
 	_, err := pipe.Exec(ctx)
 	if err != nil {
 		return 0, err
@@ -141,7 +143,8 @@ func (c *Cache) CheckRateLimit(ctx context.Context, ip, endpoint string, limit i
 
 // BlockIP blocks an IP for a duration
 func (c *Cache) BlockIP(ctx context.Context, ip string, duration time.Duration, reason string) error {
-	key := c.key(BlockedIPKey(ip))
+	// Use BlockedIPKey directly (not through c.key) since Set() already applies the prefix
+	key := BlockedIPKey(ip)
 	data := map[string]interface{}{
 		"blocked_at": time.Now().UTC().Format(time.RFC3339),
 		"duration":   duration.String(),
@@ -288,23 +291,34 @@ func (c *Cache) GetStat(ctx context.Context, stat string) (int64, error) {
 	return val, err
 }
 
-// GetAllStats retrieves all statistics
+// GetAllStats retrieves all statistics using SCAN (non-blocking)
 func (c *Cache) GetAllStats(ctx context.Context) (map[string]int64, error) {
 	pattern := c.key("stats:*")
-	keys, err := c.client.Keys(ctx, pattern).Result()
-	if err != nil {
-		return nil, err
-	}
-
 	stats := make(map[string]int64)
-	for _, key := range keys {
-		val, err := c.client.Get(ctx, key).Int64()
-		if err == nil {
-			// Remove prefix to get stat name
-			statName := key[len(c.key("stats:")):]
-			stats[statName] = val
+
+	var cursor uint64
+	for {
+		keys, nextCursor, err := c.client.Scan(ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan stats keys: %w", err)
+		}
+
+		prefixLen := len(c.key("stats:"))
+		for _, key := range keys {
+			val, err := c.client.Get(ctx, key).Int64()
+			if err == nil {
+				// Remove prefix to get stat name
+				statName := key[prefixLen:]
+				stats[statName] = val
+			}
+		}
+
+		cursor = nextCursor
+		if cursor == 0 {
+			break
 		}
 	}
+
 	return stats, nil
 }
 

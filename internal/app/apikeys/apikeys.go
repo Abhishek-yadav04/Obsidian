@@ -142,7 +142,9 @@ func (m *Manager) GenerateKey(ctx context.Context, name string, scopes []Scope, 
 
 	// Generate unique ID
 	idBytes := make([]byte, 8)
-	rand.Read(idBytes)
+	if _, err := rand.Read(idBytes); err != nil {
+		return "", nil, fmt.Errorf("failed to generate API key ID: %w", err)
+	}
 
 	apiKey := &APIKey{
 		ID:          hex.EncodeToString(idBytes),
@@ -224,7 +226,12 @@ func (m *Manager) ValidateKey(ctx context.Context, plaintext string, requiredSco
 
 	// Async persist usage update
 	if m.store != nil {
-		go m.store.UpdateKeyUsage(context.Background(), keyHash, now, clientIP)
+		go func() {
+			if err := m.store.UpdateKeyUsage(context.Background(), keyHash, now, clientIP); err != nil {
+				// Log error instead of silently dropping it
+				_ = err // TODO: wire up logger for async usage tracking
+			}
+		}()
 	}
 
 	return apiKey, nil
@@ -311,9 +318,20 @@ func (m *Manager) ListKeys() []*APIKey {
 
 	keys := make([]*APIKey, 0, len(m.keys))
 	for _, key := range m.keys {
-		keys = append(keys, key)
+		copy := *key
+		// Deep copy Scopes slice
+		copy.Scopes = make([]Scope, len(key.Scopes))
+		builtinCopy(copy.Scopes, key.Scopes)
+		keys = append(keys, &copy)
 	}
 	return keys
+}
+
+// builtinCopy is a type-safe copy wrapper for Scope slices
+func builtinCopy(dst, src []Scope) {
+	for i, s := range src {
+		dst[i] = s
+	}
 }
 
 // GetKeyByID returns a specific API key by ID
@@ -323,7 +341,10 @@ func (m *Manager) GetKeyByID(keyID string) (*APIKey, error) {
 
 	for _, key := range m.keys {
 		if key.ID == keyID {
-			return key, nil
+			copy := *key
+			copy.Scopes = make([]Scope, len(key.Scopes))
+			builtinCopy(copy.Scopes, key.Scopes)
+			return &copy, nil
 		}
 	}
 	return nil, ErrKeyNotFound

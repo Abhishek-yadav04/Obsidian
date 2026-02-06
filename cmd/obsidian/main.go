@@ -51,7 +51,7 @@ import (
 // Application version
 const (
 	AppName    = "Obsidian Sentinel WAF"
-	AppVersion = "2.2.3" // Enterprise Edition - Database Persistence & Security Integrations
+	AppVersion = "2.2.4" // Enterprise Edition - UI/UX Modernization & Advanced Security Analysis
 )
 
 // Metrics for observability

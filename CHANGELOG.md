@@ -1,5 +1,64 @@
 # Changelog
 
+## Obsidian Sentinel v2.2.4 Enterprise Edition (2026-02-07)
+
+### 🚀 New Features
+
+#### UI/UX Modernization
+- **Glassmorphism Design**: Complete dashboard redesign with glassmorphism effects, CSS custom properties, and modern visual aesthetics
+- **Password Strength Meter**: Real-time password strength validation with animated progress bar and color-coded feedback during registration/login
+- **Enhanced Navigation**: Improved sidebar with brand glow effects and smooth transitions
+- **Live Indicators**: Added live status indicators for system health and real-time updates
+
+#### Advanced Security Analysis Tools
+- **GraphQL Security Analyzer**: New dedicated tab for GraphQL query analysis with configurable limits and real-time scanning
+- **Response Body Inspector**: Enhanced Data Loss Prevention with configurable patterns and test scanner for sensitive data detection
+- **Cache Statistics Dashboard**: Real-time cache performance metrics including hit rates, memory usage, and key counts
+- **Rate Limit Reset Controls**: Administrative controls for resetting rate limits per IP or globally
+
+#### Backend-Frontend Integration
+- **Unified Feature Set**: All backend capabilities now fully integrated into the frontend dashboard
+- **Real-Time Updates**: Enhanced WebSocket integration for live cache stats and rate limit monitoring
+- **API Enhancements**: New endpoints for GraphQL analysis, response body scanning, and cache management
+
+### 🔧 Technical Improvements
+
+#### Build System Fixes
+- **Go Version Alignment**: Standardized Go version to 1.23 across all workflows, go.mod, and go.work
+- **Dependency Resolution**: Fixed invalid golang.org/x/crypto version (v0.48.0 → v0.47.0) and resolved build failures
+- **Compilation Fixes**: Resolved type mismatches in alerts.go, syntax errors in redis_cache.go, and missing methods in persistence layer
+
+#### Code Quality Enhancements
+- **Security Hardening**: Updated password validation tests to enforce 12+ character minimum with all character classes
+- **Error Handling**: Improved JWT secret validation with proper length requirements (32+ characters)
+- **Concurrent Safety**: Fixed race conditions and memory access issues in hot paths
+
+#### Performance Optimizations
+- **Zero-Allocation Hot Paths**: Maintained zero-allocation performance in request processing
+- **Memory Pooling**: Enhanced sync.Pool usage for Transaction objects and buffers
+- **Efficient Data Structures**: Optimized map lookups for rule evaluation and caching
+
+### 🐛 Bug Fixes
+- **XSS Vulnerabilities**: Fixed all remaining XSS issues in webhooks, analytics, audit logs, security API keys, IP allowlist, and HIBP error messages
+- **OAuth Security**: Enhanced redirect URL validation with OBSIDIAN_ALLOWED_HOST environment variable and proper URL escaping
+- **Client IP Extraction**: Fixed IP extraction in middleware with proper net.SplitHostPort usage and X-Real-IP trimming
+- **Session Management**: Corrected session update methods in persistence layer
+- **UI Responsiveness**: Fixed duplicate CSS rules and HTML validation issues
+
+### 🔐 Security Fixes
+- **Input Sanitization**: Comprehensive input validation and sanitization across all user inputs
+- **Regex Safety**: Verified all regex patterns for ReDoS vulnerabilities
+- **Secret Masking**: Automatic redaction of sensitive fields in logs (password, token, key, authorization)
+- **OAuth Redirect Protection**: Prevented open redirect vulnerabilities in OAuth handlers
+
+### 📝 Documentation Updates
+- Updated README.md with new UI features and security analysis tools
+- Enhanced API documentation for GraphQL and response body endpoints
+- Added deployment guides for updated build requirements
+- Improved troubleshooting section for common runtime issues
+
+---
+
 ## Obsidian Sentinel v2.2.3 Enterprise Edition (2026-02-04)
 
 ### 🚀 New Features

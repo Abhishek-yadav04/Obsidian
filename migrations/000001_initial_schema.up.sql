@@ -1,5 +1,5 @@
 -- ============================================================================
--- OBSIDIAN SENTINEL WAF - Database Schema v2.1.0
+-- OBSIDIAN SENTINEL WAF - Database Schema v2.2.4
 -- PostgreSQL 12+ Compatible
 -- ============================================================================
 

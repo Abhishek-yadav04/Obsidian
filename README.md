@@ -1,4 +1,4 @@
-# 🛡️ OBSIDIAN Sentinel WAF v2.2.3 Enterprise Edition
+# 🛡️ OBSIDIAN Sentinel WAF v2.2.4 Enterprise Edition
 
 <p align="center">
   <img src="cmd/obsidian/ui/assets/logo.svg" alt="Obsidian Sentinel WAF" width="200"/>
@@ -63,6 +63,11 @@
 | **Redis Clustering** | Distributed rate limiting and session management |
 | **HIBP Password Checking** | Real-time password breach validation using Have I Been Pwned |
 | **Response Body DLP** | Data Loss Prevention for sensitive information in HTTP responses |
+| **GraphQL Security Analyzer** | Advanced GraphQL query analysis with configurable limits |
+| **Cache Statistics Dashboard** | Real-time cache performance metrics and management |
+| **Rate Limit Reset Controls** | Administrative controls for rate limit management |
+| **Glassmorphism UI** | Modern dashboard with glassmorphism effects and enhanced UX |
+| **Password Strength Meter** | Real-time password validation with visual feedback |
 | **Webhook Alerting** | Real-time notifications to Slack, Teams, Discord, PagerDuty |
 | **Executive Reporting** | PDF/Excel reports with charts and threat analysis |
 | **Comprehensive Audit** | Complete security event trail with PostgreSQL storage |
@@ -90,7 +95,7 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Go 1.22+ (or TinyGo for WASM builds)
+- Go 1.23+ (or TinyGo for WASM builds)
 - Windows, Linux, or macOS
 - **Optional for Enterprise Features:**
   - PostgreSQL 12+ (for advanced analytics and audit logging)
@@ -107,20 +112,25 @@ cd obsidian
 # Install dependencies
 go mod tidy
 
-# Build the application
+# Option 1: Run directly with Go (recommended for development)
+go run ./cmd/obsidian
+
+# Option 2: Build and run executable
 cd cmd/obsidian
 go build -o obsidian.exe .
+./obsidian.exe
 
-# Run with default settings (in-memory mode)
-./obsidian.exe -port 8082
+# Run with custom port
+go run ./cmd/obsidian -port 8082
 
 # Run in development mode with debug logging
-./obsidian.exe -port 8082 -dev
+go run ./cmd/obsidian -port 8082 -dev
 
 # Run with PostgreSQL and Redis (Enterprise mode)
 export DATABASE_URL="postgres://user:pass@localhost/obsidian"
 export REDIS_URL="redis://localhost:6379"
-./obsidian.exe -port 8082
+export OBSIDIAN_JWT_SECRET="your-very-secure-jwt-secret-here-at-least-32-chars"
+go run ./cmd/obsidian -port 8082
 ```
 
 ### Access the Dashboard

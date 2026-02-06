@@ -1,4 +1,4 @@
-# Obsidian Sentinel WAF v2.2.2 - API Documentation
+# Obsidian Sentinel WAF v2.2.4 - API Documentation
 
 This document provides comprehensive API documentation for the Obsidian Sentinel WAF Enterprise Edition.
 
@@ -1279,4 +1279,4 @@ console.log(`Threats blocked: ${stats.threats_blocked}`);
 
 ---
 
-This API documentation provides comprehensive coverage of all Obsidian Sentinel WAF v2.1.0 Enterprise Edition endpoints. For additional questions or support, please refer to the main documentation or contact the development team.
+This API documentation provides comprehensive coverage of all Obsidian Sentinel WAF v2.2.4 Enterprise Edition endpoints. For additional questions or support, please refer to the main documentation or contact the development team.

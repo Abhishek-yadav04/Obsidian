@@ -1,6 +1,6 @@
 # Security Policy
 
-## Obsidian Sentinel WAF v2.2.3 Enterprise Edition
+## Obsidian Sentinel WAF v2.2.4 Enterprise Edition
 
 Obsidian Sentinel is a security-focused application designed to protect web applications. We take security vulnerabilities seriously and appreciate responsible disclosure from the security community.
 
@@ -10,13 +10,12 @@ Versions currently being supported with security updates.
 
 | Version | Supported          | Status        | End of Life   |
 | ------- | ------------------ | ------------- | ------------- |
-| v3.x    | :white_check_mark: | Current       | TBD           |
-| v2.x    | :white_check_mark: | LTS Support   | 2026-12-31    |
+| v2.x    | :white_check_mark: | Current       | TBD           |
 | v1.x    | :x:                | Deprecated    | 2024-12-31    |
 
 ## Enterprise Security Features
 
-Obsidian Sentinel v2.2.2 includes comprehensive enterprise-grade security measures:
+Obsidian Sentinel v2.2.4 includes comprehensive enterprise-grade security measures:
 
 ### Authentication & Authorization
 - **Enhanced JWT Security**: HMAC-SHA256 signed tokens with improved entropy generation
@@ -49,6 +48,28 @@ Obsidian Sentinel v2.2.2 includes comprehensive enterprise-grade security measur
 - **PII Detection**: Automatic detection and masking of personally identifiable information
 - **GDPR Compliance**: Data retention policies and right-to-deletion support
 - **Secure Configuration**: Environment-based secrets management
+
+### Recent Security Fixes (v2.2.4)
+
+#### XSS Vulnerability Mitigation
+- **Complete XSS Prevention**: Fixed all remaining XSS vulnerabilities in admin UI, including webhooks, analytics, audit logs, security API keys, IP allowlist, and HIBP error messages
+- **Safe JavaScript Literals**: Replaced unsafe string concatenation with `JSON.stringify()` for onclick handlers
+- **Input Sanitization**: Comprehensive HTML attribute escaping using `escapeAttr()` across all user inputs
+
+#### OAuth Security Enhancements
+- **Open Redirect Protection**: Added `OBSIDIAN_ALLOWED_HOST` environment variable validation for OAuth redirect URLs
+- **URL Escaping**: Proper `url.QueryEscape()` usage in Google and GitHub OAuth handlers
+- **Token Cleanup**: Enhanced error handling to clear all authentication tokens on malformed payloads
+
+#### Authentication & Session Security
+- **Client IP Extraction**: Fixed IP extraction in middleware with proper `net.SplitHostPort` usage and X-Real-IP trimming
+- **Session Management**: Corrected session update methods in persistence layer with proper error handling
+- **JWT Secret Validation**: Enforced minimum 32-character requirement for production security
+
+#### Infrastructure Security
+- **Dependency Updates**: Fixed invalid golang.org/x/crypto version and aligned Go versions across all components
+- **Build Security**: Resolved compilation errors and type mismatches that could lead to runtime vulnerabilities
+- **Concurrent Safety**: Fixed race conditions in hot paths and memory access issues
 
 ### Infrastructure Security
 - **Container Security**: Minimal attack surface with Alpine Linux base images

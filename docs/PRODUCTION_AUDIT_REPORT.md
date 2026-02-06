@@ -1,6 +1,6 @@
 # 🔒 OBSIDIAN WAF - PRODUCTION AUDIT REPORT
-**Date:** February 3, 2026  
-**Version:** 2.1.0 Enterprise Edition  
+**Date:** February 7, 2026  
+**Version:** 2.2.4 Enterprise Edition  
 **Auditors:** GitHub Copilot AI Security Analysis  
 
 ---

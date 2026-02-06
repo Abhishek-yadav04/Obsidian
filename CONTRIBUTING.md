@@ -62,7 +62,7 @@ Do you have questions about the source code? Ask any question about how to use O
 
 ## Testing
 
-Coraza uses Go's built-in test tool. Examples (run from the repository root):
+Obsidian Sentinel uses Go's built-in test tool. Examples (run from the repository root):
 
 - `go test -v` or `go run mage.go test`
 - `go test -v -race ` use to enable the built-in data race detector
@@ -72,6 +72,40 @@ Coraza uses Go's built-in test tool. Examples (run from the repository root):
 - `go run mage.go check` run tests and code style checks
 
 - `go run mage.go precommit` install the pre-commit git hook
+
+### Development Setup
+
+**Prerequisites:**
+- Go 1.23+ (required for all development and CI)
+- PostgreSQL 12+ (optional, for testing database features)
+- Redis 6+ (optional, for testing caching and rate limiting)
+
+**Quick Start:**
+```bash
+# Clone and setup
+git clone https://github.com/Abhishek-yadav04/Obsidian.git
+cd obsidian
+
+# Install dependencies
+go mod tidy
+
+# Run directly (recommended for development)
+go run ./cmd/obsidian
+
+# Or build and run
+go build -o obsidian ./cmd/obsidian
+./obsidian
+
+# Run tests
+go test ./...
+```
+
+**Environment Variables for Development:**
+```bash
+export OBSIDIAN_JWT_SECRET="your-development-secret-at-least-32-chars"
+export DATABASE_URL="postgres://user:pass@localhost/obsidian"  # Optional
+export REDIS_URL="redis://localhost:6379"                    # Optional
+```
 
 _________________
 

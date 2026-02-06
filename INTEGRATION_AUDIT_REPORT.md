@@ -1,7 +1,7 @@
 # 🔍 Obsidian WAF - In-Depth Integration Audit Report
 
-**Date**: February 4, 2026  
-**Version**: v2.2.2  
+**Date**: February 7, 2026  
+**Version**: v2.2.4  
 **Auditor**: Automated Code Analysis
 
 ---

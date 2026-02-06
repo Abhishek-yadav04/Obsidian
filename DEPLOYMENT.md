@@ -1,4 +1,4 @@
-# Obsidian Sentinel WAF v2.2.2 - Enterprise Deployment Guide
+# Obsidian Sentinel WAF v2.2.4 - Enterprise Deployment Guide
 
 This guide covers production deployment scenarios for Obsidian Sentinel WAF Enterprise Edition.
 

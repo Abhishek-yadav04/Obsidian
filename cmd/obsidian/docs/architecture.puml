@@ -1,9 +1,9 @@
-@startuml Obsidian_Sentinel_Enterprise_Architecture_v2_1_0
-' Obsidian Sentinel v2.1.0 PlantUML
+@startuml Obsidian_Sentinel_Enterprise_Architecture_v2_2_4
+' Obsidian Sentinel v2.2.4 PlantUML
 ' Real implementation (no mock data)
 !theme plain
 
-title Obsidian Sentinel WAF v2.1.0 - Enterprise Architecture (Real Implementation)
+title Obsidian Sentinel WAF v2.2.4 - Enterprise Architecture (Real Implementation)
 
 skinparam backgroundColor #FFFFFF
 skinparam defaultFontColor #2C3E50
@@ -25,7 +25,7 @@ cloud "Threat Intelligence\n(2041 Real Threats)" as threats {
 
 cloud "MaxMind GeoIP2\nDatabase" as geoip_db
 
-package "Obsidian Sentinel v2.1.0\n(Single Go Binary - All Assets Embedded)" as obsidian {
+package "Obsidian Sentinel v2.2.4\n(Single Go Binary - All Assets Embedded)" as obsidian {
   rectangle "Request ID\nGeneration" as req_id #F8C471
   rectangle "Security Headers\n(CSP, HSTS, X-Frame)" as headers #F8C471
   rectangle "Prometheus Metrics\nCollection" as metrics #F8C471

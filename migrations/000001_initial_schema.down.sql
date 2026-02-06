@@ -1,5 +1,5 @@
 -- ============================================================================
--- OBSIDIAN SENTINEL WAF - Rollback Schema v2.1.0
+-- OBSIDIAN SENTINEL WAF - Rollback Schema v2.2.4
 -- WARNING: This will DELETE ALL DATA
 -- ============================================================================
 

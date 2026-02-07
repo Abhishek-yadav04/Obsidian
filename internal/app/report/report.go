@@ -282,7 +282,7 @@ func (g *EnterprisePDFGenerator) buildEnterpriseReportContent(
 	y -= 20
 
 	// Table content
-	metrics := g.generateExecutiveMetrics(stats, logs, rules)
+	metrics := generateExecutiveMetrics(stats, logs)
 	for i, metric := range metrics {
 		if i >= 15 { // Limit for page space
 			break
@@ -298,7 +298,7 @@ func (g *EnterprisePDFGenerator) buildEnterpriseReportContent(
 		content.WriteString(fmt.Sprintf("BT /F2 14 Tf 50 %d Td (TOP SECURITY THREATS) Tj ET\n", y))
 		y -= 20
 
-		threats := g.getTopThreats(logs, 8)
+		threats := getTopThreats(logs, 8)
 		for _, threat := range threats {
 			content.WriteString(fmt.Sprintf("BT /F1 8 Tf 50 %d Td (%s | Rule %d | %s | %s) Tj ET\n",
 				y, threat.Time, threat.RuleID, threat.Severity,
@@ -547,7 +547,7 @@ func (g *EnterprisePDFGenerator) truncateString(s string, maxLen int) string {
 }
 
 // generateExecutiveMetrics creates key performance indicators
-func (g *EnterprisePDFGenerator) generateExecutiveMetrics(stats model.Stats, logs []model.LogEntry, rules []model.Rule) []Metric {
+func generateExecutiveMetrics(stats model.Stats, logs []model.LogEntry) []Metric {
 	var metrics []Metric
 
 	// Total Requests
@@ -632,7 +632,7 @@ func (g *EnterprisePDFGenerator) generateExecutiveMetrics(stats model.Stats, log
 }
 
 // getTopThreats returns the most recent threats
-func (g *EnterprisePDFGenerator) getTopThreats(logs []model.LogEntry, limit int) []ThreatInfo {
+func getTopThreats(logs []model.LogEntry, limit int) []ThreatInfo {
 	// Sort logs by timestamp (most recent first)
 	sortedLogs := make([]model.LogEntry, len(logs))
 	copy(sortedLogs, logs)
@@ -648,15 +648,15 @@ func (g *EnterprisePDFGenerator) getTopThreats(logs []model.LogEntry, limit int)
 		threats = append(threats, ThreatInfo{
 			Time:     log.Timestamp.Format("15:04:05"),
 			RuleID:   log.RuleID,
-			Severity: g.getSeverityFromRule(log.RuleID, logs),
+				Severity: getSeverityFromRule(log.RuleID, logs),
 			Details:  log.Details,
 		})
 	}
 	return threats
 }
 
-// getSeverityFromRule attempts to determine severity from rule ID or logs
-func (g *EnterprisePDFGenerator) getSeverityFromRule(ruleID int, logs []model.LogEntry) string {
+	// getSeverityFromRule attempts to determine severity from rule ID or logs
+	func getSeverityFromRule(ruleID int, logs []model.LogEntry) string {
 	// This is a simplified implementation - in production, you'd look up the actual rule
 	severities := map[int]string{
 		1: "CRITICAL", 2: "HIGH", 3: "MEDIUM", 4: "LOW", 5: "NOTICE",
@@ -831,7 +831,7 @@ func (g *Generator) generateEnterpriseContent(stats model.Stats, logs []model.Lo
 	y -= 15
 
 	// Table Data
-	metrics := g.generateExecutiveMetrics(stats, logs, rules)
+	metrics := generateExecutiveMetrics(stats, logs)
 	for _, metric := range metrics {
 		buf.WriteString(fmt.Sprintf("BT /F1 9 Tf 50 %d Td (%s) Tj ET\n", y, metric.Name))
 		buf.WriteString(fmt.Sprintf("BT /F1 9 Tf 250 %d Td (%s) Tj ET\n", y, metric.Value))
@@ -853,7 +853,7 @@ func (g *Generator) generateEnterpriseContent(stats model.Stats, logs []model.Lo
 		y -= 15
 
 		// Table Data (Top 10 threats)
-		threats := g.getTopThreats(logs, 10)
+		threats := getTopThreats(logs, 10)
 		for _, threat := range threats {
 			if y < 100 {
 				break
@@ -996,126 +996,6 @@ func (g *Generator) calculateSecurityRating(stats model.Stats, logs []model.LogE
 	}
 }
 
-// generateExecutiveMetrics creates key performance indicators
-func (g *Generator) generateExecutiveMetrics(stats model.Stats, logs []model.LogEntry, rules []model.Rule) []Metric {
-	var metrics []Metric
-
-	// Total Requests
-	metrics = append(metrics, Metric{
-		Name:   "Total Requests",
-		Value:  fmt.Sprintf("%d", stats.TotalRequests),
-		Status: "Monitored",
-	})
-
-	// Block Rate
-	var blockRate float64
-	if stats.TotalRequests > 0 {
-		blockRate = float64(stats.BlockedRequests) / float64(stats.TotalRequests) * 100
-	}
-	blockStatus := "Excellent"
-	if blockRate > 10 {
-		blockStatus = "High"
-	} else if blockRate > 5 {
-		blockStatus = "Moderate"
-	} else if blockRate > 1 {
-		blockStatus = "Low"
-	}
-	metrics = append(metrics, Metric{
-		Name:   "Block Rate",
-		Value:  fmt.Sprintf("%.2f%%", blockRate),
-		Status: blockStatus,
-	})
-
-	// Active Rules
-	ruleStatus := "Good"
-	if stats.ActiveRulesCount < 10 {
-		ruleStatus = "Low"
-	} else if stats.ActiveRulesCount > 50 {
-		ruleStatus = "Excellent"
-	}
-	metrics = append(metrics, Metric{
-		Name:   "Active Rules",
-		Value:  fmt.Sprintf("%d", stats.ActiveRulesCount),
-		Status: ruleStatus,
-	})
-
-	// Recent Threats (last 24h)
-	recentThreats := 0
-	cutoff := time.Now().Add(-24 * time.Hour)
-	for _, log := range logs {
-		if log.Timestamp.After(cutoff) {
-			recentThreats++
-		}
-	}
-	threatStatus := "Low"
-	if recentThreats > 100 {
-		threatStatus = "Critical"
-	} else if recentThreats > 50 {
-		threatStatus = "High"
-	} else if recentThreats > 10 {
-		threatStatus = "Moderate"
-	}
-	metrics = append(metrics, Metric{
-		Name:   "Recent Threats (24h)",
-		Value:  fmt.Sprintf("%d", recentThreats),
-		Status: threatStatus,
-	})
-
-	// Safe Requests Percentage
-	var safePercent float64
-	if stats.TotalRequests > 0 {
-		safePercent = float64(stats.SafeRequests) / float64(stats.TotalRequests) * 100
-	}
-	safeStatus := "Good"
-	if safePercent < 90 {
-		safeStatus = "Needs Attention"
-	} else if safePercent > 95 {
-		safeStatus = "Excellent"
-	}
-	metrics = append(metrics, Metric{
-		Name:   "Safe Requests",
-		Value:  fmt.Sprintf("%.1f%%", safePercent),
-		Status: safeStatus,
-	})
-
-	return metrics
-}
-
-// getTopThreats returns the most recent threats
-func (g *Generator) getTopThreats(logs []model.LogEntry, limit int) []ThreatInfo {
-	// Sort logs by timestamp (most recent first)
-	sortedLogs := make([]model.LogEntry, len(logs))
-	copy(sortedLogs, logs)
-	sort.Slice(sortedLogs, func(i, j int) bool {
-		return sortedLogs[i].Timestamp.After(sortedLogs[j].Timestamp)
-	})
-
-	var threats []ThreatInfo
-	for i, log := range sortedLogs {
-		if i >= limit {
-			break
-		}
-		threats = append(threats, ThreatInfo{
-			Time:     log.Timestamp.Format("15:04:05"),
-			RuleID:   log.RuleID,
-			Severity: g.getSeverityFromRule(log.RuleID, logs),
-			Details:  log.Details,
-		})
-	}
-	return threats
-}
-
-// getSeverityFromRule attempts to determine severity from rule ID or logs
-func (g *Generator) getSeverityFromRule(ruleID int, logs []model.LogEntry) string {
-	// This is a simplified implementation - in production, you'd look up the actual rule
-	severities := map[int]string{
-		1: "CRITICAL", 2: "HIGH", 3: "MEDIUM", 4: "LOW", 5: "NOTICE",
-	}
-	if severity, exists := severities[ruleID%5+1]; exists {
-		return severity
-	}
-	return "UNKNOWN"
-}
 
 // PerfMetric represents performance metrics
 type PerfMetric struct {

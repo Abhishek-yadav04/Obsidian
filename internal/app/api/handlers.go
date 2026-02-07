@@ -115,7 +115,10 @@ func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	user, err := a.Store.AuthenticateUser(req.Username, req.Password)
 	if err != nil {
 		// Perform dummy bcrypt work to prevent timing-based user enumeration
-		_ = bcrypt.CompareHashAndPassword([]byte("$2a$12$000000000000000000000000000000000000000000000000000000"), []byte(req.Password))
+		dummyHash, hashErr := bcrypt.GenerateFromPassword([]byte("invalid-password"), bcrypt.MinCost)
+		if hashErr == nil {
+			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))
+		}
 		w.Header().Set(contentTypeHeader, contentTypeJSON)
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid credentials"})

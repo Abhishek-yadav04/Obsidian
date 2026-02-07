@@ -1,0 +1,6 @@
+{
+  "appId": "com.obsidianwaf.app",
+  "appName": "Obsidian WAF",
+  "webDir": "../cmd/obsidian/ui",
+  "bundledWebRuntime": false
+}

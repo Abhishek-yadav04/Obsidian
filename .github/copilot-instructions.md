@@ -184,6 +184,40 @@ Coraza is a Web Application Firewall (WAF) engine written in Go that implements 
 - Don't log in tight loops
 - Make logging configurable
 
+# Project Guidelines
+
+## Code Style
+- Go code follows strict performance/security guidance; avoid allocations on request hot paths and prefer `sync.Pool` for reusable objects (see `.github/copilot-instructions.md` legacy guidance and `cmd/obsidian/main.go`).
+- Wrap errors with `%w` and keep interfaces tiny; use functional options for constructors with many params (pattern used across internal packages).
+- Naming: use `ctx`, `tx`, and descriptive `rule` names; `New()` is reserved for main type constructors; prefer `obsidian`-named packages to distinguish from upstream.
+- Do not use `panic()` in runtime code; avoid global mutable state.
+
+## Architecture
+- Entry point: `cmd/obsidian/main.go` wires middleware, services, and routes (request pipeline: request ID → security headers → IP allowlist → metrics → rate limit → GeoIP → logging → WAF → router).
+- API handlers live in `internal/app/api/handlers.go` (login, rules CRUD, stats/logs, audit logs, WebSockets).
+- Persistence and runtime state are coordinated in `internal/app/store` (hybrid in-memory + PostgreSQL).
+- Reporting uses `internal/app/report/report.go` for PDF/text generation.
+
+## Build and Test
+- Run: `go run ./cmd/obsidian`
+- Build: `go build -o obsidian ./cmd/obsidian`
+- Tests: `go test ./...`
+- Mage tasks: `go run mage.go test`, `go run mage.go lint`, `go run mage.go check`, `go run mage.go coverage` (see `magefile.go`).
+
+## Project Conventions
+- Rule objects are immutable after compilation; treat all inputs as untrusted; validate regexes for ReDoS risk.
+- Logs must redact sensitive fields (e.g., `password`, `token`, `key`, `authorization`).
+- If you change hot-path logic, add benchmarks (`BenchmarkXxx`) and prefer maps for rule lookups.
+
+## Integration Points
+- PostgreSQL via `pgx` (rules/users/audit logs), Redis for rate limiting/cache, Prometheus metrics, WebSockets for live updates.
+- GeoIP uses MaxMind DB; threat intel feeds are integrated in the main service wiring.
+
+## Security
+- JWT auth uses env‑provided secret; bcrypt cost is enforced in `internal/app/auth`.
+- RBAC is enforced in middleware (Admin/Analyst/Viewer) in `cmd/obsidian/main.go`.
+- IP allowlist and HIBP password checks are optional but wired into API flows.
+
 ## When Adding New Features
 
 1. Come up with a solid use case with more than one potential user

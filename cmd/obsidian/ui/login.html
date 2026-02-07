@@ -38,6 +38,7 @@
       inset: 0;
       z-index: 0;
       overflow: hidden;
+      pointer-events: none;
     }
     
     .particle {
@@ -46,7 +47,7 @@
       height: 6px;
       background: var(--accent-red);
       border-radius: 50%;
-      opacity: 0;
+      opacity: 0.15;
       box-shadow: 0 0 10px var(--accent-red), 0 0 20px var(--accent-red);
       animation: float 12s infinite linear;
     }
@@ -587,7 +588,11 @@
       }
       
       .particles {
-        display: none; /* Disable particles on very small screens for performance */
+        opacity: 0.6;
+      }
+
+      .particle {
+        box-shadow: 0 0 8px var(--accent-red);
       }
     }
     
@@ -750,14 +755,14 @@
       
       <!-- Footer -->
       <div class="login-footer">
-        <p>Protected by Obsidian WAF v2.0 • <a href="https://github.com/Abhishek-yadav04/Obsidian" target="_blank">Documentation</a></p>
+        <p>Protected by Obsidian WAF v2.2.4 • <a href="https://github.com/Abhishek-yadav04/Obsidian" target="_blank">Documentation</a></p>
       </div>
     </div>
   </div>
   
   <!-- Version Badge -->
   <div class="version-badge">
-    <i class="fas fa-code-branch"></i> v2.0.0
+    <i class="fas fa-code-branch"></i> v2.2.4
   </div>
 
   <script>
@@ -766,7 +771,7 @@
       const container = document.getElementById('particles');
       if (!container) return;
       
-      const particleCount = 60;
+      const particleCount = window.innerWidth <= 480 ? 24 : window.innerWidth <= 768 ? 36 : 60;
       
       for (let i = 0; i < particleCount; i++) {
         const particle = document.createElement('div');

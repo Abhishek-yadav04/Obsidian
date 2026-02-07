@@ -1422,10 +1422,16 @@ const ObsidianApp = {
         // Mobile toggle
         const sidebar = document.getElementById('sidebar');
         const overlay = document.querySelector('.overlay');
+        const sidebarClose = document.getElementById('sidebarClose');
         
         document.querySelector('.mobile-toggle')?.addEventListener('click', () => {
             sidebar?.classList.toggle('active');
             overlay?.classList.toggle('active');
+        });
+
+        sidebarClose?.addEventListener('click', () => {
+            sidebar?.classList.remove('active');
+            overlay?.classList.remove('active');
         });
 
         // Close sidebar when clicking overlay
@@ -2007,7 +2013,11 @@ const ObsidianApp = {
     
     async createAPIKey() {
         const name = document.getElementById('apikey-name')?.value;
-        const scopes = document.getElementById('apikey-scopes')?.value.split(',').map(s => s.trim());
+        const rawScopes = document.getElementById('apikey-scopes')?.value || '';
+        const scopes = rawScopes
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean);
         const expiresIn = parseInt(document.getElementById('apikey-expires')?.value || '30');
         
         if (!name) {
@@ -2017,13 +2027,18 @@ const ObsidianApp = {
         
         const res = await this.api('/api/security/apikeys/create', {
             method: 'POST',
-            body: JSON.stringify({ name, scopes, expires_in_days: expiresIn })
+            body: JSON.stringify({
+                name,
+                scopes,
+                expires_in: `${expiresIn * 24}h`
+            })
         });
         
         if (res?.success) {
-            this.showToast('Success', `API Key created! Key: ${res.full_key}`);
+            const createdKey = res.key || res.full_key || '';
+            this.showToast('Success', `API Key created! Key: ${createdKey}`);
             // Show the key in an alert so user can copy it
-            alert(`API Key Created!\n\nKey: ${res.full_key}\n\nSave this key now - it won't be shown again!`);
+            alert(`API Key Created!\n\nKey: ${createdKey}\n\nSave this key now - it won't be shown again!`);
             await this.fetchAPIKeys();
             bootstrap.Modal.getInstance(document.getElementById('apiKeyModal'))?.hide();
         } else {

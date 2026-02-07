@@ -1,0 +1,17 @@
+{
+  "name": "obsidian-mobile",
+  "private": true,
+  "version": "2.2.4",
+  "description": "Obsidian WAF mobile wrapper (Capacitor)",
+  "dependencies": {
+    "@capacitor/core": "^6.1.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/cli": "^6.1.0"
+  },
+  "scripts": {
+    "cap:add": "cap add android",
+    "cap:sync": "cap sync android"
+  }
+}

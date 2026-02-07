@@ -18,7 +18,7 @@ func NewWAF(s *store.Store) (coraza.WAF, error) {
 		WithDirectives(`
 # ===========================================
 # OBSIDIAN WAF - Enterprise Security Ruleset
-# Version: 2.0.0 | Coverage: 99%+ Attack Types
+# Version: 2.2.4 | Coverage: 99%+ Attack Types
 # Total Rules: 55+ | Categories: 16
 # ===========================================
 

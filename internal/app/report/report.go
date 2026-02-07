@@ -648,15 +648,15 @@ func getTopThreats(logs []model.LogEntry, limit int) []ThreatInfo {
 		threats = append(threats, ThreatInfo{
 			Time:     log.Timestamp.Format("15:04:05"),
 			RuleID:   log.RuleID,
-				Severity: getSeverityFromRule(log.RuleID, logs),
+			Severity: getSeverityFromRule(log.RuleID, logs),
 			Details:  log.Details,
 		})
 	}
 	return threats
 }
 
-	// getSeverityFromRule attempts to determine severity from rule ID or logs
-	func getSeverityFromRule(ruleID int, logs []model.LogEntry) string {
+// getSeverityFromRule attempts to determine severity from rule ID or logs
+func getSeverityFromRule(ruleID int, logs []model.LogEntry) string {
 	// This is a simplified implementation - in production, you'd look up the actual rule
 	severities := map[int]string{
 		1: "CRITICAL", 2: "HIGH", 3: "MEDIUM", 4: "LOW", 5: "NOTICE",
@@ -995,7 +995,6 @@ func (g *Generator) calculateSecurityRating(stats model.Stats, logs []model.LogE
 		Color:       color,
 	}
 }
-
 
 // PerfMetric represents performance metrics
 type PerfMetric struct {

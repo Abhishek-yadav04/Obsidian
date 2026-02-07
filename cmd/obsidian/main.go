@@ -1286,7 +1286,8 @@ func handleExport(s *store.Store) http.HandlerFunc {
 			// Generate PDF report
 			pdfData, err := reportGen.GeneratePDF(stats, logs, rules)
 			if err != nil {
-				http.Error(w, "Failed to generate PDF", http.StatusInternalServerError)
+				logger.Error("PDF generation failed: " + err.Error())
+				http.Error(w, "Failed to generate PDF: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 			w.Header().Set("Content-Type", "application/pdf")

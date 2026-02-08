@@ -1540,10 +1540,93 @@ func handleCacheStats(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 
-		// Get stats from Redis
-		stats, err := redisCache.GetAllStats(ctx)
+		// Get real Redis statistics from INFO command
+		info, err := redisCache.Info(ctx)
 		if err == nil {
-			response["stats"] = stats
+			// Parse Redis INFO output
+			lines := strings.Split(info, "\r\n")
+			infoMap := make(map[string]string)
+			for _, line := range lines {
+				if strings.Contains(line, ":") {
+					parts := strings.SplitN(line, ":", 2)
+					if len(parts) == 2 {
+						infoMap[parts[0]] = parts[1]
+					}
+				}
+			}
+
+			// Extract key statistics
+			cacheStats := map[string]interface{}{}
+
+			// Hit rate calculation: keyspace_hits / (keyspace_hits + keyspace_misses)
+			if hits := infoMap["keyspace_hits"]; hits != "" {
+				if misses := infoMap["keyspace_misses"]; misses != "" {
+					hitsNum, _ := strconv.ParseFloat(hits, 64)
+					missesNum, _ := strconv.ParseFloat(misses, 64)
+					total := hitsNum + missesNum
+					if total > 0 {
+						hitRate := (hitsNum / total) * 100
+						cacheStats["hit_rate"] = fmt.Sprintf("%.2f%%", hitRate)
+					} else {
+						cacheStats["hit_rate"] = "0.00%"
+					}
+				}
+			}
+
+			// Total keys across all databases
+			totalKeys := int64(0)
+			for key, value := range infoMap {
+				if strings.HasPrefix(key, "db") && strings.Contains(value, "keys=") {
+					// Parse "keys=123,expires=45,avg_ttl=67890"
+					parts := strings.Split(value, ",")
+					for _, part := range parts {
+						if strings.HasPrefix(part, "keys=") {
+							if keyCount, err := strconv.ParseInt(strings.TrimPrefix(part, "keys="), 10, 64); err == nil {
+								totalKeys += keyCount
+							}
+						}
+					}
+				}
+			}
+			cacheStats["total_keys"] = totalKeys
+
+			// Memory usage
+			if mem := infoMap["used_memory_human"]; mem != "" {
+				cacheStats["memory_used"] = mem
+			} else if memBytes := infoMap["used_memory"]; memBytes != "" {
+				if memNum, err := strconv.ParseInt(memBytes, 10, 64); err == nil {
+					// Convert bytes to human readable
+					const unit = 1024
+					if memNum < unit {
+						cacheStats["memory_used"] = fmt.Sprintf("%d B", memNum)
+					} else if memNum < unit*unit {
+						cacheStats["memory_used"] = fmt.Sprintf("%.2f KB", float64(memNum)/unit)
+					} else if memNum < unit*unit*unit {
+						cacheStats["memory_used"] = fmt.Sprintf("%.2f MB", float64(memNum)/(unit*unit))
+					} else {
+						cacheStats["memory_used"] = fmt.Sprintf("%.2f GB", float64(memNum)/(unit*unit*unit))
+					}
+				}
+			}
+
+			// Additional useful stats
+			if uptime := infoMap["uptime_in_seconds"]; uptime != "" {
+				cacheStats["uptime_seconds"] = uptime
+			}
+			if connectedClients := infoMap["connected_clients"]; connectedClients != "" {
+				cacheStats["connected_clients"] = connectedClients
+			}
+			if totalCommands := infoMap["total_commands_processed"]; totalCommands != "" {
+				cacheStats["total_commands"] = totalCommands
+			}
+
+			response["cache_stats"] = cacheStats
+		}
+
+		// Get custom stats from Redis (if any)
+		stats, err := redisCache.GetAllStats(ctx)
+		if err == nil && len(stats) > 0 {
+			response["custom_stats"] = stats
 		}
 
 		// Get connection pool stats from database manager

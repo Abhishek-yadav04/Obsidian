@@ -2510,6 +2510,52 @@ const ObsidianApp = {
             this.showToast('Error', res?.error || 'Failed to reset rate limits', true);
             if (resultDiv) resultDiv.innerHTML = '<div class="alert alert-danger mt-2">Reset failed.</div>';
         }
+    },
+
+    // Fetch cache statistics from Redis
+    async fetchCacheStats() {
+        try {
+            const data = await this.api('/api/cache/stats');
+            if (!data) return;
+
+            // Update cache statistics display
+            if (data.cache_stats) {
+                const stats = data.cache_stats;
+
+                // Hit Rate
+                const hitRateEl = document.getElementById('cache-hit-rate');
+                if (hitRateEl && stats.hit_rate) {
+                    hitRateEl.textContent = stats.hit_rate;
+                }
+
+                // Total Keys
+                const totalKeysEl = document.getElementById('cache-total-keys');
+                if (totalKeysEl && stats.total_keys !== undefined) {
+                    totalKeysEl.textContent = stats.total_keys.toLocaleString();
+                }
+
+                // Memory Used
+                const memoryEl = document.getElementById('cache-memory');
+                if (memoryEl && stats.memory_used) {
+                    memoryEl.textContent = stats.memory_used;
+                }
+            }
+
+            // Update Redis connection status
+            const redisEl = document.getElementById('health-redis');
+            if (redisEl) {
+                const isConnected = data.redis_connected;
+                redisEl.textContent = isConnected ? 'Connected' : 'Not Configured';
+                redisEl.className = `badge bg-${isConnected ? 'success' : 'secondary'}`;
+            }
+
+        } catch (error) {
+            console.error('Failed to fetch cache stats:', error);
+            // Show error state
+            document.getElementById('cache-hit-rate').textContent = 'Error';
+            document.getElementById('cache-total-keys').textContent = 'Error';
+            document.getElementById('cache-memory').textContent = 'Error';
+        }
     }
 };
 

@@ -1,47 +1,93 @@
 version: 2
+
 updates:
-  # Go modules
+  # -------------------------
+  # Go Modules
+  # -------------------------
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+
     open-pull-requests-limit: 10
+
     reviewers:
       - "security-team"
+
     labels:
       - "dependencies"
       - "go"
+
     commit-message:
-      prefix: "deps"
+      prefix: "deps(go)"
+      include: "scope"
+
     groups:
-      go-minor:
+      go-minor-and-patch:
         patterns:
           - "*"
         update-types:
           - "minor"
           - "patch"
 
+    ignore:
+      # Avoid noisy Go toolchain bumps unless intentional
+      - dependency-name: "golang.org/x/*"
+        update-types: ["version-update:semver-major"]
+
+  # -------------------------
   # GitHub Actions
+  # -------------------------
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "03:30"
+      timezone: "UTC"
+
     open-pull-requests-limit: 5
+
     labels:
       - "dependencies"
       - "ci"
-    commit-message:
-      prefix: "ci"
 
+    commit-message:
+      prefix: "ci(deps)"
+      include: "scope"
+
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # -------------------------
   # Docker
+  # -------------------------
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "04:00"
+      timezone: "UTC"
+
     open-pull-requests-limit: 5
+
     labels:
       - "dependencies"
       - "docker"
+
     commit-message:
-      prefix: "docker"
+      prefix: "docker(deps)"
+      include: "scope"
+
+    groups:
+      docker-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "patch"

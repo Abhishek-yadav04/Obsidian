@@ -1,45 +1,49 @@
-name: Tinygo tests
+name: TinyGo Tests
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths-ignore:
       - "**/*.md"
       - "LICENSE"
   pull_request:
-    branches:
-      - main
+    branches: [main]
     paths-ignore:
       - "**/*.md"
       - "LICENSE"
 
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: TinyGo Compatibility Tests
+    runs-on: ubuntu-latest
+
     strategy:
+      fail-fast: false
       matrix:
         go-version: [1.23.x]
-        # tinygo-version is meant to stay aligned with the one used in corazawaf/coraza-proxy-wasm
+        # Keep aligned with coraza-proxy-wasm
         tinygo-version: [0.34.0]
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v6
+        uses: actions/checkout@v4
 
-      - name: Install Go
-        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
 
-      - name: Setup tinygo
-        uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
+      - name: Setup TinyGo
+        uses: acifani/setup-tinygo@v2
         with:
           tinygo-version: ${{ matrix.tinygo-version }}
 
-      - name: Cache TinyGo build
-        uses: actions/cache@a7833574556fa59680c1b7cb190c1735db73ebf0 # v5
+      - name: Cache TinyGo build artifacts
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/tinygo
@@ -47,8 +51,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-tinygo-${{ matrix.tinygo-version }}-
 
-      - name: Tests
-        run: tinygo test ./...
+      - name: Run TinyGo tests (default)
+        shell: bash
+        run: |
+          set -euo pipefail
+          tinygo test ./...
 
-      - name: Tests memoize
-        run: tinygo test -tags=memoize_builders ./...
+      - name: Run TinyGo tests (memoize builders)
+        shell: bash
+        run: |
+          set -euo pipefail
+          tinygo test -tags=memoize_builders ./...

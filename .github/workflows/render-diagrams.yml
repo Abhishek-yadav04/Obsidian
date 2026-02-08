@@ -2,60 +2,50 @@ name: Render Architecture Diagrams
 
 on:
   push:
+    branches: [main, v2]
     paths:
       - 'cmd/obsidian/docs/architecture.puml'
-    branches: [ main, v2]
+
+permissions:
+  contents: write
 
 jobs:
   render:
+    name: Render PlantUML Architecture Diagram
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v6
-      with:
-        # Fetch full history for proper diff detection
-        fetch-depth: 0
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Setup PlantUML
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y plantuml
+      # Use official PlantUML container (no apt-get, deterministic)
+      - name: Render diagram
+        uses: docker://plantuml/plantuml:latest
+        with:
+          args: >
+            -tsvg
+            cmd/obsidian/docs/architecture.puml
 
-    - name: Render Diagrams
-      run: |
-        cd cmd/obsidian/docs
-        echo "Rendering architecture diagram..."
-        plantuml -tsvg architecture.puml
-        echo "SVG generated successfully"
+      - name: Detect changes
+        id: diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- cmd/obsidian/docs/architecture.svg; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
-    - name: Check for changes
-      id: verify-changed-files
-      run: |
-        CHANGED="false"
-        # Check for modifications to tracked file
-        if [ -n "$(git diff --name-only cmd/obsidian/docs/architecture.svg)" ]; then
-          CHANGED="true"
-        fi
-        # Check for untracked/new file
-        if [ -n "$(git status --porcelain -- cmd/obsidian/docs/architecture.svg)" ]; then
-          CHANGED="true"
-        fi
-        echo "changed=${CHANGED}" >> $GITHUB_OUTPUT
-        if [ "${CHANGED}" = "true" ]; then
-          echo "Architecture diagram updated"
-        else
-          echo "No changes to architecture diagram"
-        fi
-
-    - name: Commit changes
-      if: steps.verify-changed-files.outputs.changed == 'true'
-      run: |
-        git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
-        git add cmd/obsidian/docs/architecture.svg
-        git commit -m "docs: regenerate architecture diagram [auto]"
-        git push
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit updated diagram
+        if: steps.diff.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cmd/obsidian/docs/architecture.svg
+          git commit -m "docs(architecture): regenerate diagram [auto]"
+          git push

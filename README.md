@@ -248,6 +248,15 @@ obsidian/
 | `SUPABASE_KEY` | Supabase anon/public key | None | No (for OAuth) |
 | `LOG_LEVEL` | Logging level (debug, info, warn, error) | info | No |
 | `LOG_FORMAT` | Log format (json, console) | json | No |
+| `OBSIDIAN_CRS_ENABLED` | Enable OWASP CRS loading | false | No |
+| `OBSIDIAN_CRS_PATH` | Filesystem path to CRS root | None | No |
+| `OBSIDIAN_CRS_MODE` | CRS engine mode (DetectionOnly/On) | DetectionOnly | No |
+| `OBSIDIAN_CRS_FAIL_OPEN` | Continue startup if CRS load fails | false | No |
+| `OBSIDIAN_WAF_CUSTOM_RULES` | Path to Obsidian custom rules file | rules/obsidian-custom.conf | No |
+
+### OWASP CRS (External Ruleset)
+
+Obsidian loads OWASP CRS as an external ruleset at runtime. CRS files are **not vendored** in this repository. To enable CRS, place the official CRS files on disk and point `OBSIDIAN_CRS_PATH` to the CRS root that contains `crs-setup.conf` and the `rules/` directory.
 
 ### Command Line Flags
 
@@ -293,6 +302,13 @@ GEOIP_DATABASE_PATH=/opt/maxmind/GeoLite2-Country.mmdb
 # Logging
 LOG_LEVEL=info
 LOG_FORMAT=json
+
+# OWASP CRS (external ruleset)
+OBSIDIAN_CRS_ENABLED=false
+OBSIDIAN_CRS_PATH=/opt/owasp-crs
+OBSIDIAN_CRS_MODE=DetectionOnly
+OBSIDIAN_CRS_FAIL_OPEN=false
+OBSIDIAN_WAF_CUSTOM_RULES=rules/obsidian-custom.conf
 ```
 
 ### Production Deployment Checklist

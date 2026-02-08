@@ -10,6 +10,8 @@ DROP INDEX IF EXISTS idx_attack_logs_client_ip;
 DROP INDEX IF EXISTS idx_attack_logs_time;
 DROP INDEX IF EXISTS idx_audit_logs_severity;
 DROP INDEX IF EXISTS idx_audit_logs_time;
+DROP INDEX IF EXISTS idx_rule_audit_log_rule_id;
+DROP INDEX IF EXISTS idx_rule_audit_log_timestamp;
 DROP INDEX IF EXISTS idx_sessions_expires;
 DROP INDEX IF EXISTS idx_sessions_user_id;
 
@@ -19,5 +21,6 @@ DROP TABLE IF EXISTS stats;
 DROP TABLE IF EXISTS waf_rules;
 DROP TABLE IF EXISTS attack_logs;
 DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS rule_audit_log;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS users;

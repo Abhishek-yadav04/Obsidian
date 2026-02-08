@@ -212,9 +212,19 @@ func (a *API) HandleLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) HandleRules(w http.ResponseWriter, r *http.Request) {
-	rules := a.Store.GetRules()
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	json.NewEncoder(w).Encode(rules)
+	source := strings.ToLower(r.URL.Query().Get("source"))
+	switch source {
+	case "custom", "crs":
+		rules := a.Store.GetRulesBySource(source)
+		w.Header().Set(contentTypeHeader, contentTypeJSON)
+		json.NewEncoder(w).Encode(rules)
+		return
+	default:
+		rules := a.Store.GetRules()
+		w.Header().Set(contentTypeHeader, contentTypeJSON)
+		json.NewEncoder(w).Encode(rules)
+		return
+	}
 }
 
 func (a *API) HandleWS(w http.ResponseWriter, r *http.Request) {
@@ -255,8 +265,11 @@ func (a *API) HandleCreateRule(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
+	rule.Source = "custom"
+	rule.ReadOnly = false
+	actor := resolveActor(r)
 
-	if err := a.Store.CreateRule(rule); err != nil {
+	if err := a.Store.CreateRule(rule, actor); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -282,8 +295,11 @@ func (a *API) HandleUpdateRule(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
+	rule.Source = "custom"
+	rule.ReadOnly = false
+	actor := resolveActor(r)
 
-	if err := a.Store.UpdateRule(rule); err != nil {
+	if err := a.Store.UpdateRule(rule, actor); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -309,8 +325,9 @@ func (a *API) HandleDeleteRule(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
+	actor := resolveActor(r)
 
-	if err := a.Store.DeleteRule(req.ID); err != nil {
+	if err := a.Store.DeleteRule(req.ID, actor); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -455,4 +472,111 @@ func (a *API) HandleAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	json.NewEncoder(w).Encode(logs)
+}
+
+// HandleRuleAuditLogs returns rule audit trail (Admin only)
+// Requires authentication - JWT token in Authorization header
+func (a *API) HandleRuleAuditLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse pagination parameters
+	limit := 100
+	offset := 0
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 1000 {
+			limit = parsed
+		}
+	}
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	logs, err := a.Store.GetRuleAuditLogs(limit, offset)
+	if err != nil {
+		logs = []model.RuleAuditLog{}
+	}
+
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
+	json.NewEncoder(w).Encode(logs)
+}
+
+// HandleCRSStatus returns CRS status (Admin only)
+func (a *API) HandleCRSStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
+		return
+	}
+
+	status := a.Store.CRSStatus()
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
+	json.NewEncoder(w).Encode(status)
+}
+
+// HandleCRSEnable enables CRS visibility (Admin only)
+func (a *API) HandleCRSEnable(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := a.Store.EnableCRS(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	actor := resolveActor(r)
+	a.Store.AddAuditLog(model.AuditLog{
+		Action:    "CRS_ENABLE",
+		Resource:  "/api/admin/crs/enable",
+		Details:   "CRS enabled by " + actor,
+		IPAddress: extractClientIP(r),
+		Timestamp: time.Now(),
+	})
+
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "CRS enabled",
+	})
+}
+
+// HandleCRSDisable disables CRS visibility (Admin only)
+func (a *API) HandleCRSDisable(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := a.Store.DisableCRS(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	actor := resolveActor(r)
+	a.Store.AddAuditLog(model.AuditLog{
+		Action:    "CRS_DISABLE",
+		Resource:  "/api/admin/crs/disable",
+		Details:   "CRS disabled by " + actor,
+		IPAddress: extractClientIP(r),
+		Timestamp: time.Now(),
+	})
+
+	w.Header().Set(contentTypeHeader, contentTypeJSON)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "CRS disabled",
+	})
+}
+
+func resolveActor(r *http.Request) string {
+	actor := strings.TrimSpace(r.Header.Get("X-Actor"))
+	if actor == "" {
+		return "unknown"
+	}
+	return actor
 }

@@ -16,8 +16,9 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -56,9 +57,7 @@ const (
 
 // Metrics for observability
 var (
-	totalRequests   int64
-	blockedRequests int64
-	startTime       = time.Now()
+	startTime = time.Now()
 )
 
 // Global instances for enterprise features
@@ -73,6 +72,7 @@ var (
 	metricsInst  *metrics.Metrics
 	dbManager    *database.Manager // Database connection manager
 	redisCache   *cache.Cache      // Redis cache for rate limiting & sessions
+	appStore     *store.Store
 
 	// Security Services (Enterprise Features)
 	apiKeyMgr         *apikeys.Manager    // API Key management with scopes
@@ -98,6 +98,28 @@ const apiKeyContextKey contextKey = "api_key"
 
 //go:embed ui/*
 var uiAssets embed.FS
+
+func envString(key, def string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return def
+}
+
+func envBool(key string, def bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	switch strings.ToLower(v) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return def
+	}
+}
 
 func main() {
 	// Parse flags
@@ -186,7 +208,14 @@ func main() {
 	} else {
 		logger.Warn("Store running without PostgreSQL - authentication will fail!")
 	}
+	storeOpts = append(storeOpts,
+		store.WithRulesFile(envString("OBSIDIAN_WAF_CUSTOM_RULES", "rules/obsidian-custom.conf")),
+		store.WithCRSPath(envString("OBSIDIAN_CRS_PATH", "")),
+		store.WithCRSEnabled(envBool("OBSIDIAN_CRS_ENABLED", false)),
+		store.WithCRSVersion(envString("OBSIDIAN_CRS_VERSION", "unknown")),
+	)
 	s := store.NewStore("data.json", storeOpts...)
+	appStore = s
 
 	// Sync WAF rules to PostgreSQL on startup
 	if dbManager != nil && dbManager.HasPostgres() {
@@ -280,10 +309,22 @@ func main() {
 	initSecurityServices()
 
 	// Initialize WAF
-	wafEngine, err := waf.NewWAF(s)
+	wafConfig := waf.Config{
+		CRSEnabled:      envBool("OBSIDIAN_CRS_ENABLED", false),
+		CRSPath:         envString("OBSIDIAN_CRS_PATH", ""),
+		CRSMode:         envString("OBSIDIAN_CRS_MODE", "DetectionOnly"),
+		CustomRulesPath: envString("OBSIDIAN_WAF_CUSTOM_RULES", "rules/obsidian-custom.conf"),
+	}
+
+	wafEngine, err := waf.NewWAF(s, wafConfig)
 	if err != nil {
-		logger.Error("Failed to initialize WAF engine")
-		os.Exit(1)
+		logger.Warn(fmt.Sprintf("WAF engine initialization failed: %v — starting in degraded mode (no WAF protection)", err))
+		// Create a minimal WAF with just SecRuleEngine On so the app starts
+		wafEngine, err = coraza.NewWAF(coraza.NewWAFConfig().WithDirectives("SecRuleEngine On"))
+		if err != nil {
+			logger.Error(fmt.Sprintf("Failed to create fallback WAF engine: %v", err))
+			os.Exit(1)
+		}
 	}
 
 	// Initialize API
@@ -319,6 +360,10 @@ func main() {
 	mux.HandleFunc("/api/export", authOrAPIKeyMiddleware(apikeys.ScopeExport, handleExport(s)))
 	mux.HandleFunc("/api/admin/users", authMiddleware(rbacMiddleware("Admin", apiHandler.HandleUsers)))
 	mux.HandleFunc("/api/admin/audit", authOrAPIKeyMiddleware(apikeys.ScopeAdmin, rbacMiddleware("Admin", apiHandler.HandleAuditLogs)))
+	mux.HandleFunc("/api/admin/rules/audit", authOrAPIKeyMiddleware(apikeys.ScopeAdmin, rbacMiddleware("Admin", apiHandler.HandleRuleAuditLogs)))
+	mux.HandleFunc("/api/admin/crs/status", authOrAPIKeyMiddleware(apikeys.ScopeAdmin, rbacMiddleware("Admin", apiHandler.HandleCRSStatus)))
+	mux.HandleFunc("/api/admin/crs/enable", authOrAPIKeyMiddleware(apikeys.ScopeAdmin, rbacMiddleware("Admin", apiHandler.HandleCRSEnable)))
+	mux.HandleFunc("/api/admin/crs/disable", authOrAPIKeyMiddleware(apikeys.ScopeAdmin, rbacMiddleware("Admin", apiHandler.HandleCRSDisable)))
 
 	// Prometheus Metrics endpoint
 	mux.Handle("/metrics", metricsInst.Handler())
@@ -598,7 +643,6 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 
 		// Check threat intelligence first
 		if entry, blocked := threatIntel.CheckIP(ip); blocked {
-			atomic.AddInt64(&blockedRequests, 1)
 			threatIntel.RecordHit(ip)
 
 			// Record metrics
@@ -609,17 +653,18 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 
 			// Log threat-blocked request
 			s.AddLog(model.LogEntry{
-				ID:         fmt.Sprintf("threat-%d", time.Now().UnixNano()),
-				Timestamp:  requestStart,
-				ClientIP:   ip,
-				Method:     r.Method,
-				URI:        r.URL.Path,
-				RuleID:     0,
-				Action:     "Deny",
-				Status:     "ThreatBlocked",
-				Details:    fmt.Sprintf("[%s] IP blocked by threat intelligence: %s", requestID, entry.Category),
-				StatusCode: http.StatusForbidden,
-				UserAgent:  userAgent,
+				ID:             fmt.Sprintf("threat-%d", time.Now().UnixNano()),
+				Timestamp:      requestStart,
+				ClientIP:       ip,
+				Method:         r.Method,
+				URI:            r.URL.Path,
+				RuleID:         0,
+				Action:         "Deny",
+				Status:         "ThreatBlocked",
+				Details:        fmt.Sprintf("[%s] IP blocked by threat intelligence: %s", requestID, entry.Category),
+				StatusCode:     http.StatusForbidden,
+				UserAgent:      userAgent,
+				ResponseTimeMs: float64(time.Since(requestStart).Microseconds()) / 1000.0,
 			})
 
 			// Persist attack log to PostgreSQL
@@ -684,14 +729,14 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 		metricsInst.RecordWAFRuleEvaluation("request_headers", time.Since(evalStart))
 
 		if it := tx.ProcessRequestHeaders(); it != nil {
-			processInterruption(w, it, s, r, requestID)
+			processInterruption(w, it, tx, s, r, requestID)
 			return
 		}
 
 		// 2. Process Request Body
 		evalStart = time.Now()
 		if it, _ := tx.ProcessRequestBody(); it != nil {
-			processInterruption(w, it, s, r, requestID)
+			processInterruption(w, it, tx, s, r, requestID)
 			return
 		}
 		metricsInst.RecordWAFRuleEvaluation("request_body", time.Since(evalStart))
@@ -714,18 +759,20 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 
 		// Log safe request (skip static assets to reduce noise)
 		if !tx.IsInterrupted() && !isStaticAsset {
+			elapsed := time.Since(requestStart)
 			s.AddSafeLog(model.LogEntry{
-				ID:         fmt.Sprintf("req-%d", time.Now().UnixNano()),
-				Timestamp:  requestStart,
-				ClientIP:   ip,
-				Method:     r.Method,
-				URI:        r.URL.Path,
-				RuleID:     0,
-				Action:     "Pass",
-				Status:     "Safe",
-				Details:    fmt.Sprintf("[%s] Request processed successfully in %v", requestID, time.Since(requestStart)),
-				StatusCode: rec.statusCode,
-				UserAgent:  userAgent,
+				ID:             fmt.Sprintf("req-%d", time.Now().UnixNano()),
+				Timestamp:      requestStart,
+				ClientIP:       ip,
+				Method:         r.Method,
+				URI:            r.URL.Path,
+				RuleID:         0,
+				Action:         "Pass",
+				Status:         "Safe",
+				Details:        fmt.Sprintf("[%s] Request processed successfully in %v", requestID, elapsed),
+				StatusCode:     rec.statusCode,
+				UserAgent:      userAgent,
+				ResponseTimeMs: float64(elapsed.Microseconds()) / 1000.0,
 			})
 			// Increment total requests in database
 			s.IncrementDBStat("total_requests", 1)
@@ -738,35 +785,41 @@ func wafMiddleware(engine coraza.WAF, s *store.Store, next http.Handler) http.Ha
 	})
 }
 
-func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store.Store, r *http.Request, requestID string) {
-	atomic.AddInt64(&blockedRequests, 1)
-
+func processInterruption(w http.ResponseWriter, it *types.Interruption, tx types.Transaction, s *store.Store, r *http.Request, requestID string) {
 	ip := extractClientIP(r)
+
+	// Determine the real attack rule ID. CRS evaluation rules like 949110
+	// (Inbound Anomaly Score Exceeded) or 959100 just do the final block;
+	// the actual attack-specific rules (941xxx=XSS, 942xxx=SQLi, etc.)
+	// are found in MatchedRules. Use the first attack-category rule for
+	// classification so the analytics chart shows the real attack type.
+	realRuleID := resolveAttackRuleID(it.RuleID, tx)
 
 	// Record metrics
 	metricsInst.RecordWAFBlock(it.Action)
-	metricsInst.RecordWAFRuleMatch(it.RuleID, "medium", "waf")
+	metricsInst.RecordWAFRuleMatch(realRuleID, "medium", "waf")
 
 	// Send alert for high-severity blocks
-	_ = alertService.AlertWAFBlock(it.RuleID, ip, r.URL.Path, it.Action)
+	_ = alertService.AlertWAFBlock(realRuleID, ip, r.URL.Path, it.Action)
 
 	// Log blocked request to in-memory store
+	attackCategory := classifyRuleID(realRuleID)
 	s.AddLog(model.LogEntry{
 		ID:         fmt.Sprintf("block-%d", time.Now().UnixNano()),
 		Timestamp:  time.Now(),
 		ClientIP:   ip,
 		Method:     r.Method,
 		URI:        r.URL.Path,
-		RuleID:     it.RuleID,
+		RuleID:     realRuleID,
 		Action:     it.Action,
 		Status:     "Blocked",
-		Details:    fmt.Sprintf("[%s] WAF Rule %d triggered: %s", requestID, it.RuleID, it.Action),
+		Details:    fmt.Sprintf("[%s] %s - WAF Rule %d triggered: %s", requestID, attackCategory, realRuleID, it.Action),
 		StatusCode: http.StatusForbidden,
 		UserAgent:  r.UserAgent(),
 	})
 
 	// Persist attack log to PostgreSQL
-	_ = s.AddAttackLog(ip, r.Method, r.URL.Path, it.RuleID, fmt.Sprintf("WAF Rule %d triggered", it.RuleID), "medium", it.Action, http.StatusForbidden)
+	_ = s.AddAttackLog(ip, r.Method, r.URL.Path, realRuleID, fmt.Sprintf("%s (Rule %d)", attackCategory, realRuleID), "medium", it.Action, http.StatusForbidden)
 
 	// Increment blocked stats in database
 	s.IncrementDBStat("blocked_requests", 1)
@@ -780,6 +833,69 @@ func processInterruption(w http.ResponseWriter, it *types.Interruption, s *store
 		"action":     it.Action,
 		"request_id": requestID,
 	})
+}
+
+// classifyRuleID maps an OWASP CRS / custom rule ID to a human-readable
+// attack category using the standard CRS rule ID ranges.
+func classifyRuleID(ruleID int) string {
+	switch {
+	case ruleID >= 941000 && ruleID < 942000:
+		return "XSS Attack"
+	case ruleID >= 942000 && ruleID < 943000:
+		return "SQL Injection"
+	case ruleID >= 932000 && ruleID < 933000:
+		return "Remote Code Execution"
+	case ruleID >= 930000 && ruleID < 931000:
+		return "Local File Inclusion"
+	case ruleID >= 931000 && ruleID < 932000:
+		return "Remote File Inclusion"
+	case ruleID >= 913000 && ruleID < 914000:
+		return "Scanner Detection"
+	case ruleID >= 920000 && ruleID < 921000:
+		return "Protocol Violation"
+	case ruleID >= 933000 && ruleID < 934000:
+		return "PHP Injection"
+	case ruleID >= 934000 && ruleID < 935000:
+		return "Node.js Injection"
+	case ruleID >= 943000 && ruleID < 944000:
+		return "Session Fixation"
+	case ruleID >= 944000 && ruleID < 945000:
+		return "Java Attack"
+	case ruleID >= 910000 && ruleID < 913000:
+		return "Protocol Anomaly"
+	default:
+		return "WAF Block"
+	}
+}
+
+// isCRSEvaluationRule returns true for CRS meta/evaluation rules that don't
+// represent a specific attack type (e.g., 949110 = "Inbound Anomaly Score
+// Exceeded", 959100 = "Outbound Anomaly Score Exceeded", 980xxx = logging,
+// 900100-900999 = CRS setup/initialization).
+func isCRSEvaluationRule(ruleID int) bool {
+	return (ruleID >= 900100 && ruleID < 901000) ||
+		(ruleID >= 949000 && ruleID < 950000) ||
+		(ruleID >= 959000 && ruleID < 960000) ||
+		(ruleID >= 980000 && ruleID < 990000)
+}
+
+// resolveAttackRuleID examines the transaction's matched rules to find the
+// real attack-category rule when the interrupting rule is a CRS evaluation
+// rule like 949110 (Anomaly Score Exceeded). This ensures the analytics
+// category chart shows the actual attack type (XSS, SQLi, etc.) instead of
+// "Other".
+func resolveAttackRuleID(interruptRuleID int, tx types.Transaction) int {
+	if !isCRSEvaluationRule(interruptRuleID) {
+		return interruptRuleID
+	}
+	// Scan matched rules for the first one that is an actual attack rule
+	for _, mr := range tx.MatchedRules() {
+		id := mr.Rule().ID()
+		if id != interruptRuleID && !isCRSEvaluationRule(id) && id >= 900000 {
+			return id
+		}
+	}
+	return interruptRuleID
 }
 
 // hibpCheckerAdapter wraps hibp.Checker to implement api.HIBPPasswordChecker interface
@@ -842,7 +958,6 @@ func (r *statusRecorder) Flush() {
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		atomic.AddInt64(&totalRequests, 1)
 
 		// Skip wrapping for WebSocket connections to avoid hijack issues
 		if r.URL.Path == "/api/ws" {
@@ -854,8 +969,14 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 
+		elapsed := time.Since(start)
 		requestID := requestid.FromContext(r.Context())
-		logger.LogRequest(requestID, r.Method, r.URL.Path, extractClientIP(r), r.UserAgent(), rec.status, time.Since(start))
+		logger.LogRequest(requestID, r.Method, r.URL.Path, extractClientIP(r), r.UserAgent(), rec.status, elapsed)
+
+		// Record response time in the store for avg calculation
+		if appStore != nil {
+			appStore.RecordResponseTime(elapsed)
+		}
 	})
 }
 
@@ -906,6 +1027,7 @@ func apiKeyMiddleware(requiredScope apikeys.Scope, next http.HandlerFunc) http.H
 
 		// Store key info in context for downstream use
 		ctx := context.WithValue(r.Context(), apiKeyContextKey, keyInfo)
+		r.Header.Set("X-Actor", "api:"+keyInfo.Name)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }
@@ -932,6 +1054,7 @@ func authOrAPIKeyMiddleware(apiScope apikeys.Scope, next http.HandlerFunc) http.
 					Role:     scopeToRole(keyInfo.Scopes),
 				}
 				ctx = context.WithValue(ctx, userContextKey, userClaims)
+				r.Header.Set("X-Actor", userClaims.Username)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
@@ -972,6 +1095,7 @@ func authOrAPIKeyMiddleware(apiScope apikeys.Scope, next http.HandlerFunc) http.
 		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, userClaims)
+		r.Header.Set("X-Actor", userClaims.Username)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }
@@ -1029,6 +1153,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, userClaims)
+		r.Header.Set("X-Actor", userClaims.Username)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }
@@ -1259,16 +1384,62 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
+	ruleHits := map[string]int{}
+	blockedCount := 0
+	alertCount := 0
+	topOffenders := []map[string]interface{}{}
+
+	if appStore != nil {
+		ipCounts := map[string]int{}
+		for _, entry := range appStore.GetLogs() {
+			if entry.RuleID != 0 {
+				ruleHits[strconv.Itoa(entry.RuleID)]++
+			}
+			switch entry.Status {
+			case "Blocked", "ThreatBlocked":
+				blockedCount++
+			case "Flagged":
+				alertCount++
+			}
+			if entry.ClientIP != "" {
+				ipCounts[entry.ClientIP]++
+			}
+		}
+
+		type kv struct {
+			Key   string
+			Count int
+		}
+		top := make([]kv, 0, len(ipCounts))
+		for k, v := range ipCounts {
+			top = append(top, kv{Key: k, Count: v})
+		}
+		sort.Slice(top, func(i, j int) bool { return top[i].Count > top[j].Count })
+		for i := 0; i < len(top) && i < 10; i++ {
+			topOffenders = append(topOffenders, map[string]interface{}{
+				"ip":    top[i].Key,
+				"count": top[i].Count,
+			})
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
+	storeStats := appStore.GetStats()
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"total_requests":   atomic.LoadInt64(&totalRequests),
-		"blocked_requests": atomic.LoadInt64(&blockedRequests),
+		"total_requests":   storeStats.TotalRequests,
+		"blocked_requests": storeStats.BlockedRequests,
 		"uptime_seconds":   int64(time.Since(startTime).Seconds()),
 		"memory_alloc_mb":  m.Alloc / 1024 / 1024,
 		"memory_sys_mb":    m.Sys / 1024 / 1024,
 		"goroutines":       runtime.NumGoroutine(),
 		"rate_limiter":     rateLimiter.GetStats(),
 		"threat_intel":     threatIntel.GetStats(),
+		"rule_hits":        ruleHits,
+		"block_vs_alert": map[string]interface{}{
+			"blocked": blockedCount,
+			"alerted": alertCount,
+		},
+		"top_offending_ips": topOffenders,
 	})
 }
 

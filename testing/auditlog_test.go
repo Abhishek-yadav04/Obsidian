@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -21,22 +20,31 @@ import (
 )
 
 const (
-	tmpLogFilename        = "tmp.log"
 	secAuditLogFormat     = "SecAuditLog %s"
 	errExpectedMsgCount   = "Expected 1 message, got %d"
 	msgUnconditionalMatch = "unconditional match"
 )
 
-func TestAuditLogMessages(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	parser := seclang.NewParser(waf)
-	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
+func newTempLogFile(t *testing.T) string {
+	t.Helper()
+	file, err := os.CreateTemp("", "auditlog-*.log")
 	if err != nil {
 		t.Fatal(err)
 	}
-	logPath := file.Name()
-	file.Close() // Close to avoid locking issues on Windows
+	path := file.Name()
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Remove(path)
+	})
+	return path
+}
+
+func TestAuditLogMessages(t *testing.T) {
+	waf := corazawaf.NewWAF()
+	parser := seclang.NewParser(waf)
+	logPath := newTempLogFile(t)
 	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
 		t.Fatal(err)
 	}
@@ -50,9 +58,9 @@ func TestAuditLogMessages(t *testing.T) {
 	`); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(file.Name())
 	// On Windows, the logger keeps the file locked. We must switch the log to release the lock.
 	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
+	defer func() { _ = waf.AuditLogWriter().Close() }()
 
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
@@ -66,7 +74,7 @@ func TestAuditLogMessages(t *testing.T) {
 	}
 	tx.ProcessLogging()
 	// now we read file
-	file, err = os.Open(logPath)
+	file, err := os.Open(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,24 +104,20 @@ func TestAuditLogRelevantOnly(t *testing.T) {
 	`); err != nil {
 		t.Fatal(err)
 	}
-	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	logPath := file.Name()
-	file.Close()
-	defer os.Remove(logPath)
+	logPath := newTempLogFile(t)
 	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
 		t.Fatal(err)
 	}
+	// Release log file on Windows after test
+	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
+	defer func() { _ = waf.AuditLogWriter().Close() }()
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	tx.ProcessLogging()
 	// now we read file
 	// We re-open the file to ensure we can read what WAF wrote (and handle Windows locking)
-	file, err = os.Open(logPath)
+	file, err := os.Open(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,15 +132,13 @@ func TestAuditLogRelevantOnly(t *testing.T) {
 func TestAuditLogRelevantOnlyOk(t *testing.T) {
 	waf := corazawaf.NewWAF()
 	parser := seclang.NewParser(waf)
-	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
-	if err != nil {
+	logPath := newTempLogFile(t)
+	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, file.Name())); err != nil {
-		t.Fatal(err)
-	}
+	// Release log file on Windows after test
+	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
+	defer func() { _ = waf.AuditLogWriter().Close() }()
 	if err := parser.FromString(`
 		SecRuleEngine DetectionOnly
 		SecAuditEngine RelevantOnly
@@ -153,9 +155,11 @@ func TestAuditLogRelevantOnlyOk(t *testing.T) {
 	tx.ProcessRequestHeaders()
 	tx.ProcessLogging()
 	// now we read file
-	if _, err := file.Seek(0, 0); err != nil {
-		t.Error(err)
+	file, err := os.Open(logPath)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer file.Close()
 	var al2 auditlog.Log
 	// this should pass as it matches any status
 	if err := json.NewDecoder(file).Decode(&al2); err != nil {
@@ -176,23 +180,23 @@ func TestAuditLogRelevantOnlyNoAuditlog(t *testing.T) {
 	`); err != nil {
 		t.Fatal(err)
 	}
-	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
-	if err != nil {
+	logPath := newTempLogFile(t)
+	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, file.Name())); err != nil {
-		t.Fatal(err)
-	}
+	// Release log file on Windows after test
+	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
+	defer func() { _ = waf.AuditLogWriter().Close() }()
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	tx.ProcessLogging()
 	// now we read file
-	if _, err := file.Seek(0, 0); err != nil {
-		t.Error(err)
+	file, err := os.Open(logPath)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer file.Close()
 	var al2 auditlog.Log
 	// there should be no audit log because of noauditlog
 	if err := json.NewDecoder(file).Decode(&al2); err == nil {
@@ -215,23 +219,23 @@ func TestAuditLogOnWithNoLog(t *testing.T) {
 	`); err != nil {
 		t.Fatal(err)
 	}
-	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
-	if err != nil {
+	logPath := newTempLogFile(t)
+	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, file.Name())); err != nil {
-		t.Fatal(err)
-	}
+	// Release log file on Windows after test
+	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
+	defer func() { _ = waf.AuditLogWriter().Close() }()
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	tx.ProcessLogging()
 	// now we read file
-	if _, err := file.Seek(0, 0); err != nil {
-		t.Error(err)
+	file, err := os.Open(logPath)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer file.Close()
 	var al2 auditlog.Log
 	// there should be no audit log because of nolog
 	if err := json.NewDecoder(file).Decode(&al2); err == nil {
@@ -254,15 +258,13 @@ func TestAuditLogRequestMethodURIProtocol(t *testing.T) {
 	`); err != nil {
 		t.Fatal(err)
 	}
-	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
-	if err != nil {
+	logPath := newTempLogFile(t)
+	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, file.Name())); err != nil {
-		t.Fatal(err)
-	}
+	// Release log file on Windows after test
+	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
+	defer func() { _ = waf.AuditLogWriter().Close() }()
 	tx := waf.NewTransaction()
 
 	uri := "/some-url"
@@ -272,9 +274,11 @@ func TestAuditLogRequestMethodURIProtocol(t *testing.T) {
 	tx.ProcessURI(uri, method, proto)
 	tx.ProcessLogging()
 	// now we read file
-	if _, err := file.Seek(0, 0); err != nil {
-		t.Error(err)
+	file, err := os.Open(logPath)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer file.Close()
 	var al2 auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al2); err != nil {
 		t.Error(err)
@@ -310,17 +314,16 @@ func TestAuditLogRequestBody(t *testing.T) {
 	`); err != nil {
 		t.Fatal(err)
 	}
-	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), "tmp.log"))
-	if err != nil {
+	logPath := newTempLogFile(t)
+	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", logPath)); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", file.Name())); err != nil {
-		t.Fatal(err)
-	}
+	// Release log file on Windows after test
+	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
+	defer func() { _ = waf.AuditLogWriter().Close() }()
 	tx := waf.NewTransaction()
 	params := "somepost=data"
+	var err error
 	_, _, err = tx.ReadRequestBodyFrom(strings.NewReader(params))
 	if err != nil {
 		t.Error(err)
@@ -331,9 +334,11 @@ func TestAuditLogRequestBody(t *testing.T) {
 	}
 	tx.ProcessLogging()
 	// now we read file
-	if _, err := file.Seek(0, 0); err != nil {
-		t.Error(err)
+	file, err := os.Open(logPath)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer file.Close()
 	var al2 auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al2); err != nil {
 		t.Error(err)
@@ -368,23 +373,23 @@ func TestAuditLogHFlag(t *testing.T) {
 	`); err != nil {
 		t.Fatal(err)
 	}
-	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), "tmp.log"))
-	if err != nil {
+	logPath := newTempLogFile(t)
+	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", logPath)); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", file.Name())); err != nil {
-		t.Fatal(err)
-	}
+	// Release log file on Windows after test
+	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
+	defer func() { _ = waf.AuditLogWriter().Close() }()
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	tx.ProcessLogging()
 	// now we read file
-	if _, err := file.Seek(0, 0); err != nil {
-		t.Error(err)
+	file, err := os.Open(logPath)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer file.Close()
 	var al auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al); err != nil {
 		t.Error(err)
@@ -418,23 +423,23 @@ func TestAuditLogWithKFlagWithoutHFlag(t *testing.T) {
 	`); err != nil {
 		t.Fatal(err)
 	}
-	// generate a random tmp file
-	file, err := os.Create(filepath.Join(t.TempDir(), tmpLogFilename))
-	if err != nil {
+	logPath := newTempLogFile(t)
+	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(file.Name())
-	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, file.Name())); err != nil {
-		t.Fatal(err)
-	}
+	// Release log file on Windows after test
+	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
+	defer func() { _ = waf.AuditLogWriter().Close() }()
 	tx := waf.NewTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	tx.ProcessLogging()
 	// now we read file
-	if _, err := file.Seek(0, 0); err != nil {
-		t.Error(err)
+	file, err := os.Open(logPath)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer file.Close()
 	var al auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al); err != nil {
 		t.Error(err)

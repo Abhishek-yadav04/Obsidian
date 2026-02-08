@@ -232,6 +232,17 @@ func (s *PostgresStore) migrate(ctx context.Context) error {
 			timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC)`,
+		`CREATE TABLE IF NOT EXISTS rule_audit_log (
+			id SERIAL PRIMARY KEY,
+			rule_id INTEGER NOT NULL,
+			action VARCHAR(10) NOT NULL,
+			old_value TEXT,
+			new_value TEXT,
+			actor VARCHAR(255) NOT NULL,
+			timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_rule_audit_log_timestamp ON rule_audit_log(timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_rule_audit_log_rule_id ON rule_audit_log(rule_id)`,
 		`CREATE TABLE IF NOT EXISTS sessions (
 			id VARCHAR(255) PRIMARY KEY,
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

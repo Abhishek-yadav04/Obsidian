@@ -1,10 +1,16 @@
 package store
 
 import (
+	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,10 +24,20 @@ import (
 // Store handles persistence of WAF data
 // Uses PostgreSQL via database.Manager for authentication and audit logs
 type Store struct {
-	mu        sync.RWMutex
-	filePath  string
-	state     model.SystemState
-	dbManager *database.Manager // Database manager for PostgreSQL/Redis
+	mu             sync.RWMutex
+	filePath       string
+	state          model.SystemState
+	dbManager      *database.Manager // Database manager for PostgreSQL/Redis
+	rulesFile      string
+	crsPath        string
+	crsOn          bool
+	crsVersion     string
+	crsLoadedAt    time.Time
+	crsSource      string
+	crsFingerprint string
+
+	customRules []model.Rule
+	crsRules    []model.Rule
 }
 
 // StoreOption configures a Store instance
@@ -31,6 +47,34 @@ type StoreOption func(*Store)
 func WithDatabaseManager(db *database.Manager) StoreOption {
 	return func(s *Store) {
 		s.dbManager = db
+	}
+}
+
+// WithRulesFile configures an external rules file to be loaded into the Rules UI.
+func WithRulesFile(path string) StoreOption {
+	return func(s *Store) {
+		s.rulesFile = path
+	}
+}
+
+// WithCRSPath configures the external CRS path for read-only rules in the UI.
+func WithCRSPath(path string) StoreOption {
+	return func(s *Store) {
+		s.crsPath = path
+	}
+}
+
+// WithCRSEnabled controls whether CRS rules are loaded for UI visibility.
+func WithCRSEnabled(enabled bool) StoreOption {
+	return func(s *Store) {
+		s.crsOn = enabled
+	}
+}
+
+// WithCRSVersion configures the CRS version string for status reporting.
+func WithCRSVersion(version string) StoreOption {
+	return func(s *Store) {
+		s.crsVersion = version
 	}
 }
 
@@ -52,12 +96,444 @@ func NewStore(path string, opts ...StoreOption) *Store {
 
 	s.load()
 
+	s.normalizeCustomRules()
+	if err := s.mergeRulesFromFile(); err != nil {
+		fmt.Printf("[Store] Warning: failed to load rules file: %v\n", err)
+	}
+
 	// Initialize default users in memory if not loaded from file and DB not available
 	if len(s.state.Users) == 0 {
 		s.initDefaultUsers()
 	}
 
 	return s
+}
+
+func (s *Store) mergeRulesFromFile() error {
+	customRules, err := s.loadCustomRulesFromFile()
+	if err != nil {
+		return err
+	}
+	crsRules, err := s.loadCRSRules()
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.customRules = customRules
+	s.crsRules = crsRules
+
+	// Merge order: CRS -> custom file -> in-memory custom (state.Rules)
+	rulesByID := make(map[int]model.Rule, len(customRules)+len(crsRules)+len(s.state.Rules))
+	for _, r := range crsRules {
+		rulesByID[r.ID] = r
+	}
+	for _, r := range customRules {
+		rulesByID[r.ID] = r
+	}
+	for _, r := range s.state.Rules {
+		rulesByID[r.ID] = r
+	}
+
+	merged := make([]model.Rule, 0, len(rulesByID))
+	for _, r := range rulesByID {
+		merged = append(merged, r)
+	}
+	sort.Slice(merged, func(i, j int) bool { return merged[i].ID < merged[j].ID })
+
+	s.state.Rules = merged
+	s.state.Stats.ActiveRulesCount = len(s.state.Rules)
+	return nil
+}
+
+func (s *Store) loadCustomRulesFromFile() ([]model.Rule, error) {
+	if s.rulesFile == "" {
+		return nil, nil
+	}
+	path := resolvePath(s.rulesFile)
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	return parseRulesFile(file, "custom")
+}
+
+func (s *Store) loadCRSRules() ([]model.Rule, error) {
+	if !s.crsOn || s.crsPath == "" {
+		s.setCRSStatus("disabled", time.Time{}, "")
+		return nil, nil
+	}
+	root := resolvePath(s.crsPath)
+	pattern := filepath.Join(root, "rules", "*.conf")
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		s.setCRSStatus("filesystem", time.Time{}, "")
+		return nil, nil
+	}
+
+	fingerprint := computeCRSFingerprint(files)
+	loadedAt := time.Now().UTC()
+
+	all := make([]model.Rule, 0)
+	for _, filePath := range files {
+		f, err := os.Open(filePath)
+		if err != nil {
+			continue
+		}
+		parsed, err := parseRulesFile(f, "crs")
+		f.Close()
+		if err != nil {
+			continue
+		}
+		all = append(all, parsed...)
+	}
+
+	s.setCRSStatus("filesystem", loadedAt, fingerprint)
+	return all, nil
+}
+
+func (s *Store) setCRSStatus(source string, loadedAt time.Time, fingerprint string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.crsSource = source
+	s.crsLoadedAt = loadedAt
+	s.crsFingerprint = fingerprint
+}
+
+func computeCRSFingerprint(files []string) string {
+	if len(files) == 0 {
+		return ""
+	}
+	sorted := make([]string, len(files))
+	copy(sorted, files)
+	sort.Strings(sorted)
+
+	h := sha256.New()
+	for _, filePath := range sorted {
+		b, err := os.ReadFile(filePath)
+		if err != nil {
+			continue
+		}
+		_, _ = h.Write([]byte(filePath))
+		_, _ = h.Write(b)
+	}
+
+	sum := hex.EncodeToString(h.Sum(nil))
+	if sum == "" {
+		return ""
+	}
+	return "sha256:" + sum
+}
+
+// CRSStatus returns CRS visibility information.
+func (s *Store) CRSStatus() model.CRSStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	total := len(s.crsRules)
+	active := 0
+	for i := range s.crsRules {
+		if s.crsRules[i].Enabled {
+			active++
+		}
+	}
+
+	version := s.crsVersion
+	if version == "" {
+		version = "unknown"
+	}
+
+	return model.CRSStatus{
+		Enabled:      s.crsOn,
+		Version:      version,
+		Fingerprint:  s.crsFingerprint,
+		TotalRules:   total,
+		ActiveRules:  active,
+		LastLoadedAt: s.crsLoadedAt,
+		Source:       s.crsSource,
+	}
+}
+
+// EnableCRS enables CRS loading for UI visibility and reloads rules.
+func (s *Store) EnableCRS() error {
+	s.mu.Lock()
+	s.crsOn = true
+	s.mu.Unlock()
+	return s.mergeRulesFromFile()
+}
+
+// DisableCRS disables CRS loading for UI visibility and reloads rules.
+func (s *Store) DisableCRS() error {
+	s.mu.Lock()
+	s.crsOn = false
+	s.mu.Unlock()
+	return s.mergeRulesFromFile()
+}
+
+func parseRulesFile(r *os.File, source string) ([]model.Rule, error) {
+	scanner := bufio.NewScanner(r)
+	// Increase scanner buffer for large CRS rules with many tags
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	rules := make([]model.Rule, 0)
+	var lineBuf strings.Builder
+
+	for scanner.Scan() {
+		raw := scanner.Text()
+		trimmed := strings.TrimSpace(raw)
+
+		// Skip comments and blank lines (only when not accumulating a multi-line rule)
+		if lineBuf.Len() == 0 && (trimmed == "" || strings.HasPrefix(trimmed, "#")) {
+			continue
+		}
+
+		// Handle line continuation (trailing backslash)
+		if strings.HasSuffix(trimmed, "\\") {
+			// Strip the trailing backslash and accumulate
+			lineBuf.WriteString(strings.TrimSuffix(trimmed, "\\"))
+			lineBuf.WriteByte(' ')
+			continue
+		}
+
+		// Final line of a (possibly multi-line) directive
+		lineBuf.WriteString(trimmed)
+		fullLine := lineBuf.String()
+		lineBuf.Reset()
+
+		if !strings.HasPrefix(fullLine, "SecRule ") {
+			continue
+		}
+
+		rule, err := parseSecRule(fullLine, source)
+		if err != nil {
+			continue
+		}
+		rules = append(rules, *rule)
+	}
+
+	// Flush any remaining buffered content
+	if lineBuf.Len() > 0 {
+		fullLine := lineBuf.String()
+		if strings.HasPrefix(fullLine, "SecRule ") {
+			if rule, err := parseSecRule(fullLine, source); err == nil {
+				rules = append(rules, *rule)
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return rules, nil
+}
+
+func parseSecRule(line string, source string) (*model.Rule, error) {
+	parts := strings.Fields(line)
+	if len(parts) < 3 {
+		return nil, fmt.Errorf("invalid SecRule line")
+	}
+	target := parts[1]
+
+	op, rest, ok := extractQuoted(line)
+	if !ok {
+		return nil, fmt.Errorf("missing operator")
+	}
+	actions, _, ok := extractQuoted(rest)
+	if !ok {
+		return nil, fmt.Errorf("missing actions")
+	}
+
+	rule := model.Rule{
+		TargetField: target,
+		Pattern:     op,
+		Enabled:     true,
+		Action:      "log",
+		Category:    "General",
+		Source:      source,
+		ReadOnly:    true,
+	}
+
+	// Use a smarter action splitter that respects quoted values
+	for _, token := range splitActions(actions) {
+		lower := strings.ToLower(token)
+		switch {
+		case lower == "deny" || lower == "drop" || lower == "pass" || lower == "log":
+			rule.Action = lower
+		case lower == "block":
+			// CRS uses "block" which means deny/drop depending on SecDefaultAction
+			rule.Action = "deny"
+		case strings.HasPrefix(lower, "id:"):
+			idStr := strings.TrimPrefix(token, "id:")
+			idStr = strings.TrimPrefix(idStr, "ID:")
+			idStr = trimQuoted(idStr)
+			if id, err := strconv.Atoi(idStr); err == nil {
+				rule.ID = id
+			}
+		case strings.HasPrefix(lower, "status:"):
+			codeStr := trimQuoted(strings.TrimPrefix(token, "status:"))
+			if code, err := strconv.Atoi(codeStr); err == nil {
+				rule.BlockStatus = code
+			}
+		case strings.HasPrefix(lower, "severity:"):
+			sev := trimQuoted(strings.TrimPrefix(token, "severity:"))
+			sev = strings.TrimPrefix(sev, "severity:")
+			rule.Severity = strings.ToUpper(sev)
+		case strings.HasPrefix(lower, "msg:"):
+			rule.Description = trimQuoted(strings.TrimPrefix(token, "msg:"))
+		case strings.HasPrefix(lower, "tag:"):
+			tag := trimQuoted(strings.TrimPrefix(token, "tag:"))
+			// Use the first meaningful tag as category; skip OWASP_CRS, paranoia, capec, PCI
+			tagLower := strings.ToLower(tag)
+			if !strings.HasPrefix(tagLower, "owasp_crs") &&
+				!strings.HasPrefix(tagLower, "paranoia") &&
+				!strings.HasPrefix(tagLower, "capec") &&
+				!strings.HasPrefix(tagLower, "pci") {
+				// Prefer "attack-*" or "application-*" tags as category
+				if strings.HasPrefix(tagLower, "attack-") || strings.HasPrefix(tagLower, "application-") {
+					rule.Category = tag
+				} else if rule.Category == "General" {
+					rule.Category = tag
+				}
+			}
+		case strings.HasPrefix(lower, "ver:"):
+			// Ignore version tag — extracted at file level
+		}
+	}
+
+	if rule.ID == 0 {
+		return nil, fmt.Errorf("missing id")
+	}
+	// Only validate ID range for user-created custom rules, not for CRS file imports
+	if source == "custom" {
+		if err := validateRuleIDRange(source, rule.ID); err != nil {
+			return nil, err
+		}
+	}
+	if rule.Description == "" {
+		rule.Description = fmt.Sprintf("Rule %d", rule.ID)
+	}
+	if rule.Severity == "" {
+		rule.Severity = "NOTICE"
+	}
+	if (rule.Action == "deny" || rule.Action == "block") && rule.BlockStatus == 0 {
+		rule.BlockStatus = 403
+	}
+
+	return &rule, nil
+}
+
+// splitActions splits a comma-separated action string while respecting quoted values.
+// e.g. "id:123,msg:'hello, world',deny" → ["id:123", "msg:'hello, world'", "deny"]
+func splitActions(actions string) []string {
+	out := make([]string, 0, 16)
+	var cur strings.Builder
+	inQuote := false
+	quoteChar := byte(0)
+
+	for i := 0; i < len(actions); i++ {
+		ch := actions[i]
+		switch {
+		case inQuote:
+			cur.WriteByte(ch)
+			if ch == quoteChar {
+				inQuote = false
+			}
+		case ch == '\'' || ch == '"':
+			inQuote = true
+			quoteChar = ch
+			cur.WriteByte(ch)
+		case ch == ',':
+			t := strings.TrimSpace(cur.String())
+			if t != "" {
+				out = append(out, t)
+			}
+			cur.Reset()
+		default:
+			cur.WriteByte(ch)
+		}
+	}
+	if t := strings.TrimSpace(cur.String()); t != "" {
+		out = append(out, t)
+	}
+	return out
+}
+
+func (s *Store) normalizeCustomRules() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := 0; i < len(s.state.Rules); i++ {
+		if s.state.Rules[i].Source == "" {
+			s.state.Rules[i].Source = "custom"
+		}
+		// NOTE: ID range validation is NOT applied to built-in default rules.
+		// It is enforced only on user-created rules in CreateRule/UpdateRule.
+	}
+}
+
+func validateRuleIDRange(source string, id int) error {
+	switch source {
+	case "custom":
+		if id < 900000 || id > 909999 {
+			return fmt.Errorf("custom rule id %d outside allowed range 900000-909999", id)
+		}
+	case "crs":
+		// OWASP CRS uses IDs across 900000-999999 (e.g. 911xxx, 920xxx, 941xxx, 949xxx)
+		if id < 900000 || id > 999999 {
+			return fmt.Errorf("crs rule id %d outside allowed range 900000-999999", id)
+		}
+	}
+	return nil
+}
+
+func trimQuoted(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 {
+		if (s[0] == '\'' && s[len(s)-1] == '\'') || (s[0] == '"' && s[len(s)-1] == '"') {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
+}
+
+func extractQuoted(s string) (string, string, bool) {
+	start := strings.IndexAny(s, "\"'")
+	if start == -1 {
+		return "", s, false
+	}
+	quote := s[start]
+	rest := s[start+1:]
+	end := strings.IndexByte(rest, quote)
+	if end == -1 {
+		return "", s, false
+	}
+	value := rest[:end]
+	return value, rest[end+1:], true
+}
+
+func resolvePath(path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	if wd, err := os.Getwd(); err == nil {
+		cwdPath := filepath.Join(wd, path)
+		if _, err := os.Stat(cwdPath); err == nil {
+			return cwdPath
+		}
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return path
+	}
+	return filepath.Join(filepath.Dir(exe), path)
 }
 
 // initDefaultUsers creates default users in memory for when DB is not available
@@ -106,6 +582,20 @@ func (s *Store) load() {
 		// This prevents data corruption from propagating
 		fmt.Printf("[Store] Warning: failed to parse state file %s: %v\n", s.filePath, err)
 	}
+
+	// Re-inject any missing default rules.
+	// data.json may have been saved by a previous version that dropped rules;
+	// defaults must always be present (user edits are preserved via ID match).
+	existing := make(map[int]struct{}, len(s.state.Rules))
+	for _, r := range s.state.Rules {
+		existing[r.ID] = struct{}{}
+	}
+	for _, d := range defaultRules() {
+		if _, ok := existing[d.ID]; !ok {
+			s.state.Rules = append(s.state.Rules, d)
+		}
+	}
+	sort.Slice(s.state.Rules, func(i, j int) bool { return s.state.Rules[i].ID < s.state.Rules[j].ID })
 }
 
 func (s *Store) Save() error {
@@ -144,6 +634,32 @@ func (s *Store) AddLog(entry model.LogEntry) {
 	}
 
 	s.state.Logs = append(s.state.Logs, entry)
+
+	// Update per-rule match stats
+	if entry.RuleID != 0 {
+		now := time.Now().Format(time.RFC3339)
+		for i := range s.state.Rules {
+			if s.state.Rules[i].ID == entry.RuleID {
+				s.state.Rules[i].MatchCount++
+				s.state.Rules[i].LastMatch = now
+				break
+			}
+		}
+		for i := range s.customRules {
+			if s.customRules[i].ID == entry.RuleID {
+				s.customRules[i].MatchCount++
+				s.customRules[i].LastMatch = now
+				break
+			}
+		}
+		for i := range s.crsRules {
+			if s.crsRules[i].ID == entry.RuleID {
+				s.crsRules[i].MatchCount++
+				s.crsRules[i].LastMatch = now
+				break
+			}
+		}
+	}
 
 	// Update stats based on status
 	s.state.Stats.TotalRequests++
@@ -185,7 +701,19 @@ func (s *Store) GetStats() model.Stats {
 	// Compute active rules count without mutating shared state (avoids write-under-RLock)
 	stats := s.state.Stats
 	stats.ActiveRulesCount = len(s.state.Rules)
+	// Compute average response time from accumulators
+	if stats.ResponseCount > 0 {
+		stats.AvgResponseTimeMs = float64(stats.TotalResponseTimeNs) / float64(stats.ResponseCount) / 1e6
+	}
 	return stats
+}
+
+// RecordResponseTime records a request's response time for average calculation.
+func (s *Store) RecordResponseTime(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state.Stats.TotalResponseTimeNs += d.Nanoseconds()
+	s.state.Stats.ResponseCount++
 }
 
 func (s *Store) GetLogs() []model.LogEntry {
@@ -200,7 +728,36 @@ func (s *Store) GetLogs() []model.LogEntry {
 func (s *Store) GetRules() []model.Rule {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.state.Rules
+	rules := make([]model.Rule, len(s.state.Rules))
+	copy(rules, s.state.Rules)
+	return rules
+}
+
+func (s *Store) GetRulesBySource(source string) []model.Rule {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Filter from the canonical s.state.Rules slice which contains
+	// all rules (built-in defaults + file-loaded custom + CRS).
+	var filtered []model.Rule
+	for _, r := range s.state.Rules {
+		switch source {
+		case "custom":
+			if r.Source != "crs" {
+				filtered = append(filtered, r)
+			}
+		case "crs":
+			if r.Source == "crs" {
+				filtered = append(filtered, r)
+			}
+		default:
+			filtered = append(filtered, r)
+		}
+	}
+	if filtered == nil {
+		filtered = []model.Rule{}
+	}
+	return filtered
 }
 
 // Implementing a custom audit logger to bridge Coraza -> App Store
@@ -250,7 +807,7 @@ func (l *HybridAuditLogger) Write(log plugintypes.AuditLog) error {
 func (l *HybridAuditLogger) Close() error { return nil }
 
 func defaultRules() []model.Rule {
-	return []model.Rule{
+	rules := []model.Rule{
 		// 900xxx - Test Rules
 		{ID: 900001, Description: "Test Attack Detection", Severity: "CRITICAL", Enabled: true, Category: "Test", Pattern: "@rx attack=test", TargetField: "QUERY_STRING", Action: "deny", BlockStatus: 403},
 
@@ -361,6 +918,13 @@ func defaultRules() []model.Rule {
 		// 958xxx - Rate Limiting Bypass (Enterprise)
 		{ID: 958100, Description: "X-Forwarded-For Spoofing", Severity: "WARNING", Enabled: true, Category: "RateLimit", Pattern: "@rx ^(127\\.|10\\.|192\\.168\\.|172\\.)", TargetField: "REQUEST_HEADERS:X-Forwarded-For", Action: "log", BlockStatus: 0, Threshold: 10, TimeWindow: 60},
 	}
+	for i := range rules {
+		if rules[i].Source == "" {
+			rules[i].Source = "custom"
+		}
+		rules[i].ReadOnly = true
+	}
+	return rules
 }
 
 // AuthenticateUser validates credentials against PostgreSQL database or in-memory fallback
@@ -587,10 +1151,75 @@ func (s *Store) GetAuditLogs(limit, offset int) ([]map[string]interface{}, error
 	return s.dbManager.GetAuditLogs(ctx, limit, offset)
 }
 
+// GetRuleAuditLogs retrieves rule audit logs from the database
+func (s *Store) GetRuleAuditLogs(limit, offset int) ([]model.RuleAuditLog, error) {
+	if s.dbManager == nil || !s.dbManager.HasPostgres() {
+		return nil, fmt.Errorf("database not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	return s.dbManager.GetRuleAuditLogs(ctx, limit, offset)
+}
+
+func (s *Store) recordRuleAudit(action string, oldRule *model.Rule, newRule *model.Rule, actor string) {
+	if s.dbManager == nil || !s.dbManager.HasPostgres() {
+		return
+	}
+	if actor == "" {
+		actor = "unknown"
+	}
+
+	ruleID := 0
+	if newRule != nil {
+		ruleID = newRule.ID
+	} else if oldRule != nil {
+		ruleID = oldRule.ID
+	}
+
+	oldValue := ""
+	if oldRule != nil {
+		if b, err := json.Marshal(oldRule); err == nil {
+			oldValue = string(b)
+		}
+	}
+
+	newValue := ""
+	if newRule != nil {
+		if b, err := json.Marshal(newRule); err == nil {
+			newValue = string(b)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	log := model.RuleAuditLog{
+		RuleID:    ruleID,
+		Action:    action,
+		OldValue:  oldValue,
+		NewValue:  newValue,
+		Actor:     actor,
+		Timestamp: time.Now().UTC(),
+	}
+	if err := s.dbManager.InsertRuleAuditLog(ctx, log); err != nil {
+		fmt.Printf("[Store] Warning: failed to insert rule audit log for rule %d: %v\n", ruleID, err)
+	}
+}
+
 // CreateRule adds a new WAF rule and persists to PostgreSQL
-func (s *Store) CreateRule(rule model.Rule) error {
+func (s *Store) CreateRule(rule model.Rule, actor string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if rule.Source == "" {
+		rule.Source = "custom"
+	}
+	rule.ReadOnly = false
+	if err := validateRuleIDRange(rule.Source, rule.ID); err != nil {
+		return err
+	}
 
 	// Check for duplicate ID
 	for _, r := range s.state.Rules {
@@ -601,6 +1230,7 @@ func (s *Store) CreateRule(rule model.Rule) error {
 
 	s.state.Rules = append(s.state.Rules, rule)
 	s.state.Stats.ActiveRulesCount = len(s.state.Rules)
+	s.customRules = append(s.customRules, rule)
 
 	// Persist to PostgreSQL if available
 	if s.dbManager != nil && s.dbManager.HasPostgres() {
@@ -611,18 +1241,41 @@ func (s *Store) CreateRule(rule model.Rule) error {
 		}
 	}
 
+	if rule.Source == "custom" {
+		s.recordRuleAudit("create", nil, &rule, actor)
+	}
+
 	// Persist to file synchronously (data already copied under lock)
 	return s.persistState()
 }
 
 // UpdateRule modifies an existing WAF rule and persists to PostgreSQL
-func (s *Store) UpdateRule(rule model.Rule) error {
+func (s *Store) UpdateRule(rule model.Rule, actor string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for i, r := range s.state.Rules {
 		if r.ID == rule.ID {
+			if r.ReadOnly || r.Source == "crs" {
+				return fmt.Errorf("rule %d is read-only", rule.ID)
+			}
+			if rule.Source == "" {
+				rule.Source = r.Source
+			}
+			rule.ReadOnly = false
+			if err := validateRuleIDRange(rule.Source, rule.ID); err != nil {
+				return err
+			}
+
+			oldRule := r
+			newRule := rule
 			s.state.Rules[i] = rule
+			for j := range s.customRules {
+				if s.customRules[j].ID == rule.ID {
+					s.customRules[j] = rule
+					break
+				}
+			}
 
 			// Persist to PostgreSQL if available
 			if s.dbManager != nil && s.dbManager.HasPostgres() {
@@ -633,6 +1286,10 @@ func (s *Store) UpdateRule(rule model.Rule) error {
 				}
 			}
 
+			if rule.Source == "custom" {
+				s.recordRuleAudit("update", &oldRule, &newRule, actor)
+			}
+
 			return s.persistState()
 		}
 	}
@@ -641,14 +1298,23 @@ func (s *Store) UpdateRule(rule model.Rule) error {
 }
 
 // DeleteRule removes a WAF rule and deletes from PostgreSQL
-func (s *Store) DeleteRule(id int) error {
+func (s *Store) DeleteRule(id int, actor string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for i, r := range s.state.Rules {
 		if r.ID == id {
+			if r.ReadOnly || r.Source == "crs" {
+				return fmt.Errorf("rule %d is read-only", id)
+			}
 			s.state.Rules = append(s.state.Rules[:i], s.state.Rules[i+1:]...)
 			s.state.Stats.ActiveRulesCount = len(s.state.Rules)
+			for j := range s.customRules {
+				if s.customRules[j].ID == id {
+					s.customRules = append(s.customRules[:j], s.customRules[j+1:]...)
+					break
+				}
+			}
 
 			// Delete from PostgreSQL if available
 			if s.dbManager != nil && s.dbManager.HasPostgres() {
@@ -657,6 +1323,11 @@ func (s *Store) DeleteRule(id int) error {
 				if err := s.dbManager.DeleteWAFRule(ctx, id); err != nil {
 					fmt.Printf("[Store] Warning: failed to delete rule %d from DB: %v\n", id, err)
 				}
+			}
+
+			if r.Source == "custom" {
+				oldRule := r
+				s.recordRuleAudit("delete", &oldRule, nil, actor)
 			}
 
 			return s.persistState()

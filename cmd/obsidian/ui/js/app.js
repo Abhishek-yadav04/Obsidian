@@ -75,6 +75,7 @@ const ObsidianApp = {
     token: getStoredValue('obsidian_token'),
     user: getStoredUser(),
     currentView: 'dashboard',
+    rulesFilter: 'effective',
     ws: null,
     charts: {},
     refreshInterval: null,
@@ -651,11 +652,37 @@ const ObsidianApp = {
         }
     },
 
+    setRulesFilter(filter) {
+        this.rulesFilter = filter || 'effective';
+        const effectiveBtn = document.getElementById('rules-filter-effective');
+        const customBtn = document.getElementById('rules-filter-custom');
+        const crsBtn = document.getElementById('rules-filter-crs');
+        [effectiveBtn, customBtn, crsBtn].forEach(btn => btn && btn.classList.remove('active'));
+        if (this.rulesFilter === 'custom' && customBtn) customBtn.classList.add('active');
+        else if (this.rulesFilter === 'crs' && crsBtn) crsBtn.classList.add('active');
+        else if (effectiveBtn) effectiveBtn.classList.add('active');
+        this.fetchRules();
+    },
+
     // Fetch rules
     async fetchRules() {
-        const rules = await this.api('/api/rules');
+        const qs = this.rulesFilter && this.rulesFilter !== 'effective'
+            ? `?source=${encodeURIComponent(this.rulesFilter)}`
+            : '';
+        const rules = await this.api(`/api/rules${qs}`);
         const tbody = document.getElementById('rules-tbody');
-        if (!tbody || !rules) return;
+        if (!tbody) return;
+        if (!rules || rules.length === 0) {
+            if (this.rulesFilter === 'crs') {
+                tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-4">
+                    <i class="fas fa-info-circle me-2"></i>
+                    No OWASP CRS rules loaded. Set <code>OBSIDIAN_CRS_PATH</code> and <code>OBSIDIAN_CRS_ENABLED=true</code> to load CRS rules.
+                </td></tr>`;
+            } else {
+                tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-4">No rules found.</td></tr>`;
+            }
+            return;
+        }
 
         tbody.innerHTML = rules.map(rule => {
             // Determine severity badge class
@@ -695,12 +722,17 @@ const ObsidianApp = {
             const safeDesc = escapeHtml(rule.description);
             const safeSeverity = escapeHtml(rule.severity || 'NOTICE');
             const safeCategory = escapeHtml(rule.category || 'General');
+            const safeSource = escapeHtml((rule.source || 'custom').toUpperCase());
             const safeTarget = escapeHtml(rule.target_field || 'REQUEST_URI');
             const ruleIdNum = Number.parseInt(rule.id, 10) || 0;
+            const isReadOnly = rule.read_only === true || rule.source === 'crs';
 
             // Match statistics
             const matchCount = rule.match_count || 0;
             const lastMatch = rule.last_match ? new Date(rule.last_match).toLocaleString() : 'Never';
+
+            const actionsDisabled = isReadOnly ? 'disabled' : '';
+            const actionsTitle = isReadOnly ? 'Read-only rule' : 'Edit Rule';
 
             return `
                 <tr>
@@ -711,6 +743,7 @@ const ObsidianApp = {
                     </td>
                     <td><span class="badge ${escapeAttr(sevClass)}">${safeSeverity}</span></td>
                     <td>${safeCategory}</td>
+                    <td><span class="badge bg-secondary">${safeSource}</span></td>
                     <td>${actionBadge} ${blockInfo}</td>
                     <td>${statusBadge}</td>
                     <td>
@@ -718,10 +751,10 @@ const ObsidianApp = {
                         <small class="text-muted">${lastMatch}</small>
                     </td>
                     <td>
-                        <button class="btn btn-sm btn-outline-info me-1" onclick="ObsidianApp.editRule(${ruleIdNum})" title="Edit Rule">
+                        <button class="btn btn-sm btn-outline-info me-1" onclick="ObsidianApp.editRule(${ruleIdNum})" title="${escapeAttr(actionsTitle)}" ${actionsDisabled}>
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.deleteRule(${ruleIdNum})" title="Delete Rule">
+                        <button class="btn btn-sm btn-outline-danger" onclick="ObsidianApp.deleteRule(${ruleIdNum})" title="Delete Rule" ${actionsDisabled}>
                             <i class="fas fa-trash"></i>
                         </button>
                     </td>
@@ -1555,6 +1588,12 @@ const ObsidianApp = {
                 btn.classList.add('active');
             }
         });
+        // Update the stat card labels to reflect the period
+        const periodLabel = period === 'today' ? 'Today' : period === 'week' ? '7 Days' : '30 Days';
+        const totalLabel = document.getElementById('analytics-total-label');
+        const ipsLabel = document.getElementById('analytics-ips-label');
+        if (totalLabel) totalLabel.textContent = 'Total Requests (' + periodLabel + ')';
+        if (ipsLabel) ipsLabel.textContent = 'Unique IPs (' + periodLabel + ')';
         this.fetchAnalyticsData();
     },
     
@@ -1564,25 +1603,54 @@ const ObsidianApp = {
             this.api('/api/logs'),
             this.api('/api/metrics')
         ]);
-        
-        if (stats) {
-            const total = (stats.total_requests || 0);
-            const blocked = (stats.blocked_requests || 0);
-            const blockRate = total > 0 ? ((blocked / total) * 100).toFixed(1) : '0';
-            
-            document.getElementById('analytics-total-24h').textContent = total.toLocaleString();
-            document.getElementById('analytics-block-rate').textContent = blockRate + '%';
-            document.getElementById('analytics-avg-response').textContent = (stats.avg_response_time_ms || 0).toFixed(1) + 'ms';
+
+        // Filter logs by selected period
+        const now = new Date();
+        let filteredLogs = logs || [];
+        if (filteredLogs.length > 0) {
+            const cutoff = new Date(now);
+            switch (this.analyticsPeriod) {
+                case 'today':
+                    cutoff.setHours(0, 0, 0, 0);
+                    break;
+                case 'week':
+                    cutoff.setDate(cutoff.getDate() - 7);
+                    break;
+                case 'month':
+                    cutoff.setDate(cutoff.getDate() - 30);
+                    break;
+            }
+            filteredLogs = filteredLogs.filter(l => new Date(l.timestamp) >= cutoff);
         }
         
-        if (logs && logs.length > 0) {
-            // Calculate unique IPs
-            const uniqueIPs = new Set(logs.map(l => l.client_ip).filter(Boolean));
+        if (stats) {
+            // Compute period-specific stats from filtered logs
+            const periodTotal = filteredLogs.length;
+            const periodBlocked = filteredLogs.filter(l => l.status === 'Blocked' || l.status === 'ThreatBlocked').length;
+            const blockRate = periodTotal > 0 ? ((periodBlocked / periodTotal) * 100).toFixed(1) : '0';
+            
+            document.getElementById('analytics-total-24h').textContent = periodTotal.toLocaleString();
+            document.getElementById('analytics-block-rate').textContent = blockRate + '%';
+
+            // Compute avg response time from log entries (real data)
+            const logsWithRT = filteredLogs.filter(l => l.response_time_ms > 0);
+            let avgRT = 0;
+            if (logsWithRT.length > 0) {
+                avgRT = logsWithRT.reduce((sum, l) => sum + l.response_time_ms, 0) / logsWithRT.length;
+            } else if (stats.avg_response_time_ms > 0) {
+                avgRT = stats.avg_response_time_ms;
+            }
+            document.getElementById('analytics-avg-response').textContent = avgRT.toFixed(1) + 'ms';
+        }
+        
+        if (filteredLogs.length > 0) {
+            // Calculate unique IPs from filtered logs
+            const uniqueIPs = new Set(filteredLogs.map(l => l.client_ip).filter(Boolean));
             document.getElementById('analytics-unique-ips').textContent = uniqueIPs.size;
             
             // Top attacked endpoints
             const endpointStats = {};
-            logs.forEach(log => {
+            filteredLogs.forEach(log => {
                 const uri = log.uri || '/';
                 if (!endpointStats[uri]) {
                     endpointStats[uri] = { total: 0, blocked: 0 };
@@ -1616,7 +1684,7 @@ const ObsidianApp = {
             
             // Top attackers
             const attackerStats = {};
-            logs.forEach(log => {
+            filteredLogs.forEach(log => {
                 if (log.status !== 'Blocked' && log.status !== 'ThreatBlocked') return;
                 const ip = log.client_ip || 'Unknown';
                 if (!attackerStats[ip]) {
@@ -1644,7 +1712,7 @@ const ObsidianApp = {
             }
             
             // Update charts
-            this.updateAnalyticsCharts(logs);
+            this.updateAnalyticsCharts(filteredLogs);
         } else {
             document.getElementById('analytics-unique-ips').textContent = '0';
         }
@@ -1702,15 +1770,52 @@ const ObsidianApp = {
         // Category chart
         const categoryCtx = document.getElementById('categoryChart')?.getContext('2d');
         if (categoryCtx) {
-            const categories = { 'XSS': 0, 'SQLi': 0, 'RCE': 0, 'LFI': 0, 'Other': 0 };
+            const categories = { 'XSS': 0, 'SQLi': 0, 'RCE': 0, 'LFI': 0, 'RFI': 0, 'Scanner': 0, 'Protocol': 0, 'Other': 0 };
+
+            // classifyAttack uses the OWASP CRS rule ID ranges to determine
+            // the attack category. Falls back to keyword matching in details.
+            function classifyAttack(ruleId, details) {
+                const id = ruleId || 0;
+                const d = (details || '').toLowerCase();
+                // Skip CRS anomaly evaluation/setup rules (900100-900999, 949110, 959100, 980xxx)
+                // These are meta-rules; the detail text may have the real category
+                if ((id >= 900100 && id < 901000) || (id >= 949000 && id < 950000) || (id >= 959000 && id < 960000) || (id >= 980000 && id < 990000)) {
+                    // Try to classify from the details text instead
+                    if (d.includes('xss') || d.includes('cross-site') || d.includes('script')) return 'XSS';
+                    if (d.includes('sql injection') || d.includes('sqli')) return 'SQLi';
+                    if (d.includes('remote code') || d.includes('rce') || d.includes('command')) return 'RCE';
+                    if (d.includes('local file') || d.includes('lfi') || d.includes('traversal')) return 'LFI';
+                    if (d.includes('remote file') || d.includes('rfi')) return 'RFI';
+                    if (d.includes('scanner') || d.includes('bot')) return 'Scanner';
+                    if (d.includes('protocol')) return 'Protocol';
+                    return 'Other';
+                }
+                // CRS / custom rule ID ranges (OWASP convention)
+                if (id >= 941000 && id < 942000) return 'XSS';
+                if (id >= 942000 && id < 943000) return 'SQLi';
+                if (id >= 932000 && id < 933000) return 'RCE';
+                if (id >= 930000 && id < 931000) return 'LFI';
+                if (id >= 931000 && id < 932000) return 'RFI';
+                if (id >= 913000 && id < 914000) return 'Scanner';
+                if (id >= 920000 && id < 921000) return 'Protocol';
+                if (id >= 933000 && id < 935000) return 'RCE';   // PHP/Node injection = code exec
+                if (id >= 943000 && id < 945000) return 'SQLi';  // Session fixation / Java
+                if (id >= 910000 && id < 913000) return 'Protocol'; // method/protocol rules
+                if (id === 900001) return 'Other'; // test rule
+                // Keyword fallback for threat-intel or custom entries
+                if (d.includes('xss') || d.includes('cross-site') || d.includes('script')) return 'XSS';
+                if (d.includes('sqli') || d.includes('sql') || d.includes('injection')) return 'SQLi';
+                if (d.includes('rce') || d.includes('command') || d.includes('exec')) return 'RCE';
+                if (d.includes('lfi') || d.includes('traversal') || d.includes('path')) return 'LFI';
+                if (d.includes('rfi') || d.includes('remote file')) return 'RFI';
+                if (d.includes('scanner') || d.includes('bot') || d.includes('crawler')) return 'Scanner';
+                return 'Other';
+            }
+
             logs.forEach(log => {
                 if (log.status !== 'Blocked' && log.status !== 'ThreatBlocked') return;
-                const details = (log.details || '').toLowerCase();
-                if (details.includes('xss') || details.includes('script')) categories['XSS']++;
-                else if (details.includes('sql') || details.includes('injection')) categories['SQLi']++;
-                else if (details.includes('rce') || details.includes('command')) categories['RCE']++;
-                else if (details.includes('lfi') || details.includes('path') || details.includes('traversal')) categories['LFI']++;
-                else categories['Other']++;
+                const cat = classifyAttack(log.rule_id, log.details);
+                categories[cat] = (categories[cat] || 0) + 1;
             });
             
             if (this.charts.category) {
@@ -1723,7 +1828,7 @@ const ObsidianApp = {
                         labels: Object.keys(categories),
                         datasets: [{
                             data: Object.values(categories),
-                            backgroundColor: ['#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4', '#6b7280']
+                            backgroundColor: ['#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4', '#14b8a6', '#f97316', '#a78bfa', '#6b7280']
                         }]
                     },
                     options: {

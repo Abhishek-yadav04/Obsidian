@@ -57,6 +57,22 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_time ON audit_logs(time DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_severity ON audit_logs(severity);
 
 -- =============================================================================
+-- RULE AUDIT LOG TABLE - Custom Rule Change Trail
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS rule_audit_log (
+    id SERIAL PRIMARY KEY,
+    rule_id INTEGER NOT NULL,
+    action VARCHAR(10) NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    actor VARCHAR(255) NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rule_audit_log_timestamp ON rule_audit_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_rule_audit_log_rule_id ON rule_audit_log(rule_id);
+
+-- =============================================================================
 -- ATTACK LOGS TABLE - WAF Attack Records
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS attack_logs (

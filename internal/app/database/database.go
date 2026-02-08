@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/corazawaf/coraza/v3/internal/app/model"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
@@ -428,6 +429,17 @@ func (m *Manager) RunMigrations(ctx context.Context) error {
 			user_agent TEXT
 		)`,
 
+		// Rule audit log table (custom rules only)
+		`CREATE TABLE IF NOT EXISTS rule_audit_log (
+			id SERIAL PRIMARY KEY,
+			rule_id INTEGER NOT NULL,
+			action VARCHAR(10) NOT NULL,
+			old_value TEXT,
+			new_value TEXT,
+			actor VARCHAR(255) NOT NULL,
+			timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+		)`,
+
 		// Attack logs table
 		`CREATE TABLE IF NOT EXISTS attack_logs (
 			id SERIAL PRIMARY KEY,
@@ -447,7 +459,7 @@ func (m *Manager) RunMigrations(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS waf_rules (
 			id SERIAL PRIMARY KEY,
 			rule_id INTEGER UNIQUE NOT NULL,
-			name VARCHAR(255) NOT NULL,
+			name TEXT NOT NULL,
 			description TEXT,
 			pattern TEXT NOT NULL,
 			phase INTEGER DEFAULT 1,
@@ -492,11 +504,16 @@ func (m *Manager) RunMigrations(ctx context.Context) error {
 		// Create indexes
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_time ON audit_logs(time)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_severity ON audit_logs(severity)`,
+		`CREATE INDEX IF NOT EXISTS idx_rule_audit_log_timestamp ON rule_audit_log(timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_rule_audit_log_rule_id ON rule_audit_log(rule_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_attack_logs_time ON attack_logs(time)`,
 		`CREATE INDEX IF NOT EXISTS idx_attack_logs_client_ip ON attack_logs(client_ip)`,
 		`CREATE INDEX IF NOT EXISTS idx_threat_intel_ip ON threat_intel(ip_address)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`,
+
+		// Fix: widen name column for long CRS rule descriptions (existing DBs may have VARCHAR(255))
+		`ALTER TABLE waf_rules ALTER COLUMN name TYPE TEXT`,
 	}
 
 	for _, migration := range migrations {
@@ -685,6 +702,63 @@ func (m *Manager) InsertAuditLog(ctx context.Context, ruleID, severity, message,
 	}
 
 	return nil
+}
+
+// InsertRuleAuditLog records a custom rule change in PostgreSQL
+func (m *Manager) InsertRuleAuditLog(ctx context.Context, log model.RuleAuditLog) error {
+	if m.pgPool == nil {
+		return errors.New("PostgreSQL not connected")
+	}
+
+	_, err := m.pgPool.Exec(ctx, `
+		INSERT INTO rule_audit_log (rule_id, action, old_value, new_value, actor, timestamp)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, log.RuleID, log.Action, log.OldValue, log.NewValue, log.Actor, log.Timestamp)
+	if err != nil {
+		return fmt.Errorf("failed to insert rule audit log: %w", err)
+	}
+
+	return nil
+}
+
+// GetRuleAuditLogs retrieves rule audit logs with pagination
+func (m *Manager) GetRuleAuditLogs(ctx context.Context, limit, offset int) ([]model.RuleAuditLog, error) {
+	if m.pgPool == nil {
+		return nil, errors.New("PostgreSQL not connected")
+	}
+
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	rows, err := m.pgPool.Query(ctx, `
+		SELECT id, rule_id, action, old_value, new_value, actor, timestamp
+		FROM rule_audit_log
+		ORDER BY timestamp DESC
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query rule audit logs: %w", err)
+	}
+	defer rows.Close()
+
+	logs := make([]model.RuleAuditLog, 0)
+	for rows.Next() {
+		var log model.RuleAuditLog
+		if err := rows.Scan(&log.ID, &log.RuleID, &log.Action, &log.OldValue, &log.NewValue, &log.Actor, &log.Timestamp); err != nil {
+			return nil, fmt.Errorf("failed to scan rule audit log: %w", err)
+		}
+		logs = append(logs, log)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rule audit logs: %w", err)
+	}
+
+	return logs, nil
 }
 
 // GetAuditLogs retrieves audit logs with pagination

@@ -68,7 +68,7 @@ jobs:
             ./cmd/obsidian
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: obsidian-${{ matrix.goos }}-${{ matrix.goarch }}
           path: obsidian-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}

@@ -239,7 +239,7 @@ func (g *EnterprisePDFGenerator) buildEnterpriseReportContent(
 	logs []model.LogEntry,
 	rules []model.Rule,
 	metadata map[string]string,
-	config PDFSecurityConfig,
+	_ PDFSecurityConfig,
 ) string {
 
 	var content strings.Builder
@@ -493,11 +493,11 @@ func (g *EnterprisePDFGenerator) addAuditTrail(pdfContent []byte, reportID strin
 }
 
 // buildPDFObjects creates proper PDF object structure
-func (g *EnterprisePDFGenerator) buildPDFObjects(content string, metadata map[string]string, config PDFSecurityConfig) []string {
+func (g *EnterprisePDFGenerator) buildPDFObjects(content string, _ map[string]string, _ PDFSecurityConfig) []string {
 	objects := []string{
 		"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
 		"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-		fmt.Sprintf("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj\n"),
+		"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj\n",
 		fmt.Sprintf("4 0 obj\n<< /Length %d >>\nstream\n%s\nendstream\nendobj\n", len(content), content),
 		"5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
 		"6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n",
@@ -524,14 +524,14 @@ func (g *EnterprisePDFGenerator) buildXrefTable(numObjects int) string {
 // buildSecureTrailer creates secure PDF trailer
 func (g *EnterprisePDFGenerator) buildSecureTrailer(numObjects int, metadata map[string]string) string {
 	trailer := fmt.Sprintf("trailer\n<< /Size %d /Root 1 0 R /Info <<\n", numObjects+1)
-	trailer += fmt.Sprintf("/Title (Obsidian Sentinel WAF - Enterprise Security Report)\n")
+	trailer += "/Title (Obsidian Sentinel WAF - Enterprise Security Report)\n"
 	trailer += fmt.Sprintf("/Author (%s Security Team)\n", metadata["Organization"])
-	trailer += fmt.Sprintf("/Subject (Enterprise Security Assessment)\n")
-	trailer += fmt.Sprintf("/Creator (Obsidian Sentinel WAF v2.2.4)\n")
-	trailer += fmt.Sprintf("/Producer (Enterprise PDF Generator)\n")
+	trailer += "/Subject (Enterprise Security Assessment)\n"
+	trailer += "/Creator (Obsidian Sentinel WAF v2.2.4)\n"
+	trailer += "/Producer (Enterprise PDF Generator)\n"
 	trailer += fmt.Sprintf("/ReportID (%s)\n", metadata["ReportID"])
 	trailer += fmt.Sprintf("/Classification (%s)\n", metadata["Classification"])
-	trailer += fmt.Sprintf("/SecurityLevel (ENTERPRISE)\n")
+	trailer += "/SecurityLevel (ENTERPRISE)\n"
 	trailer += fmt.Sprintf("/GeneratedAt (%s)\n", metadata["GeneratedAt"])
 	trailer += ">>\n>>\n"
 
@@ -656,7 +656,7 @@ func getTopThreats(logs []model.LogEntry, limit int) []ThreatInfo {
 }
 
 // getSeverityFromRule attempts to determine severity from rule ID or logs
-func getSeverityFromRule(ruleID int, logs []model.LogEntry) string {
+func getSeverityFromRule(ruleID int, _ []model.LogEntry) string {
 	// This is a simplified implementation - in production, you'd look up the actual rule
 	severities := map[int]string{
 		1: "CRITICAL", 2: "HIGH", 3: "MEDIUM", 4: "LOW", 5: "NOTICE",
@@ -773,161 +773,14 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-func escapePDF(s string) string {
-	// Escape special PDF characters
-	result := make([]byte, 0, len(s))
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '(', ')', '\\':
-			result = append(result, '\\', s[i])
-		default:
-			result = append(result, s[i])
-		}
-	}
-	return string(result)
-}
-
 const (
 	textBoxTop    = "┌──────────────────────────────────────────────────────────────┐\n"
 	textBoxMid    = "├──────────────────────────────────────────────────────────────┤\n"
 	textBoxBottom = "└──────────────────────────────────────────────────────────────┘\n\n"
 )
 
-// generateEnterpriseContent creates comprehensive enterprise-level PDF content
-func (g *Generator) generateEnterpriseContent(stats model.Stats, logs []model.LogEntry, rules []model.Rule) string {
-	var buf bytes.Buffer
-
-	y := 750 // Start from top
-
-	// Report Header
-	buf.WriteString(fmt.Sprintf("BT /F2 20 Tf 50 %d Td (OBSIDIAN SENTINEL WAF) Tj ET\n", y))
-	y -= 25
-	buf.WriteString(fmt.Sprintf("BT /F1 14 Tf 50 %d Td (Enterprise Security Report) Tj ET\n", y))
-	y -= 20
-	buf.WriteString(fmt.Sprintf("BT /F1 10 Tf 50 %d Td (Generated: %s) Tj ET\n", y, time.Now().Format("2006-01-02 15:04:05 MST")))
-	y -= 15
-	buf.WriteString(fmt.Sprintf("BT /F1 10 Tf 50 %d Td (Report Version: 2.2.4) Tj ET\n", y))
-	y -= 40
-
-	// Security Rating Section
-	rating := g.calculateSecurityRating(stats, logs, rules)
-	buf.WriteString(fmt.Sprintf("BT /F2 16 Tf 50 %d Td (SECURITY RATING) Tj ET\n", y))
-	y -= 20
-	buf.WriteString(fmt.Sprintf("BT /F1 12 Tf 50 %d Td (Overall Score: %d/100 - %s) Tj ET\n", y, rating.Score, rating.Grade))
-	y -= 15
-	buf.WriteString(fmt.Sprintf("BT /F1 10 Tf 50 %d Td (Status: %s) Tj ET\n", y, rating.Status))
-	y -= 15
-	buf.WriteString(fmt.Sprintf("BT /F1 9 Tf 50 %d Td (%s) Tj ET\n", y, rating.Description))
-	y -= 30
-
-	// Executive Summary Table
-	buf.WriteString(fmt.Sprintf("BT /F2 14 Tf 50 %d Td (EXECUTIVE SUMMARY) Tj ET\n", y))
-	y -= 20
-
-	// Table Header
-	buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 50 %d Td (Metric) Tj ET\n", y))
-	buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 250 %d Td (Value) Tj ET\n", y))
-	buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 400 %d Td (Status) Tj ET\n", y))
-	y -= 15
-
-	// Table Data
-	metrics := generateExecutiveMetrics(stats, logs)
-	for _, metric := range metrics {
-		buf.WriteString(fmt.Sprintf("BT /F1 9 Tf 50 %d Td (%s) Tj ET\n", y, metric.Name))
-		buf.WriteString(fmt.Sprintf("BT /F1 9 Tf 250 %d Td (%s) Tj ET\n", y, metric.Value))
-		buf.WriteString(fmt.Sprintf("BT /F1 9 Tf 400 %d Td (%s) Tj ET\n", y, metric.Status))
-		y -= 12
-	}
-	y -= 20
-
-	// Threat Analysis Table
-	if len(logs) > 0 {
-		buf.WriteString(fmt.Sprintf("BT /F2 14 Tf 50 %d Td (THREAT ANALYSIS) Tj ET\n", y))
-		y -= 20
-
-		// Table Header
-		buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 50 %d Td (Time) Tj ET\n", y))
-		buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 150 %d Td (Rule ID) Tj ET\n", y))
-		buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 220 %d Td (Severity) Tj ET\n", y))
-		buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 300 %d Td (Details) Tj ET\n", y))
-		y -= 15
-
-		// Table Data (Top 10 threats)
-		threats := getTopThreats(logs, 10)
-		for _, threat := range threats {
-			if y < 100 {
-				break
-			}
-			buf.WriteString(fmt.Sprintf("BT /F1 8 Tf 50 %d Td (%s) Tj ET\n", y, threat.Time))
-			buf.WriteString(fmt.Sprintf("BT /F1 8 Tf 150 %d Td (%d) Tj ET\n", y, threat.RuleID))
-			buf.WriteString(fmt.Sprintf("BT /F1 8 Tf 220 %d Td (%s) Tj ET\n", y, threat.Severity))
-			buf.WriteString(fmt.Sprintf("BT /F1 8 Tf 300 %d Td (%s) Tj ET\n", y, truncate(threat.Details, 25)))
-			y -= 10
-		}
-		y -= 20
-	}
-
-	// Active Rules Table
-	if len(rules) > 0 {
-		buf.WriteString(fmt.Sprintf("BT /F2 14 Tf 50 %d Td (ACTIVE SECURITY RULES) Tj ET\n", y))
-		y -= 20
-
-		// Table Header
-		buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 50 %d Td (ID) Tj ET\n", y))
-		buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 100 %d Td (Severity) Tj ET\n", y))
-		buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 180 %d Td (Status) Tj ET\n", y))
-		buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 250 %d Td (Description) Tj ET\n", y))
-		y -= 15
-
-		// Table Data
-		for _, rule := range rules {
-			if y < 100 {
-				break
-			}
-			status := "ENABLED"
-			if !rule.Enabled {
-				status = "DISABLED"
-			}
-			buf.WriteString(fmt.Sprintf("BT /F1 8 Tf 50 %d Td (%d) Tj ET\n", y, rule.ID))
-			buf.WriteString(fmt.Sprintf("BT /F1 8 Tf 100 %d Td (%s) Tj ET\n", y, rule.Severity))
-			buf.WriteString(fmt.Sprintf("BT /F1 8 Tf 180 %d Td (%s) Tj ET\n", y, status))
-			buf.WriteString(fmt.Sprintf("BT /F1 8 Tf 250 %d Td (%s) Tj ET\n", y, truncate(rule.Description, 30)))
-			y -= 10
-		}
-		y -= 20
-	}
-
-	// Performance Metrics Table
-	buf.WriteString(fmt.Sprintf("BT /F2 14 Tf 50 %d Td (PERFORMANCE METRICS) Tj ET\n", y))
-	y -= 20
-
-	// Table Header
-	buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 50 %d Td (Component) Tj ET\n", y))
-	buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 200 %d Td (Status) Tj ET\n", y))
-	buf.WriteString(fmt.Sprintf("BT /F2 10 Tf 300 %d Td (Details) Tj ET\n", y))
-	y -= 15
-
-	// Performance Data
-	perfMetrics := g.generatePerformanceMetrics(stats)
-	for _, metric := range perfMetrics {
-		if y < 100 {
-			break
-		}
-		buf.WriteString(fmt.Sprintf("BT /F1 9 Tf 50 %d Td (%s) Tj ET\n", y, metric.Component))
-		buf.WriteString(fmt.Sprintf("BT /F1 9 Tf 200 %d Td (%s) Tj ET\n", y, metric.Status))
-		buf.WriteString(fmt.Sprintf("BT /F1 9 Tf 300 %d Td (%s) Tj ET\n", y, metric.Details))
-		y -= 12
-	}
-
-	// Footer
-	buf.WriteString("BT /F1 8 Tf 50 30 Td (Obsidian Sentinel WAF v2.2.4 - Enterprise Security Report) Tj ET\n")
-	buf.WriteString("BT /F1 8 Tf 50 20 Td (Confidential - For Authorized Security Personnel Only) Tj ET\n")
-
-	return buf.String()
-}
-
 // calculateSecurityRating computes overall security posture
-func (g *Generator) calculateSecurityRating(stats model.Stats, logs []model.LogEntry, rules []model.Rule) SecurityRating {
+func (g *Generator) calculateSecurityRating(stats model.Stats, logs []model.LogEntry, _ []model.Rule) SecurityRating {
 	score := 100
 
 	// Deduct points based on blocked requests ratio

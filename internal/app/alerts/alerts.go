@@ -380,7 +380,7 @@ func (s *Service) incrementRateLimitCounters(webhookName string) {
 }
 
 // getRoutingKey returns the PagerDuty routing key from webhook headers
-func (s *Service) getRoutingKey(alert *Alert) string {
+func (s *Service) getRoutingKey(_ *Alert) string {
 	// Routing key is stored in the webhook headers for PagerDuty
 	s.mu.RLock()
 	defer s.mu.RUnlock()

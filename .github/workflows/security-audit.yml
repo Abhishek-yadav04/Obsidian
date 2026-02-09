@@ -17,9 +17,9 @@ jobs:
     name: Dependency Vulnerability Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.22.x'
           cache: true
@@ -29,7 +29,7 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck -format json ./... > govuln-report.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: govuln-report
           path: govuln-report.json
@@ -38,19 +38,19 @@ jobs:
     name: Static Application Security Testing
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.22.x'
           cache: true
 
       - name: Run Gosec
-        uses: securego/gosec@v2.21.4
+        uses: securego/gosec@v2.22.11
         with:
           args: '-fmt sarif -out gosec.sarif ./...'
 
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: gosec.sarif
 
@@ -58,12 +58,12 @@ jobs:
     name: Secret Scanning
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: TruffleHog Scan
-        uses: trufflesecurity/trufflehog@v3.82.13
+        uses: trufflesecurity/trufflehog@v3.93.1
         with:
           extra_args: --only-verified
 
@@ -72,13 +72,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: sast
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build image
         run: docker build -t obsidian-waf:scan .
 
       - name: Trivy Scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: obsidian-waf:scan
           format: sarif
@@ -86,7 +86,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: '1'
 
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy.sarif
 
@@ -94,9 +94,9 @@ jobs:
     name: License Compliance
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.22.x'
           cache: true

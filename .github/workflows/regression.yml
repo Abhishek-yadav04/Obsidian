@@ -22,10 +22,10 @@ jobs:
       tags: ${{ steps.generate.outputs.tags }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go (matrix generation)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.22.x'
 
@@ -52,10 +52,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
@@ -69,7 +69,7 @@ jobs:
 
       - name: Upload Codecov (General)
         if: matrix.go-version == env.GOLANG_BASE_VERSION
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: build/coverage.txt
           flags: default,${{ matrix.build-flag }}
@@ -78,7 +78,7 @@ jobs:
 
       - name: Upload Codecov (Examples)
         if: matrix.go-version == env.GOLANG_BASE_VERSION
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: build/coverage-examples.txt
           flags: examples,${{ matrix.build-flag }}
@@ -87,7 +87,7 @@ jobs:
 
       - name: Upload Codecov (FTW)
         if: matrix.go-version == env.GOLANG_BASE_VERSION
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: build/coverage-ftw.txt
           flags: ftw,${{ matrix.build-flag }}
@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload Codecov (TinyGo)
         if: matrix.go-version == env.GOLANG_BASE_VERSION && hashFiles('build/coverage-tinygo.txt') != ''
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: build/coverage-tinygo.txt
           flags: tinygo,${{ matrix.build-flag }}

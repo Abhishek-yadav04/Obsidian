@@ -46,7 +46,7 @@ jobs:
           cache: true
 
       - name: Run Gosec
-        uses: securego/gosec@v2.22.11
+        uses: securego/gosec@v2.23.0
         with:
           args: '-fmt sarif -out gosec.sarif ./...'
 
@@ -63,7 +63,7 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog Scan
-        uses: trufflesecurity/trufflehog@v3.93.1
+        uses: trufflesecurity/trufflehog@v3.93.3
         with:
           extra_args: --only-verified
 
@@ -78,7 +78,7 @@ jobs:
         run: docker build -t obsidian-waf:scan .
 
       - name: Trivy Scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.0
         with:
           image-ref: obsidian-waf:scan
           format: sarif

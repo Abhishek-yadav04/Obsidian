@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   obsidian:
     build:
@@ -10,13 +8,16 @@ services:
       - "${OBSIDIAN_PORT:-8082}:8082"
     environment:
       - OBSIDIAN_PORT=8082
-      - OBSIDIAN_LOG_LEVEL=${LOG_LEVEL:-info}
-      - OBSIDIAN_LOG_FORMAT=${LOG_FORMAT:-json}
-      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required. Set it in .env e.g. postgresql://obsidian:pass@postgres:5432/obsidian?sslmode=disable}
-      - REDIS_URL=${REDIS_URL:?REDIS_URL is required. Set it in .env e.g. redis://:password@redis:6379}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-obsidian}:${POSTGRES_PASSWORD:-obsidian}@postgres:5432/${POSTGRES_DB:-obsidian}?sslmode=disable}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - OBSIDIAN_JWT_SECRET=${OBSIDIAN_JWT_SECRET:?OBSIDIAN_JWT_SECRET is required}
       - SUPABASE_URL=${SUPABASE_URL:-}
       - SUPABASE_KEY=${SUPABASE_KEY:-}
+      - OBSIDIAN_ALLOWED_ORIGINS=${OBSIDIAN_ALLOWED_ORIGINS:-http://localhost:8082}
+      - OBSIDIAN_CRS_ENABLED=${OBSIDIAN_CRS_ENABLED:-false}
+      - OBSIDIAN_CRS_PATH=${OBSIDIAN_CRS_PATH:-/app/crs}
+      - OBSIDIAN_CRS_MODE=${OBSIDIAN_CRS_MODE:-DetectionOnly}
+      - OBSIDIAN_WAF_CUSTOM_RULES=${OBSIDIAN_WAF_CUSTOM_RULES:-/app/rules/obsidian-custom.conf}
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,6 +35,15 @@ services:
     volumes:
       - obsidian-data:/app/data
       - obsidian-logs:/app/logs
+      - ./rules:/app/rules:ro
+      - ${OBSIDIAN_CRS_HOST_PATH:-./crs}:/app/crs:ro
+    command:
+      - "-port"
+      - "8082"
+      - "-log-level"
+      - "${LOG_LEVEL:-info}"
+      - "-log-format"
+      - "${LOG_FORMAT:-json}"
 
   postgres:
     image: postgres:16-alpine
@@ -44,7 +54,6 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-obsidian}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-obsidian} -d ${POSTGRES_DB:-obsidian}"]
       interval: 10s

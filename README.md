@@ -488,45 +488,26 @@ EXPOSE 8082
 CMD ["./obsidian", "-port", "8082"]
 ```
 
-#### Enterprise Deployment with PostgreSQL and Redis
-```yaml
-version: '3.8'
-services:
-  obsidian:
-    build: .
-    ports:
-      - "8082:8082"
-    environment:
-      - DATABASE_URL=postgres://obsidian:secure_pass@postgres:5432/obsidian
-      - REDIS_URL=redis://redis:6379/0
-      - OBSIDIAN_JWT_SECRET=your-super-secure-secret-key-here
-      - GEOIP_DATABASE_PATH=/data/GeoLite2-Country.mmdb
-    volumes:
-      - ./geoip:/data
-    depends_on:
-      - postgres
-      - redis
+#### Docker Compose (Repository Standard)
+Use the checked-in `docker-compose.yml` and one of these env templates:
 
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_DB=obsidian
-      - POSTGRES_USER=obsidian
-      - POSTGRES_PASSWORD=secure_pass
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
+- `.env.docker.example` for local postgres + redis containers
+- `.env.external.example` for managed/external DB + Redis
 
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
+```bash
+# Internal postgres + redis
+cp .env.docker.example .env.docker
+docker compose --env-file .env.docker up -d --build
 
-volumes:
-  postgres_data:
-  redis_data:
+# External managed services
+cp .env.external.example .env.external
+docker compose --env-file .env.external up -d --build
 ```
+
+Notes:
+- For Compose networking, use service names (`postgres`, `redis`) in URLs, not `localhost`.
+- `.env` is for local `go run` workflows; prefer dedicated env files for Docker publish/deploy.
+- `OBSIDIAN_JWT_SECRET` is required and must be set per environment.
 
 ### Kubernetes
 

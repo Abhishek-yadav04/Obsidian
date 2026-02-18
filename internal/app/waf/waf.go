@@ -142,13 +142,40 @@ func resolvePath(path string) string {
 		if _, err := os.Stat(cwdPath); err == nil {
 			return cwdPath
 		}
+		if root, ok := findRepoRoot(wd); ok {
+			rootPath := filepath.Join(root, path)
+			if _, err := os.Stat(rootPath); err == nil {
+				return rootPath
+			}
+		}
 	}
 
 	exe, err := os.Executable()
 	if err != nil {
 		return path
 	}
-	return filepath.Join(filepath.Dir(exe), path)
+	exeDir := filepath.Dir(exe)
+	if root, ok := findRepoRoot(exeDir); ok {
+		rootPath := filepath.Join(root, path)
+		if _, err := os.Stat(rootPath); err == nil {
+			return rootPath
+		}
+	}
+	return filepath.Join(exeDir, path)
+}
+
+func findRepoRoot(start string) (string, bool) {
+	dir := start
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
 }
 
 // ruleIDRe matches id:NNNNN inside SecRule/SecAction directives.

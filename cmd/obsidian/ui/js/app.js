@@ -1206,6 +1206,40 @@ const ObsidianApp = {
                     whitelistTbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No whitelisted IPs</td></tr>';
                 }
             }
+
+            // Render current rate-limited IPs
+            const rateLimitTbody = document.getElementById('ratelimit-recent-tbody');
+            if (rateLimitTbody) {
+                const limited = rl.rate_limited_list || [];
+                if (limited.length > 0) {
+                    rateLimitTbody.innerHTML = limited.map(item => {
+                        const ip = item.ip || '-';
+                        const endpoint = item.endpoint || '-';
+                        const retryAfter = item.retry_after || 0;
+                        return `
+                            <tr>
+                                <td>${new Date().toLocaleTimeString()}</td>
+                                <td class="font-monospace">${escapeHtml(ip)}</td>
+                                <td class="small text-muted">${escapeHtml(endpoint)}</td>
+                                <td>${retryAfter}s</td>
+                                <td><span class="badge bg-warning">Blocked</span></td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else if (rl.rate_limited_ips_list && rl.rate_limited_ips_list.length > 0) {
+                    rateLimitTbody.innerHTML = rl.rate_limited_ips_list.map(ip => `
+                        <tr>
+                            <td>${new Date().toLocaleTimeString()}</td>
+                            <td class="font-monospace">${escapeHtml(ip)}</td>
+                            <td class="small text-muted">-</td>
+                            <td>-</td>
+                            <td><span class="badge bg-warning">Blocked</span></td>
+                        </tr>
+                    `).join('');
+                } else {
+                    rateLimitTbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No rate-limited requests</td></tr>';
+                }
+            }
         }
     },
 
@@ -1252,24 +1286,28 @@ const ObsidianApp = {
     },
 
     async removeFromBlacklist(ip) {
-        const data = await this.api('/api/ratelimit/blacklist', {
+        const data = await this.api(`/api/ratelimit/blacklist?ip=${encodeURIComponent(ip)}`, {
             method: 'DELETE',
             body: JSON.stringify({ ip })
         });
         if (data?.success) {
             this.showToast('Success', `IP ${ip} removed from blacklist`);
             this.fetchRateLimitData();
+        } else {
+            this.showToast('Error', data?.error || data?.message || 'Failed to remove from blacklist', true);
         }
     },
 
     async removeFromWhitelist(ip) {
-        const data = await this.api('/api/ratelimit/whitelist', {
+        const data = await this.api(`/api/ratelimit/whitelist?ip=${encodeURIComponent(ip)}`, {
             method: 'DELETE',
             body: JSON.stringify({ ip })
         });
         if (data?.success) {
             this.showToast('Success', `IP ${ip} removed from whitelist`);
             this.fetchRateLimitData();
+        } else {
+            this.showToast('Error', data?.error || data?.message || 'Failed to remove from whitelist', true);
         }
     },
 

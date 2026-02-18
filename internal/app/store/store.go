@@ -528,12 +528,39 @@ func resolvePath(path string) string {
 		if _, err := os.Stat(cwdPath); err == nil {
 			return cwdPath
 		}
+		if root, ok := findRepoRoot(wd); ok {
+			rootPath := filepath.Join(root, path)
+			if _, err := os.Stat(rootPath); err == nil {
+				return rootPath
+			}
+		}
 	}
 	exe, err := os.Executable()
 	if err != nil {
 		return path
 	}
-	return filepath.Join(filepath.Dir(exe), path)
+	exeDir := filepath.Dir(exe)
+	if root, ok := findRepoRoot(exeDir); ok {
+		rootPath := filepath.Join(root, path)
+		if _, err := os.Stat(rootPath); err == nil {
+			return rootPath
+		}
+	}
+	return filepath.Join(exeDir, path)
+}
+
+func findRepoRoot(start string) (string, bool) {
+	dir := start
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
 }
 
 // initDefaultUsers creates default users in memory for when DB is not available
@@ -771,6 +798,12 @@ func NewHybridAuditLogger(s *Store) *HybridAuditLogger {
 
 func (l *HybridAuditLogger) Init(cfg plugintypes.AuditLogConfig) error { return nil }
 func (l *HybridAuditLogger) Write(log plugintypes.AuditLog) error {
+	// Defensive guard: avoid panics from unexpected nil audit data.
+	defer func() {
+		if recover() != nil {
+			// Best-effort: do not crash request processing on audit log issues.
+		}
+	}()
 	// Extract relevant info
 	msg := "Unknown Event"
 	action := "Log"
@@ -779,9 +812,13 @@ func (l *HybridAuditLogger) Write(log plugintypes.AuditLog) error {
 
 	messages := log.Messages()
 	if len(messages) > 0 {
-		msg = messages[0].Data().Msg()
-		ruleID = messages[0].Data().ID()
-		severity = messages[0].Data().Severity().String()
+		if messages[0] != nil {
+			if data := messages[0].Data(); data != nil {
+				msg = data.Msg()
+				ruleID = data.ID()
+				severity = data.Severity().String()
+			}
+		}
 	}
 
 	// Determine action based on interruption - Skipped finding interruption accessor
@@ -789,14 +826,25 @@ func (l *HybridAuditLogger) Write(log plugintypes.AuditLog) error {
 	// if tx.Interruption() != nil { ... }
 
 	entry := model.LogEntry{
-		ID:        tx.ID(),
+		ID:        "",
 		Timestamp: time.Now(),
-		ClientIP:  tx.ClientIP(),
-		Method:    tx.Request().Method(),
-		URI:       tx.Request().URI(),
+		ClientIP:  "",
+		Method:    "",
+		URI:       "",
 		RuleID:    ruleID,
 		Action:    action,
 		Details:   msg + " (" + severity + ")",
+	}
+	if tx != nil {
+		entry.ID = tx.ID()
+		entry.ClientIP = tx.ClientIP()
+		if req := tx.Request(); req != nil {
+			entry.Method = req.Method()
+			entry.URI = req.URI()
+		}
+	}
+	if entry.ID == "" {
+		entry.ID = fmt.Sprintf("audit-%d", time.Now().UnixNano())
 	}
 
 	l.store.AddLog(entry)

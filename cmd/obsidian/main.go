@@ -135,6 +135,29 @@ func main() {
 		fmt.Printf("Warning: Failed to load .env file: %v\n", err)
 	}
 
+	// Allow env vars to override defaults if flags are not explicitly set.
+	if *port == 8082 {
+		if envPort := strings.TrimSpace(os.Getenv("OBSIDIAN_PORT")); envPort != "" {
+			if v, err := strconv.Atoi(envPort); err == nil && v > 0 {
+				*port = v
+			}
+		} else if envPort := strings.TrimSpace(os.Getenv("PORT")); envPort != "" {
+			if v, err := strconv.Atoi(envPort); err == nil && v > 0 {
+				*port = v
+			}
+		}
+	}
+	if *logLevel == "info" {
+		if envLevel := strings.TrimSpace(os.Getenv("LOG_LEVEL")); envLevel != "" {
+			*logLevel = envLevel
+		}
+	}
+	if *logFormat == "json" {
+		if envFormat := strings.TrimSpace(os.Getenv("LOG_FORMAT")); envFormat != "" {
+			*logFormat = envFormat
+		}
+	}
+
 	// Set authentication development mode EARLY - before any JWT operations
 	auth.SetDevelopmentMode(*dev)
 
@@ -1173,9 +1196,9 @@ func rbacMiddleware(requiredRole string, next http.HandlerFunc) http.HandlerFunc
 		case "Viewer":
 			allowed = true
 		case "Analyst":
-			allowed = claims.Role == "Admin" || claims.Role == "Analyst"
+			allowed = strings.EqualFold(claims.Role, "Admin") || strings.EqualFold(claims.Role, "Analyst")
 		case "Admin":
-			allowed = claims.Role == "Admin"
+			allowed = strings.EqualFold(claims.Role, "Admin")
 		}
 
 		if !allowed {
@@ -1316,9 +1339,9 @@ func handleRateLimitBlacklist(w http.ResponseWriter, r *http.Request) {
 		})
 
 	case http.MethodDelete:
+		// Accept IP from JSON body or query param (?ip=...)
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.IP == "" {
-			http.Error(w, `{"error": "Invalid IP"}`, http.StatusBadRequest)
-			return
+			req.IP = strings.TrimSpace(r.URL.Query().Get("ip"))
 		}
 		// Trim and validate IP address
 		ip := strings.TrimSpace(req.IP)
@@ -1355,23 +1378,36 @@ func handleRateLimitWhitelist(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error": "Invalid IP"}`, http.StatusBadRequest)
 			return
 		}
-		rateLimiter.Whitelist(req.IP)
+		ip := strings.TrimSpace(req.IP)
+		if net.ParseIP(ip) == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "Invalid IP address format",
+			})
+			return
+		}
+		rateLimiter.Whitelist(ip)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"message": "IP whitelisted",
-			"ip":      req.IP,
+			"ip":      ip,
 		})
 
 	case http.MethodDelete:
+		// Accept IP from JSON body or query param (?ip=...)
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.IP == "" {
+			req.IP = strings.TrimSpace(r.URL.Query().Get("ip"))
+		}
+		ip := strings.TrimSpace(req.IP)
+		if ip == "" || net.ParseIP(ip) == nil {
 			http.Error(w, `{"error": "Invalid IP"}`, http.StatusBadRequest)
 			return
 		}
-		rateLimiter.RemoveFromWhitelist(req.IP)
+		rateLimiter.RemoveFromWhitelist(ip)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"message": "IP removed from whitelist",
-			"ip":      req.IP,
+			"ip":      ip,
 		})
 
 	default:

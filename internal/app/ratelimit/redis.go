@@ -250,6 +250,10 @@ func (rl *RedisRateLimiter) AllowEndpoint(ip, endpoint string) bool {
 	if whitelisted {
 		return true
 	}
+	// Check blacklist in Redis (hard block)
+	if rl.IsBlacklisted(normalizedIP) || rl.IsBlacklisted(ip) {
+		return false
+	}
 
 	// Get endpoint config
 	cfg := rl.getEndpointConfig(endpoint)
@@ -333,6 +337,19 @@ func (rl *RedisRateLimiter) RemoveFromBlacklist(ip string) error {
 
 	key := fmt.Sprintf("%sblacklist:%s", rl.config.Redis.KeyPrefix, ip)
 	return rl.client.Del(ctx, key)
+}
+
+// IsBlacklisted checks if an IP is blacklisted in Redis.
+func (rl *RedisRateLimiter) IsBlacklisted(ip string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), rl.config.Redis.ReadTimeout)
+	defer cancel()
+
+	key := fmt.Sprintf("%sblacklist:%s", rl.config.Redis.KeyPrefix, ip)
+	exists, err := rl.client.Exists(ctx, key)
+	if err != nil {
+		return false
+	}
+	return exists > 0
 }
 
 // Reset clears rate limit state for an IP or all IPs
@@ -422,12 +439,18 @@ func (rl *RedisRateLimiter) Unblock(ip string) error {
 	return nil
 }
 
+// RemoveFromWhitelist removes an IP from the whitelist.
+func (rl *RedisRateLimiter) RemoveFromWhitelist(ip string) {
+	rl.mu.Lock()
+	delete(rl.whitelist, ip)
+	rl.mu.Unlock()
+}
+
 // GetStats returns rate limiter statistics
 func (rl *RedisRateLimiter) GetStats() (map[string]interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), rl.config.Redis.ReadTimeout)
 	defer cancel()
 
-	// Count active visitors (unique IPs)
 	var activeCount int64 = 0
 	var blockedCount int64 = 0
 	var cursor uint64 = 0
@@ -445,28 +468,93 @@ func (rl *RedisRateLimiter) GetStats() (map[string]interface{}, error) {
 		}
 	}
 
-	// Count blocked entries
+	// Count blocked entries + collect details
 	cursor = 0
+	limitedList := make([]map[string]interface{}, 0)
+	limitedIPs := make(map[string]struct{})
 	for {
 		keys, nextCursor, err := rl.client.Scan(ctx, cursor, rl.config.Redis.KeyPrefix+"block:*", 100)
 		if err != nil {
 			break
 		}
 		blockedCount += int64(len(keys))
+		for _, key := range keys {
+			trimmed := strings.TrimPrefix(key, rl.config.Redis.KeyPrefix+"block:")
+			ip := trimmed
+			endpoint := ""
+			if idx := strings.IndexByte(trimmed, ':'); idx != -1 {
+				ip = trimmed[:idx]
+				endpoint = trimmed[idx+1:]
+			}
+			if ip != "" {
+				limitedIPs[ip] = struct{}{}
+			}
+			retryAfter := int64(0)
+			if ttl, err := rl.client.TTL(ctx, key); err == nil && ttl > 0 {
+				retryAfter = int64(ttl.Seconds())
+			}
+			limitedList = append(limitedList, map[string]interface{}{
+				"ip":          ip,
+				"endpoint":    endpoint,
+				"retry_after": retryAfter,
+			})
+		}
 		cursor = nextCursor
 		if cursor == 0 {
 			break
 		}
 	}
 
+	// Load blacklist from Redis
+	cursor = 0
+	blacklist := make([]string, 0)
+	for {
+		keys, nextCursor, err := rl.client.Scan(ctx, cursor, rl.config.Redis.KeyPrefix+"blacklist:*", 100)
+		if err != nil {
+			break
+		}
+		for _, key := range keys {
+			ip := strings.TrimPrefix(key, rl.config.Redis.KeyPrefix+"blacklist:")
+			if ip != "" {
+				blacklist = append(blacklist, ip)
+			}
+		}
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+
+	// Whitelist (local)
+	whitelist := make([]string, 0)
+	rl.mu.RLock()
+	for ip := range rl.whitelist {
+		whitelist = append(whitelist, ip)
+	}
+	rl.mu.RUnlock()
+
+	limitedIPsList := make([]string, 0, len(limitedIPs))
+	for ip := range limitedIPs {
+		limitedIPsList = append(limitedIPsList, ip)
+	}
+
 	return map[string]interface{}{
-		"active_visitors": activeCount,
-		"blocked_ips":     blockedCount,
-		"whitelist_count": len(rl.whitelist),
-		"rate_limit":      rl.config.RequestsPerMinute,
-		"window_seconds":  60,
-		"backend":         "redis",
-		"redis_addresses": rl.config.Redis.Addresses,
+		"active_visitors":       activeCount,
+		"blocked_ips":           blockedCount,
+		"rate_limited_ips":      len(limitedIPsList),
+		"rate_limited_list":     limitedList,
+		"rate_limited_ips_list": limitedIPsList,
+		"whitelist_count":       len(whitelist),
+		"blacklist_count":       len(blacklist),
+		"whitelisted_count":     len(whitelist),
+		"blacklisted_count":     len(blacklist),
+		"whitelist":             whitelist,
+		"blacklist":             blacklist,
+		"rate_limit":            rl.config.RequestsPerMinute,
+		"requests_per_minute":   rl.config.RequestsPerMinute,
+		"window_seconds":        60,
+		"backend":               "redis",
+		"redis_addresses":       rl.config.Redis.Addresses,
 	}, nil
 }
 

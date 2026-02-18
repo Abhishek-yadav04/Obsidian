@@ -1494,31 +1494,49 @@ const ObsidianApp = {
         const sidebar = document.getElementById('sidebar');
         const overlay = document.querySelector('.overlay');
         const sidebarClose = document.getElementById('sidebarClose');
-        
-        document.querySelector('.mobile-toggle')?.addEventListener('click', () => {
-            sidebar?.classList.toggle('active');
-            overlay?.classList.toggle('active');
+        const mobileToggle = document.querySelector('.mobile-toggle');
+
+        const setSidebarOpen = (open) => {
+            if (!sidebar || !overlay) return;
+            sidebar.classList.toggle('active', open);
+            overlay.classList.toggle('active', open);
+            document.body.classList.toggle('sidebar-open', open);
+            mobileToggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+        };
+
+        const closeSidebar = () => setSidebarOpen(false);
+
+        mobileToggle?.setAttribute('aria-expanded', 'false');
+        mobileToggle?.addEventListener('click', () => {
+            const isOpen = sidebar?.classList.contains('active');
+            setSidebarOpen(!isOpen);
         });
 
-        sidebarClose?.addEventListener('click', () => {
-            sidebar?.classList.remove('active');
-            overlay?.classList.remove('active');
-        });
+        sidebarClose?.addEventListener('click', closeSidebar);
 
         // Close sidebar when clicking overlay
-        overlay?.addEventListener('click', () => {
-            sidebar?.classList.remove('active');
-            overlay?.classList.remove('active');
-        });
+        overlay?.addEventListener('click', closeSidebar);
 
         // Close sidebar when clicking a nav link on mobile
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', () => {
                 if (window.innerWidth <= 992) {
-                    sidebar?.classList.remove('active');
-                    overlay?.classList.remove('active');
+                    closeSidebar();
                 }
             });
+        });
+
+        // Keep layout state sane during viewport changes and keyboard navigation.
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 992) {
+                closeSidebar();
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && sidebar?.classList.contains('active')) {
+                closeSidebar();
+            }
         });
     },
 

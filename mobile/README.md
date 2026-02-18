@@ -7,11 +7,19 @@ This folder contains a Capacitor wrapper for the Obsidian WAF UI.
 1. Install Node.js (LTS) and Android Studio (with Android SDK + platform tools).
 2. From `mobile/`:
    - `npm install`
-   - `npx cap add android`
-   - `npx cap sync android`
+   - `npm run cap:add`
+   - `npm run cap:sync`
 3. Open the Android project:
-   - `npx cap open android`
+   - `npm run cap:open`
 4. Build APK in Android Studio (Build > Build APK(s)).
+
+## UI update workflow (important)
+
+If you change files under `cmd/obsidian/ui`, run this before testing on Android:
+
+- `npm run cap:sync`
+
+This copies the latest web UI into `mobile/android/app/src/main/assets/public`.
 
 ## Notes
 

@@ -34,6 +34,16 @@ body {
     overflow-x: hidden;
     padding-bottom: env(safe-area-inset-bottom);
     overscroll-behavior-y: none;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+* {
+    -webkit-tap-highlight-color: transparent;
 }
 
 .wrapper {
@@ -427,8 +437,8 @@ tr.table-danger .small {
 .mobile-toggle {
     display: none;
     position: fixed;
-    top: 15px;
-    right: 15px;
+    top: calc(10px + env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
     z-index: 2000;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
@@ -439,6 +449,7 @@ tr.table-danger .small {
     min-width: 44px;
     min-height: 44px;
     backdrop-filter: blur(12px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
 }
 
 .overlay {
@@ -454,19 +465,23 @@ tr.table-danger .small {
 
 /* Tablet and below */
 @media (max-width: 992px) {
+    body.sidebar-open {
+        overflow: hidden;
+    }
+
     body {
         overflow-y: auto;
     }
 
     .sidebar {
         transform: translateX(-100%);
-        width: 80%;
-        max-width: 300px;
+        width: min(88vw, 320px);
         box-shadow: 2px 0 15px rgba(0, 0, 0, 0.5);
         height: 100dvh;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
+        will-change: transform;
     }
 
     /* Mobile-only scrollbar styling */
@@ -507,16 +522,19 @@ tr.table-danger .small {
 
     .overlay.active {
         display: block;
+        pointer-events: auto;
     }
 
     .overlay {
         pointer-events: none;
+        backdrop-filter: blur(1px);
     }
 
     .main-content {
         margin-left: 0;
         width: 100%;
-        padding: 15px;
+        padding: 14px;
+        padding-top: calc(64px + env(safe-area-inset-top));
     }
 
     .mobile-toggle {
@@ -534,7 +552,8 @@ tr.table-danger .small {
     .header {
         flex-direction: column;
         align-items: flex-start;
-        padding-right: 50px; /* Space for mobile toggle */
+        padding-right: 0;
+        gap: 0.75rem;
     }
 
     .header .d-flex {
@@ -546,6 +565,7 @@ tr.table-danger .small {
     .header .form-select,
     .header .btn {
         width: 100%;
+        min-height: 44px;
     }
 
     /* Cards stack on mobile */
@@ -565,6 +585,22 @@ tr.table-danger .small {
     .main-content {
         -webkit-overflow-scrolling: touch;
     }
+
+    .card {
+        border-radius: 14px;
+    }
+
+    .card-header {
+        padding: 0.85rem 1rem;
+    }
+
+    .card-body {
+        padding: 1rem;
+    }
+
+    .stat-card {
+        border-radius: 14px;
+    }
 }
 
 /* Small tablets */
@@ -576,6 +612,20 @@ tr.table-danger .small {
 
     .table-responsive table {
         min-width: 720px;
+    }
+
+    #logs-table td:nth-child(4),
+    #logs-table td:nth-child(6),
+    #logs-table th:nth-child(4),
+    #logs-table th:nth-child(6) {
+        display: none;
+    }
+
+    #full-logs-table td:nth-child(8),
+    #full-logs-table td:nth-child(6),
+    #full-logs-table th:nth-child(8),
+    #full-logs-table th:nth-child(6) {
+        display: none;
     }
 
     .card-header .btn-group,
@@ -594,6 +644,7 @@ tr.table-danger .small {
 @media (max-width: 576px) {
     .main-content {
         padding: 10px;
+        padding-top: calc(62px + env(safe-area-inset-top));
     }
 
     .header {
@@ -605,7 +656,7 @@ tr.table-danger .small {
     }
 
     .stat-card {
-        padding: 0.75rem;
+        padding: 0.85rem;
     }
 
     .stat-value {
@@ -656,6 +707,7 @@ tr.table-danger .small {
     .form-select,
     .nav-link {
         min-height: 44px;
+        font-size: 0.95rem;
     }
 
     .btn-sm {
@@ -665,6 +717,7 @@ tr.table-danger .small {
     .table-responsive {
         border-radius: 10px;
         border: 1px solid var(--border-color);
+        background: rgba(255, 255, 255, 0.01);
     }
 
     .table-dark th,
@@ -701,6 +754,10 @@ tr.table-danger .small {
     /* Quick stats on dashboard */
     .d-flex.justify-content-between {
         font-size: 0.875rem;
+    }
+
+    .toast {
+        max-width: calc(100vw - 1rem);
     }
 }
 
@@ -1202,15 +1259,15 @@ dd {
    ACTION BUTTONS - EXPLICIT VISIBILITY
    ============================================ */
 .btn-sm {
-    padding: 0.25rem 0.5rem;
+    padding: 0.35rem 0.55rem;
     font-size: 0.875rem;
     border-radius: 4px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 4px;
-    min-width: 32px;
-    min-height: 28px;
+    min-width: 36px;
+    min-height: 34px;
 }
 
 .btn-outline-info {

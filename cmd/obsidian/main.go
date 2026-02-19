@@ -478,6 +478,9 @@ func main() {
 	// Metrics middleware
 	finalHandler = metricsInst.Middleware(finalHandler)
 
+	// CORS middleware (for mobile/cross-origin access)
+	finalHandler = corsMiddleware(finalHandler)
+
 	// Security headers middleware
 	finalHandler = securityHeadersMiddleware(finalHandler)
 
@@ -629,6 +632,40 @@ func ipAllowlistMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// corsMiddleware handles CORS for mobile/cross-origin access
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		
+		// Allow configured origins or localhost variants
+		allowedOrigins := strings.Split(envString("OBSIDIAN_CORS_ORIGINS", "http://localhost:8082,http://127.0.0.1:8082,capacitor://localhost,ionic://localhost"), ",")
+		allowed := false
+		for _, ao := range allowedOrigins {
+			if strings.TrimSpace(ao) == origin {
+				allowed = true
+				break
+			}
+		}
+		
+		if allowed || origin == "" {
+			if origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-API-Key, X-Request-ID")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Max-Age", "3600")
+		}
+		
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		
+		next.ServeHTTP(w, r)
+	})
+}
+
 // securityHeadersMiddleware adds security headers to all responses
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -638,7 +675,7 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; font-src 'self' https://cdn.jsdelivr.net; connect-src 'self' ws: wss:")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; font-src 'self' https://cdn.jsdelivr.net; connect-src 'self' ws: wss: http: https:")
 
 		// HSTS (only enable in production with HTTPS)
 		if r.TLS != nil {

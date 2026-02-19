@@ -68,6 +68,33 @@ function getStoredUser() {
     }
 }
 
+function isCapacitorRuntime() {
+    const protocol = String(globalThis.location?.protocol || '').toLowerCase();
+    return protocol === 'capacitor:' || protocol === 'ionic:';
+}
+
+function normalizeAPIBase(raw) {
+    const value = String(raw || '').trim();
+    if (!value) return '';
+    return value.replace(/\/+$/, '');
+}
+
+function resolveAPIBase() {
+    const explicit = normalizeAPIBase(
+        getStoredValue('obsidian_api_base') ||
+        globalThis.OBSIDIAN_API_BASE ||
+        ''
+    );
+    if (explicit) return explicit;
+
+    // In Capacitor mobile runtime, default to loopback.
+    // This works with `adb reverse tcp:8082 tcp:8082`.
+    if (isCapacitorRuntime()) {
+        return 'http://127.0.0.1:8082';
+    }
+    return '';
+}
+
 // ============================================
 // APPLICATION STATE
 // ============================================
@@ -76,9 +103,34 @@ const ObsidianApp = {
     user: getStoredUser(),
     currentView: 'dashboard',
     rulesFilter: 'effective',
+    apiBase: resolveAPIBase(),
     ws: null,
     charts: {},
     refreshInterval: null,
+
+    buildAPIURL(endpoint) {
+        if (!endpoint) return endpoint;
+        if (/^https?:\/\//i.test(endpoint)) return endpoint;
+        const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+        if (!this.apiBase) return path;
+        return `${this.apiBase}${path}`;
+    },
+
+    buildWebSocketURL(path) {
+        const socketPath = path.startsWith('/') ? path : `/${path}`;
+        if (this.apiBase) {
+            try {
+                const parsed = new URL(this.apiBase);
+                const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+                return `${wsProtocol}//${parsed.host}${socketPath}`;
+            } catch (e) {
+                console.error('Invalid API base URL for websocket:', this.apiBase, e);
+            }
+        }
+        const isSecure = globalThis.location.protocol === 'https:';
+        const protocol = isSecure ? 'wss:' : 'ws:';
+        return `${protocol}//${globalThis.location.host}${socketPath}`;
+    },
 
     // Initialize the application
     init() {
@@ -196,15 +248,22 @@ const ObsidianApp = {
             'Content-Type': 'application/json',
             ...options.headers
         };
+        const requestURL = this.buildAPIURL(endpoint);
         try {
-            const res = await fetch(endpoint, { ...options, headers });
+            const res = await fetch(requestURL, { ...options, headers });
             if (res.status === 401) {
                 this.logout();
                 return null;
             }
-            return await res.json();
+            const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+            if (contentType.includes('application/json')) {
+                return await res.json();
+            }
+            const text = await res.text();
+            console.error('Non-JSON API response', { endpoint: requestURL, status: res.status, text: text.slice(0, 200) });
+            return null;
         } catch (e) {
-            console.error('API Error:', e);
+            console.error('API Error:', { endpoint: requestURL, error: e });
             return null;
         }
     },
@@ -1443,9 +1502,7 @@ const ObsidianApp = {
 
     // WebSocket connection
     connectWebSocket() {
-        const isSecure = globalThis.location.protocol === 'https:';
-        const protocol = isSecure ? 'wss:' : 'ws:';
-        this.ws = new WebSocket(`${protocol}//${globalThis.location.host}/api/ws?token=${this.token}`);
+        this.ws = new WebSocket(`${this.buildWebSocketURL('/api/ws')}?token=${encodeURIComponent(this.token || '')}`);
 
         this.ws.onmessage = (event) => {
             try {
@@ -1571,7 +1628,7 @@ const ObsidianApp = {
             }
             
             // PDF export
-            const res = await fetch('/api/export?format=pdf', {
+            const res = await fetch(this.buildAPIURL('/api/export?format=pdf'), {
                 headers: { 'Authorization': 'Bearer ' + this.token }
             });
             

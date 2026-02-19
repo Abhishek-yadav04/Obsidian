@@ -22,9 +22,9 @@ jobs:
     name: Build & Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -40,7 +40,7 @@ jobs:
       - name: Test
         run: go test -race -coverprofile=coverage.out ./...
 
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v4
         with:
           files: coverage.out
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -51,19 +51,19 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
       - name: Gosec
-        uses: securego/gosec@v2.23.0
+        uses: securego/gosec@v2.22.0
         with:
           args: '-fmt sarif -out gosec.sarif ./...'
 
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: gosec.sarif
 
@@ -72,7 +72,7 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck -format json ./... > govuln.json
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v4
         with:
           name: govuln-report
           path: govuln.json
@@ -81,14 +81,14 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - uses: golangci/golangci-lint-action@v9
+      - uses: golangci-lint-action@v5
         with:
           args: --timeout=5m
 
@@ -97,18 +97,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build, security, lint]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v2
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v2
         if: github.event_name != 'pull_request'
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v4
         id: meta
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -117,7 +117,7 @@ jobs:
             type=semver,pattern={{version}}
             type=sha
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v4
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
@@ -129,9 +129,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: docker
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: anchore/sbom-action@v0
+      - uses: anchore/sbom-action@v0.14.0
         with:
           path: .
           format: cyclonedx-json
@@ -144,15 +144,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v4
         with:
           args: release --clean
         env:

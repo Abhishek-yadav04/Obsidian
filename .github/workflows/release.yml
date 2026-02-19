@@ -120,9 +120,33 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  android-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Build APK
+        run: |
+          cd mobile
+          ./gradlew assembleRelease
+
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release.apk
+          path: mobile/app/build/outputs/apk/release/app-release.apk
+
   release:
     name: Create GitHub Release
-    needs: [build, docker]
+    needs: [build, docker, android-apk]
     runs-on: ubuntu-latest
 
     steps:

@@ -1,5 +1,5 @@
+---
 name: Regression Tests
-
 on:
   push:
     branches: [main]
@@ -10,10 +10,8 @@ on:
     paths-ignore:
       - "**/*.md"
       - "LICENSE"
-
 permissions:
   contents: read
-
 jobs:
   generate-matrix:
     name: Generate Test Matrix
@@ -23,12 +21,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-
       - name: Setup Go (matrix generation)
         uses: actions/setup-go@v6
         with:
           go-version: '1.22.x'
-
       - name: Generate tag combinations
         id: generate
         shell: bash
@@ -36,7 +32,6 @@ jobs:
           set -euo pipefail
           go run mage.go tagsmatrix > tags.json
           echo "tags=$(cat tags.json)" >> "$GITHUB_OUTPUT"
-
   test:
     name: Regression Tests
     needs: generate-matrix
@@ -46,63 +41,54 @@ jobs:
       matrix:
         go-version: [1.22.x, 1.23.x]
         build-flag: ${{ fromJson(needs.generate-matrix.outputs.tags) }}
-
     env:
       GOLANG_BASE_VERSION: "1.22.x"
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
-
       - name: Run tests and generate coverage
         shell: bash
         run: |
           set -euo pipefail
           export BUILD_TAGS="${{ matrix.build-flag }}"
           go run mage.go coverage
-
       - name: Upload Codecov (General)
         if: matrix.go-version == env.GOLANG_BASE_VERSION
         uses: codecov/codecov-action@v5
         with:
           files: build/coverage.txt
-          flags: default,${{ matrix.build-flag }}
+          flags: default, ${{ matrix.build-flag }}
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
-
       - name: Upload Codecov (Examples)
         if: matrix.go-version == env.GOLANG_BASE_VERSION
         uses: codecov/codecov-action@v5
         with:
           files: build/coverage-examples.txt
-          flags: examples,${{ matrix.build-flag }}
+          flags: examples, ${{ matrix.build-flag }}
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
-
       - name: Upload Codecov (FTW)
         if: matrix.go-version == env.GOLANG_BASE_VERSION
         uses: codecov/codecov-action@v5
         with:
           files: build/coverage-ftw.txt
-          flags: ftw,${{ matrix.build-flag }}
+          flags: ftw, ${{ matrix.build-flag }}
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
-
       - name: Upload Codecov (TinyGo)
         if: matrix.go-version == env.GOLANG_BASE_VERSION && hashFiles('build/coverage-tinygo.txt') != ''
         uses: codecov/codecov-action@v5
         with:
           files: build/coverage-tinygo.txt
-          flags: tinygo,${{ matrix.build-flag }}
+          flags: tinygo, ${{ matrix.build-flag }}
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
-
   enforce-all-checks:
     name: Enforce All Checks
     runs-on: ubuntu-latest

@@ -1,3 +1,4 @@
+---
 services:
   obsidian:
     build:
@@ -44,7 +45,6 @@ services:
       - "${LOG_LEVEL:-info}"
       - "-log-format"
       - "${LOG_FORMAT:-json}"
-
   postgres:
     image: postgres:16-alpine
     container_name: obsidian-db
@@ -62,7 +62,6 @@ services:
     restart: unless-stopped
     networks:
       - obsidian-network
-
   redis:
     image: redis:7-alpine
     container_name: obsidian-redis
@@ -84,7 +83,6 @@ services:
     restart: unless-stopped
     networks:
       - obsidian-network
-
   # Nginx reverse proxy for production
   nginx:
     image: nginx:alpine
@@ -102,11 +100,9 @@ services:
       - obsidian-network
     profiles:
       - production
-
 networks:
   obsidian-network:
     driver: bridge
-
 volumes:
   postgres-data:
   redis-data:

@@ -107,6 +107,38 @@ export DATABASE_URL="postgres://user:pass@localhost/obsidian"  # Optional
 export REDIS_URL="redis://localhost:6379"                    # Optional
 ```
 
+## Release process for contributors
+
+If you have permissions to publish releases for this repository, follow the release workflow below. Otherwise, open an issue or PR and request a release from project maintainers.
+
+1. Create a semver tag locally (replace X.Y.Z):
+
+```bash
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+2. The repository GitHub Actions workflows will run automatically for tags starting with `v` and will:
+
+- Build platform binaries and upload them as artifacts
+- Build a multi-arch Docker image and push it to GitHub Container Registry (GHCR)
+- Generate an SBOM and attach it to release artifacts
+- Create a GitHub Release and attach artifacts
+
+3. Verify the pushed Docker image (recommended):
+
+```bash
+# Login to GHCR (use a PAT with read:packages/write:packages depending on needs)
+echo "${GHCR_TOKEN}" | docker login ghcr.io -u <USERNAME> --password-stdin
+
+# Pull the released image
+docker pull ghcr.io/<owner>/<repo>:vX.Y.Z
+```
+
+If the workflow fails or the image cannot be pulled, open an issue referencing the release tag and include the Actions logs.
+
+```
+
 _________________
 
 The Coraza project is a community effort. We encourage you to pitch in and join the team!

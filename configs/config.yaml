@@ -1,16 +1,14 @@
+---
 database:
   host: ""
   port: 5432
   user: obsidian
   password: password
   dbname: obsidian
-
 logging:
   level: info
-
 security:
   jwt_secret: your-secret-key
-
 observability:
   prometheus_port: 9090
   otel_endpoint: ""

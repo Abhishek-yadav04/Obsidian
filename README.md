@@ -393,7 +393,32 @@ Authenticate and receive JWT token.
 #### GET /api/health
 Returns comprehensive system health status.
 
+  "note": "See CI / Release section in this README for how releases are built and how to pull the official Docker image from GHCR."
 ```json
+
+---
+
+## 🧩 CI / Release
+
+Releases are performed by the repository GitHub Actions workflows. Key points:
+
+- The CI pipeline builds and tests the project, runs linting, security scans, and produces artifacts (platform binaries).
+- A separate Docker job builds multi-arch images and pushes them to GitHub Container Registry (GHCR) under `ghcr.io/<owner>/<repo>:<tag>`.
+- The release job packages artifacts and creates a GitHub Release. The workflow also verifies the pushed Docker image by attempting to `docker pull` the released image during the release job.
+- An SBOM (CycloneDX JSON) is generated and attached to the release artifacts.
+
+How to pull the official release image from GHCR:
+
+```bash
+# Authenticate to GHCR (use a personal access token with appropriate scopes)
+echo "${GHCR_TOKEN}" | docker login ghcr.io -u <USERNAME> --password-stdin
+
+# Pull the image for a given tag (example: v2.2.4)
+docker pull ghcr.io/<owner>/<repo>:v2.2.4
+```
+
+If you run into problems with releases or CI, check `.github/workflows/ci.yml` and `.github/workflows/release.yml` for the exact steps executed during builds.
+
 {
   "status": "healthy",
   "uptime": "2h30m15s",

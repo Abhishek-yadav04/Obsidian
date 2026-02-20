@@ -1,3 +1,4 @@
+---
 version: "v0.0.0"
 meta:
   engine: "coraza"
@@ -36,13 +37,13 @@ test_overrides:
     reason: "TODO"
     output:
       log:
-        expect_ids: [920280] # TODO: understand why 920280 (Missing Host Header) is triggered and not 920290 (Empty Host header). See what go-ftw sends.
+        expect_ids: [920280]  # TODO: understand why 920280 (Missing Host Header) is triggered and not 920290 (Empty Host header). See what go-ftw sends.
   - rule_id: 920290
     test_ids: [4]
     reason: "TODO"
     output:
       log:
-        expect_ids: [920280] # TODO: understand why 920280 (Missing Host Header) is triggered and not 920290 (Empty Host header). See what go-ftw sends.
+        expect_ids: [920280]  # TODO: understand why 920280 (Missing Host Header) is triggered and not 920290 (Empty Host header). See what go-ftw sends.
   - rule_id: 920430
     test_ids: [8]
     reason: "Go/http does not allow HTTP/3.0 - 505 HTTP Version Not Supported"
@@ -50,9 +51,8 @@ test_overrides:
       status: 505
       log:
         no_expect_ids: [920430]
-
   - rule_id: 922130
-    test_ids: [1,2,7]
+    test_ids: [1, 2, 7]
     reason: "Multipart parsing tests. 922130 rule is not reached, Coraza triggers rule 200003 (MULTIPART_STRICT_ERROR) at parsing time"
     output:
       log:
@@ -66,8 +66,8 @@ test_overrides:
       log:
         expect_ids: [922130]
   - rule_id: 922130
-    test_ids: [3,5,6]
+    test_ids: [3, 5, 6]
     reason: "Valid Multipart parsing payloads. Coraza should not trigger rules 200002 (REQBODY_ERROR), 200003 (MULTIPART_STRICT_ERROR), 922130"
     output:
       log:
-        no_expect_ids: [200002,200003,922130]
+        no_expect_ids: [200002, 200003, 922130]

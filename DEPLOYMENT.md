@@ -398,6 +398,39 @@ EOF
 sudo systemctl restart haproxy
 ```
 
+---
+
+## Releasing and pulling images
+
+Releases for this repository are performed by the GitHub Actions workflows. For maintainers and contributors with permission to publish releases, the workflow will:
+
+- Build platform binaries and upload them as artifacts
+- Build a multi-arch Docker image and push it to GitHub Container Registry (GHCR)
+- Generate an SBOM (CycloneDX JSON) and attach it to the release artifacts
+- Create a GitHub Release and attach the built artifacts
+
+To create a release locally, tag the repository and push the tag:
+
+```bash
+# Create an annotated semver tag
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+The workflows will run automatically for tags starting with `v`.
+
+To verify and pull the published Docker image from GHCR:
+
+```bash
+# Authenticate to GHCR (use a PAT with appropriate scopes)
+echo "${GHCR_TOKEN}" | docker login ghcr.io -u <USERNAME> --password-stdin
+
+# Pull the image (example tag vX.Y.Z)
+docker pull ghcr.io/<owner>/<repo>:vX.Y.Z
+```
+
+If the pull fails, check the GitHub Actions logs for the `docker` and `release` jobs, and open an issue with the tag name and failing logs.
+
 ## Container Deployment
 
 ### 1. Docker Compose (Development/Staging)

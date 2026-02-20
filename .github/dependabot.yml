@@ -1,5 +1,5 @@
+---
 version: 2
-
 updates:
   # -------------------------
   # Go Modules
@@ -11,20 +11,15 @@ updates:
       day: "monday"
       time: "03:00"
       timezone: "UTC"
-
     open-pull-requests-limit: 10
-
     reviewers:
       - "security-team"
-
     labels:
       - "dependencies"
       - "go"
-
     commit-message:
       prefix: "deps(go)"
       include: "scope"
-
     groups:
       go-minor-and-patch:
         patterns:
@@ -32,12 +27,10 @@ updates:
         update-types:
           - "minor"
           - "patch"
-
     ignore:
-      # Avoid noisy Go toolchain bumps unless intentional
+  # Avoid noisy Go toolchain bumps unless intentional
       - dependency-name: "golang.org/x/*"
         update-types: ["version-update:semver-major"]
-
   # -------------------------
   # GitHub Actions
   # -------------------------
@@ -48,22 +41,17 @@ updates:
       day: "monday"
       time: "03:30"
       timezone: "UTC"
-
     open-pull-requests-limit: 5
-
     labels:
       - "dependencies"
       - "ci"
-
     commit-message:
       prefix: "ci(deps)"
       include: "scope"
-
     groups:
       github-actions:
         patterns:
           - "*"
-
   # -------------------------
   # Docker
   # -------------------------
@@ -74,17 +62,13 @@ updates:
       day: "monday"
       time: "04:00"
       timezone: "UTC"
-
     open-pull-requests-limit: 5
-
     labels:
       - "dependencies"
       - "docker"
-
     commit-message:
       prefix: "docker(deps)"
       include: "scope"
-
     groups:
       docker-patch:
         patterns:

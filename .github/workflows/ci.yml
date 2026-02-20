@@ -88,7 +88,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - uses: golangci-lint-action@v5
+      - uses: golangci/golangci-lint-action@v5
         with:
           args: --timeout=5m
 
@@ -131,7 +131,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: anchore/sbom-action@v0.14.0
+      - uses: anchore/sbom-action@v0.15.0
         with:
           path: .
           format: cyclonedx-json

@@ -127,6 +127,17 @@ func (i *rwInterceptor) Write(b []byte) (int, error) {
 		return n + n2, err
 	}
 
+	// If the recorded status code disallows a response body (204, 205, 304)
+	// avoid writing any bytes to the downstream writer — behave as if the
+	// write succeeded (caller expects len(b), nil) but do not forward the
+	// body. This prevents "request method or response status code does not
+	// allow body" errors on some platforms/ResponseWriters.
+	switch i.statusCode {
+	case http.StatusNoContent, http.StatusResetContent, http.StatusNotModified:
+		// do not flush headers nor write body
+		return len(b), nil
+	}
+
 	// flush the status code before writing
 	i.flushWriteHeader()
 
@@ -175,6 +186,13 @@ func (i *rwInterceptor) writeBufferedResponseBodyToDownstream() error {
 	// this is the last opportunity we have to report the resolved status code
 	// as next step is write into the response writer (triggering a 200 in the
 	// response status code.)
+	// If status code disallows a body, simply mark as written and skip copying.
+	switch i.statusCode {
+	case http.StatusNoContent, http.StatusResetContent, http.StatusNotModified:
+		i.wroteBufferedBodyToDownstream = true
+		return nil
+	}
+
 	i.flushWriteHeader()
 	if _, err := io.Copy(i.w, reader); err != nil {
 		return fmt.Errorf("failed to copy the response body: %v", err)

@@ -146,13 +146,19 @@ func TestLoadConfigurationFileWithMultiFs(t *testing.T) {
 	}
 
 	err = p.FromFile("../doesnotexist.conf")
-	// Go and TinyGo have different error messages
-	if !strings.Contains(err.Error(), "no such file or directory") && !strings.Contains(err.Error(), "file does not exist") && !strings.Contains(err.Error(), "cannot find the file specified") {
+	// Go and TinyGo have different error messages. Prefer os.IsNotExist for
+	// platform-agnostic checking but also accept common substrings to be
+	// defensive with wrapped errors.
+	if err == nil {
+		t.Errorf("expected not found error. Got nil")
+	} else if !os.IsNotExist(err) && !strings.Contains(err.Error(), "no such file or directory") && !strings.Contains(err.Error(), "file does not exist") && !strings.Contains(err.Error(), "cannot find the file specified") {
 		t.Errorf("expected not found error. Got: %s", err.Error())
 	}
 
 	err = p.FromFile("/tmp/doesnotexist.conf")
-	if !strings.Contains(err.Error(), "no such file or directory") && !strings.Contains(err.Error(), "file does not exist") && !strings.Contains(err.Error(), "cannot find the path specified") {
+	if err == nil {
+		t.Errorf("expected not found error. Got nil")
+	} else if !os.IsNotExist(err) && !strings.Contains(err.Error(), "no such file or directory") && !strings.Contains(err.Error(), "file does not exist") && !strings.Contains(err.Error(), "cannot find the path specified") && !strings.Contains(err.Error(), "The system cannot find the file specified") {
 		t.Errorf("expected not found error. Got: %s", err.Error())
 	}
 

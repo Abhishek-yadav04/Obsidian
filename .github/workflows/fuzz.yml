@@ -1,13 +1,14 @@
----
 name: Fuzz Tests
 on:
   schedule:
   # Daily at 14:05 UTC
     - cron: "05 14 * * *"
   workflow_dispatch:
+
 permissions:
   contents: read
   issues: write
+
 jobs:
   fuzz:
     name: Go Fuzzing
@@ -15,12 +16,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v5
         with:
-  # Go fuzzing is stable and supported up to current releases
-          go-version: '1.23.x'
+          # Bumped to match your go.work requirements
+          go-version: '1.26.x'
           cache: true
       - name: Run fuzz tests
         run: |
@@ -36,4 +37,5 @@ jobs:
           🔗 Run details:
           https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           Please investigate potential crashers or new inputs." \
-            --label "bug, security"
+            --label "bug" \
+            --label "security"

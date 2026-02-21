@@ -1,4 +1,3 @@
----
 name: Regression Tests
 on:
   push:
@@ -10,8 +9,10 @@ on:
     paths-ignore:
       - "**/*.md"
       - "LICENSE"
+
 permissions:
   contents: read
+
 jobs:
   generate-matrix:
     name: Generate Test Matrix
@@ -20,9 +21,9 @@ jobs:
       tags: ${{ steps.generate.outputs.tags }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
       - name: Setup Go (matrix generation)
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v5
         with:
           go-version: '1.22.x'
       - name: Generate tag combinations
@@ -32,6 +33,7 @@ jobs:
           set -euo pipefail
           go run mage.go tagsmatrix > tags.json
           echo "tags=$(cat tags.json)" >> "$GITHUB_OUTPUT"
+
   test:
     name: Regression Tests
     needs: generate-matrix
@@ -45,9 +47,9 @@ jobs:
       GOLANG_BASE_VERSION: "1.22.x"
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
@@ -89,6 +91,7 @@ jobs:
           flags: tinygo, ${{ matrix.build-flag }}
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
   enforce-all-checks:
     name: Enforce All Checks
     runs-on: ubuntu-latest

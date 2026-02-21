@@ -1,4 +1,3 @@
----
 name: CI/CD Pipeline
 on:
   push:
@@ -6,18 +5,20 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+
 env:
   GO_VERSION: '1.22.x'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-permissions:
-  contents: read
-  packages: write
-  security-events: write
+
+# Global permissions block removed to satisfy security requirements
+
 jobs:
   build:
     name: Build & Test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # Required for actions/checkout
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
@@ -37,10 +38,14 @@ jobs:
           files: coverage.out
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      contents: read # Required for actions/checkout
+      security-events: write # Required for github/codeql-action/upload-sarif
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
@@ -62,22 +67,30 @@ jobs:
         with:
           name: govuln-report
           path: govuln.json
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # Required for actions/checkout
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - uses: golangci/golangci-lint-action@v5
+      # Fixed the action path to include the owner
+      - uses: golangci/golangci-lint-action@v6
         with:
           args: --timeout=5m
+
   docker:
     name: Docker Build & Push
     runs-on: ubuntu-latest
     needs: [build, security, lint]
+    permissions:
+      contents: read # Required for actions/checkout
+      packages: write # Required to push to ghcr.io
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v2
@@ -101,23 +114,27 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
   sbom:
     name: Generate SBOM
     runs-on: ubuntu-latest
     needs: docker
+    permissions:
+      contents: read # Required for actions/checkout
     steps:
       - uses: actions/checkout@v4
       - uses: anchore/sbom-action@v0.15.0
         with:
           path: .
           format: cyclonedx-json
+
   release:
     name: Release
     runs-on: ubuntu-latest
     needs: sbom
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
-      contents: write
+      contents: write # Required by GoReleaser to publish GitHub Releases
     steps:
       - uses: actions/checkout@v4
         with:

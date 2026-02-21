@@ -1,14 +1,16 @@
----
 name: Release
 on:
   push:
     tags:
       - 'v*'
+
 permissions:
   contents: write
   packages: write
+
 env:
   REGISTRY: ghcr.io
+
 jobs:
   build:
     name: Build Binaries
@@ -62,6 +64,7 @@ jobs:
         with:
           name: obsidian-${{ matrix.goos }}-${{ matrix.goarch }}
           path: obsidian-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+
   docker:
     name: Build Docker Image
     needs: build
@@ -102,6 +105,7 @@ jobs:
             COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha, mode=max
+
   android-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
@@ -117,13 +121,13 @@ jobs:
         run: |
           cd mobile
           cd android
-          ./gradlew assembleRelease
+          ./gradlew assembleDebug
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release.apk
-  # Correct path for Capacitor Android project layout
-          path: mobile/android/app/build/outputs/apk/release/app-release.apk
+          name: app-debug.apk
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+
   release:
     name: Create GitHub Release
     needs: [build, docker, android-apk]
@@ -160,14 +164,16 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Obsidian Sentinel WAF ${{ github.ref_name }}
           body: |
-  ## Obsidian Sentinel WAF ${{ github.ref_name }}
-  ### Changes
+            ## Obsidian Sentinel WAF ${{ github.ref_name }}
+            ### Changes
             ${{ steps.changelog.outputs.CHANGELOG }}
-  ### Docker Image
+            
+            ### Docker Image
             ```bash
             docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             ```
-  ### Quick Start
+            
+            ### Quick Start
             ```bash
             ./obsidian -port 8082 -dev
             ```

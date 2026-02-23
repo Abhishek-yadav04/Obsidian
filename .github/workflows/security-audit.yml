@@ -52,7 +52,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: TruffleHog Scan
-        uses: trufflesecurity/trufflehog@v3.93.3
+        uses: trufflesecurity/trufflehog@v3.93.4
         with:
           extra_args: --only-verified
   container-scan:
@@ -64,7 +64,7 @@ jobs:
       - name: Build image
         run: docker build -t obsidian-waf:scan .
       - name: Trivy Scan
-        uses: aquasecurity/trivy-action@0.34.0
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           image-ref: obsidian-waf:scan
           format: sarif

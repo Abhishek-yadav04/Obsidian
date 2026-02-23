@@ -21,9 +21,9 @@ jobs:
       tags: ${{ steps.generate.outputs.tags }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Go (matrix generation)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.22.x'
       - name: Generate tag combinations
@@ -47,9 +47,9 @@ jobs:
       GOLANG_BASE_VERSION: "1.22.x"
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
           cache: true

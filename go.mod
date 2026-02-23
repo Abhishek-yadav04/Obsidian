@@ -19,13 +19,13 @@ go 1.26
 require (
 	github.com/anuraaga/go-modsecurity v0.0.0-20220824035035-b9a4099778df
 	github.com/corazawaf/coraza-coreruleset v0.0.0-20240226094324-415b1017abdc
-	github.com/corazawaf/libinjection-go v0.2.3
+	github.com/corazawaf/libinjection-go v0.3.0
 	github.com/foxcpp/go-mockdns v1.2.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/jcchavezs/mergefs v0.1.1
 	github.com/joho/godotenv v1.5.1
-	github.com/kaptinlin/jsonschema v0.7.2
+	github.com/kaptinlin/jsonschema v0.7.3
 	github.com/magefile/mage v1.15.1-0.20250615140142-78acbaf2e3ae
 	github.com/mccutchen/go-httpbin/v2 v2.20.0
 	github.com/petar-dambovaliev/aho-corasick v0.0.0-20250424160509-463d218d4745
@@ -49,7 +49,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/kaptinlin/go-i18n v0.2.9 // indirect
+	github.com/kaptinlin/go-i18n v0.2.11 // indirect
 	github.com/kaptinlin/jsonpointer v0.4.16 // indirect
 	github.com/kaptinlin/messageformat-go v0.4.18 // indirect
 	github.com/miekg/dns v1.1.57 // indirect

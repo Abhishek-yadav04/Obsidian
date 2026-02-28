@@ -1,7 +1,7 @@
 name: Fuzz Tests
+
 on:
   schedule:
-  # Daily at 14:05 UTC
     - cron: "05 14 * * *"
   workflow_dispatch:
 
@@ -17,25 +17,28 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          # Bumped to match your go.work requirements
-          go-version: '1.26.x'
+          go-version: "1.26.x"
           cache: true
+
       - name: Run fuzz tests
-        run: |
-          go run mage.go fuzz
+        run: go run mage.go fuzz
+
       - name: Create GitHub issue on failure
         if: failure() && github.run_attempt == 1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh issue create \
-            --title "🚨 Fuzz test failure: $GITHUB_WORKFLOW #$GITHUB_RUN_NUMBER" \
+            --title "[fuzz] Failure in $GITHUB_WORKFLOW #$GITHUB_RUN_NUMBER" \
             --body "The scheduled fuzz test failed.
-          🔗 Run details:
-          https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
-          Please investigate potential crashers or new inputs." \
+
+Run details:
+https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+Please investigate potential crashers or newly discovered failing inputs." \
             --label "bug" \
             --label "security"

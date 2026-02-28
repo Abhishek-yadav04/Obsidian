@@ -69,6 +69,7 @@ type Manager struct {
 	prefixes map[string]string    // keyPrefix -> keyHash (for lookup)
 	usage    map[string]*KeyUsage // keyHash -> usage
 	store    KeyStore
+	logf     func(format string, args ...any)
 }
 
 // KeyStore interface for persistence
@@ -87,8 +88,20 @@ func NewManager(store KeyStore) *Manager {
 		prefixes: make(map[string]string),
 		usage:    make(map[string]*KeyUsage),
 		store:    store,
+		logf:     func(string, ...any) {},
 	}
 	return m
+}
+
+// SetLogf sets an optional logger callback used for non-fatal async errors.
+func (m *Manager) SetLogf(logf func(format string, args ...any)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if logf == nil {
+		m.logf = func(string, ...any) {}
+		return
+	}
+	m.logf = logf
 }
 
 // LoadKeys loads all keys from the store into memory
@@ -222,19 +235,22 @@ func (m *Manager) ValidateKey(ctx context.Context, plaintext string, requiredSco
 	m.mu.Lock()
 	apiKey.LastUsedAt = &now
 	apiKey.LastUsedIP = clientIP
+	apiKeyCopy := cloneKey(apiKey)
+	logf := m.logf
 	m.mu.Unlock()
 
 	// Async persist usage update
 	if m.store != nil {
 		go func() {
-			if err := m.store.UpdateKeyUsage(context.Background(), keyHash, now, clientIP); err != nil {
-				// Log error instead of silently dropping it
-				_ = err // TODO: wire up logger for async usage tracking
+			updateCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			if err := m.store.UpdateKeyUsage(updateCtx, keyHash, now, clientIP); err != nil {
+				logf("apikey usage update failed for key %s: %v", keyHash, err)
 			}
 		}()
 	}
 
-	return apiKey, nil
+	return apiKeyCopy, nil
 }
 
 // hasScope checks if the key has the required scope
@@ -277,7 +293,7 @@ func (m *Manager) RevokeKey(ctx context.Context, keyID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for hash, key := range m.keys {
+	for _, key := range m.keys {
 		if key.ID == keyID {
 			key.Enabled = false
 			if m.store != nil {
@@ -285,7 +301,6 @@ func (m *Manager) RevokeKey(ctx context.Context, keyID string) error {
 			}
 			return nil
 		}
-		_ = hash
 	}
 
 	return ErrKeyNotFound
@@ -318,11 +333,7 @@ func (m *Manager) ListKeys() []*APIKey {
 
 	keys := make([]*APIKey, 0, len(m.keys))
 	for _, key := range m.keys {
-		copy := *key
-		// Deep copy Scopes slice
-		copy.Scopes = make([]Scope, len(key.Scopes))
-		builtinCopy(copy.Scopes, key.Scopes)
-		keys = append(keys, &copy)
+		keys = append(keys, cloneKey(key))
 	}
 	return keys
 }
@@ -341,13 +352,20 @@ func (m *Manager) GetKeyByID(keyID string) (*APIKey, error) {
 
 	for _, key := range m.keys {
 		if key.ID == keyID {
-			copy := *key
-			copy.Scopes = make([]Scope, len(key.Scopes))
-			builtinCopy(copy.Scopes, key.Scopes)
-			return &copy, nil
+			return cloneKey(key), nil
 		}
 	}
 	return nil, ErrKeyNotFound
+}
+
+func cloneKey(key *APIKey) *APIKey {
+	if key == nil {
+		return nil
+	}
+	copy := *key
+	copy.Scopes = make([]Scope, len(key.Scopes))
+	builtinCopy(copy.Scopes, key.Scopes)
+	return &copy
 }
 
 // ExtractKeyFromHeader extracts API key from Authorization header

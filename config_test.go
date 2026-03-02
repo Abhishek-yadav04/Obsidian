@@ -9,12 +9,14 @@ import (
 	"github.com/corazawaf/coraza/v3/types"
 )
 
+const testDirectiveSecRuleEngineOn = "SecRuleEngine On"
+
 func TestConfigRulesImmutable(t *testing.T) {
 	// Add enough directives so there is enough slice capacity to reuse the array for next append.
 	c := NewWAFConfig().
-		WithDirectives("SecRuleEngine On").
-		WithDirectives("SecRuleEngine On").
-		WithDirectives("SecRuleEngine On")
+		WithDirectives(testDirectiveSecRuleEngineOn).
+		WithDirectives(testDirectiveSecRuleEngineOn).
+		WithDirectives(testDirectiveSecRuleEngineOn)
 
 	c1 := c.WithDirectives("SecRequestBodyAccess On")
 

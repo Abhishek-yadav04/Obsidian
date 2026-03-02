@@ -36,7 +36,9 @@ func (a *msgFn) Init(r plugintypes.RuleMetadata, data string) error {
 	return nil
 }
 
-func (a *msgFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {}
+func (a *msgFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {
+	// intentionally empty: msg action is handled at Init time by setting Rule.Msg
+}
 
 func (a *msgFn) Type() plugintypes.ActionType {
 	return plugintypes.ActionTypeMetadata

@@ -15,6 +15,8 @@ import (
 	"github.com/corazawaf/coraza/v3/types"
 )
 
+const headerContentLength = "Content-Length"
+
 // rwInterceptor intercepts the ResponseWriter, so it can track response size
 // and returned status code.
 type rwInterceptor struct {
@@ -45,7 +47,7 @@ func (i *rwInterceptor) WriteHeader(statusCode int) {
 	i.statusCode = statusCode
 	if it := i.tx.ProcessResponseHeaders(statusCode, i.proto); it != nil {
 		i.cleanHeaders()
-		i.Header().Set("Content-Length", "0")
+		i.Header().Set(headerContentLength, "0")
 		i.statusCode = obtainStatusCodeFromInterruptionOrDefault(it, i.statusCode)
 		i.flushWriteHeader()
 		return
@@ -108,7 +110,7 @@ func (i *rwInterceptor) Write(b []byte) (int, error) {
 		if it != nil {
 			// if there is an interruption we must clean the headers and override the status code
 			i.cleanHeaders()
-			i.Header().Set("Content-Length", "0")
+			i.Header().Set(headerContentLength, "0")
 			i.overrideWriteHeader(obtainStatusCodeFromInterruptionOrDefault(it, i.statusCode))
 			// We only flush the status code after an interruption.
 			i.flushWriteHeader()
@@ -239,7 +241,7 @@ func wrap(w http.ResponseWriter, r *http.Request, tx types.Transaction) (
 			} else if it != nil {
 				// if there is an interruption we must clean the headers and override the status code
 				i.cleanHeaders()
-				i.Header().Set("Content-Length", "0")
+				i.Header().Set(headerContentLength, "0")
 				i.overrideWriteHeader(obtainStatusCodeFromInterruptionOrDefault(it, i.statusCode))
 				i.flushWriteHeader()
 				return nil

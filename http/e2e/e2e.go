@@ -19,6 +19,11 @@ const (
 	configCheckStatusCode = 424
 	healthCheckTimeout    = 15 // Seconds
 
+	headerContentType      = "Content-Type"
+	mimeFormURLEncoded     = "application/x-www-form-urlencoded"
+	mimeEventStream        = "text/event-stream"
+	errFmtStatusCodeExpect = "expected status code %d, got %d"
+
 	// Directives to be used for e2e testing
 	Directives = `
 SecRuleEngine On
@@ -79,7 +84,7 @@ type statusCodeExpectation func(int) error
 func expectStatusCode(expectedCode int) statusCodeExpectation {
 	return func(code int) error {
 		if code != expectedCode {
-			return fmt.Errorf("expected status code %d, got %d", expectedCode, code)
+			return fmt.Errorf(errFmtStatusCodeExpect, expectedCode, code)
 		}
 
 		return nil
@@ -90,14 +95,14 @@ func expectNulledBodyStatusCode(nulledBody bool, expectedEmptyBodyCode, expected
 	return func(code int) error {
 		if nulledBody {
 			if code != expectedNulledBodyCode {
-				return fmt.Errorf("expected status code %d, got %d", expectedNulledBodyCode, code)
+				return fmt.Errorf(errFmtStatusCodeExpect, expectedNulledBodyCode, code)
 			}
 
 			return nil
 		}
 
 		if code != expectedEmptyBodyCode {
-			return fmt.Errorf("expected status code %d, got %d", expectedEmptyBodyCode, code)
+			return fmt.Errorf(errFmtStatusCodeExpect, expectedEmptyBodyCode, code)
 		}
 
 		return nil
@@ -167,9 +172,9 @@ type StreamCheck func(resp *http.Response) error
 // - events arrive within totalDeadline
 func verifySSEStreamResponse(resp *http.Response, expectedEvents int, firstChunkDeadline, totalDeadline time.Duration) error {
 	// Basic header checks
-	ct := strings.ToLower(resp.Header.Get("Content-Type"))
-	if !strings.Contains(ct, "text/event-stream") {
-		return fmt.Errorf("expected Content-Type text/event-stream, got %q", resp.Header.Get("Content-Type"))
+	ct := strings.ToLower(resp.Header.Get(headerContentType))
+	if !strings.Contains(ct, mimeEventStream) {
+		return fmt.Errorf("expected Content-Type text/event-stream, got %q", resp.Header.Get(headerContentType))
 	}
 
 	if cl := resp.Header.Get("Content-Length"); cl != "" {
@@ -412,7 +417,7 @@ func Run(cfg Config) error {
 			// When sending a POST request, the "application/x-www-form-urlencoded" content-type header is needed
 			// being the only content-type for which by default Coraza enforces the request body processing.
 			// See https://github.com/corazawaf/coraza/issues/438
-			requestHeaders:     map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+			requestHeaders:     map[string]string{headerContentType: mimeFormURLEncoded},
 			requestBody:        "This is a legit payload",
 			expectedStatusCode: expectStatusCode(200),
 		},
@@ -420,7 +425,7 @@ func Run(cfg Config) error {
 			name:               "Denied request with a malicious request body",
 			requestURL:         echoProxiedURL,
 			requestMethod:      "POST",
-			requestHeaders:     map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+			requestHeaders:     map[string]string{headerContentType: mimeFormURLEncoded},
 			requestBody:        "maliciouspayload",
 			expectedStatusCode: expectStatusCode(403),
 		},
@@ -434,7 +439,7 @@ func Run(cfg Config) error {
 			name:               "Denied request with a malicious response body",
 			requestURL:         echoProxiedURL,
 			requestMethod:      "POST",
-			requestHeaders:     map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+			requestHeaders:     map[string]string{headerContentType: mimeFormURLEncoded},
 			requestBody:        "responsebodycode",
 			expectedBody:       expectEmptyOrNulledBody(cfg.NulledBody),
 			expectedStatusCode: expectNulledBodyStatusCode(cfg.NulledBody, 403, 200),
@@ -449,7 +454,7 @@ func Run(cfg Config) error {
 			name:               "Denied request with SQLi query parameters",
 			requestURL:         echoProxiedURL,
 			requestMethod:      "POST",
-			requestHeaders:     map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+			requestHeaders:     map[string]string{headerContentType: mimeFormURLEncoded},
 			requestBody:        "1%27%20ORDER%20BY%203--%2B",
 			expectedStatusCode: expectStatusCode(403),
 		},

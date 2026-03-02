@@ -30,7 +30,9 @@ func (a *logFn) Init(r plugintypes.RuleMetadata, data string) error {
 	return nil
 }
 
-func (a *logFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {}
+func (a *logFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {
+	// intentionally empty: log action is handled at Init time by setting Rule.Log and Rule.Audit
+}
 
 func (a *logFn) Type() plugintypes.ActionType {
 	return plugintypes.ActionTypeNondisruptive

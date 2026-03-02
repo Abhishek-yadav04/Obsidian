@@ -39,7 +39,9 @@ func (a *maturityFn) Init(r plugintypes.RuleMetadata, data string) error {
 	return nil
 }
 
-func (a *maturityFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {}
+func (a *maturityFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {
+	// intentionally empty: maturity action is handled at Init time by setting Rule.Maturity_
+}
 
 func (a *maturityFn) Type() plugintypes.ActionType {
 	return plugintypes.ActionTypeMetadata

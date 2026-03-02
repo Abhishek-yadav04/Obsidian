@@ -174,8 +174,8 @@ func (m *macro) String() string {
 	return m.original
 }
 
-// IsExpandable return true if there are macro expanadable tokens
-// TODO(jcchavezs): this is used only in a commented out section
+// IsExpandable return true if there are macro expandable tokens.
+// Currently used only for conditional expansion checks.
 func (m *macro) IsExpandable() bool {
 	return len(m.tokens) > 1
 }

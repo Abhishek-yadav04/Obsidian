@@ -13,7 +13,8 @@ import (
 // TransactionState tracks the state of a transaction for use in actions and operators.
 type TransactionState interface {
 	// ID returns the ID of the transaction.
-	ID() string // TODO(anuraaga): If only for logging, can be built into logger
+	// Note: currently used for logging and correlation; consider embedding into logger in future.
+	ID() string
 
 	// Variables returns the TransactionVariables of the transaction.
 	Variables() TransactionVariables
@@ -29,7 +30,8 @@ type TransactionState interface {
 
 	// Capturing returns whether the transaction is capturing. CaptureField only works if capturing, this can be used
 	// as an optimization to avoid processing specific to capturing fields.
-	Capturing() bool // TODO(anuraaga): Only needed in operators?
+	// Note: primarily relevant in operators for performance optimization.
+	Capturing() bool
 
 	// CaptureField captures a field.
 	CaptureField(idx int, value string)

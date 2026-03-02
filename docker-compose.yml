@@ -9,7 +9,7 @@ services:
       - "${OBSIDIAN_PORT:-8082}:8082"
     environment:
       - OBSIDIAN_PORT=8082
-      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-obsidian}:${POSTGRES_PASSWORD:-obsidian}@postgres:5432/${POSTGRES_DB:-obsidian}?sslmode=disable}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-obsidian}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-obsidian}?sslmode=disable}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - OBSIDIAN_JWT_SECRET=${OBSIDIAN_JWT_SECRET:?OBSIDIAN_JWT_SECRET is required}
       - SUPABASE_URL=${SUPABASE_URL:-}

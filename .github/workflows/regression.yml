@@ -10,13 +10,14 @@ on:
       - "**/*.md"
       - "LICENSE"
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   generate-matrix:
     name: Generate Test Matrix
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       tags: ${{ steps.generate.outputs.tags }}
     steps:
@@ -38,6 +39,8 @@ jobs:
     name: Regression Tests
     needs: generate-matrix
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:

@@ -66,6 +66,7 @@ spec:
         prometheus.io/port: "8082"
         prometheus.io/path: "/metrics"
     spec:
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -87,9 +88,11 @@ spec:
             requests:
               memory: "128Mi"
               cpu: "100m"
+              ephemeral-storage: "100Mi"
             limits:
               memory: "512Mi"
               cpu: "500m"
+              ephemeral-storage: "500Mi"
           livenessProbe:
             httpGet:
               path: /api/health

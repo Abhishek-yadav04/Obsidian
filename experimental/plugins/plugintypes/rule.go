@@ -6,6 +6,8 @@ package plugintypes
 import "github.com/corazawaf/coraza/v3/types"
 
 // Rule is a rule executed against a transaction.
+// Note: This interface uses a domain-specific name rather than the Go single-method
+// convention (Evaluator) to maintain semantic clarity across the WAF codebase.
 type Rule interface {
 	// Evaluate evaluates the rule, returning data related to matches if any.
 	Evaluate(state TransactionState) []types.MatchData

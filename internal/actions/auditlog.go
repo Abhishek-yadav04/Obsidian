@@ -29,7 +29,9 @@ func (a *auditlogFn) Init(r plugintypes.RuleMetadata, data string) error {
 	return nil
 }
 
-func (a *auditlogFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {}
+func (a *auditlogFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {
+	// intentionally empty: auditlog action is handled at Init time by setting Rule.Audit
+}
 
 func (a *auditlogFn) Type() plugintypes.ActionType {
 	return plugintypes.ActionTypeNondisruptive

@@ -35,7 +35,9 @@ func (a *captureFn) Init(r plugintypes.RuleMetadata, data string) error {
 	return nil
 }
 
-func (a *captureFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {}
+func (a *captureFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {
+	// intentionally empty: capture action is handled at Init time by setting Rule.Capture
+}
 
 func (a *captureFn) Type() plugintypes.ActionType {
 	return plugintypes.ActionTypeNondisruptive

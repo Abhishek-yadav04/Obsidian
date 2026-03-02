@@ -38,7 +38,9 @@ func (a *execFn) Init(_ plugintypes.RuleMetadata, data string) error {
 	return nil
 }
 
-func (a *execFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {}
+func (a *execFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {
+	// intentionally empty: exec is a stub; external script execution is not yet implemented
+}
 
 func (a *execFn) Type() plugintypes.ActionType {
 	return plugintypes.ActionTypeNondisruptive

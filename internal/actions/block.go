@@ -57,8 +57,8 @@ func (a *blockFn) Init(_ plugintypes.RuleMetadata, data string) error {
 }
 
 func (a *blockFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {
-	// This should never run
-	// TODO(jcchavezs): check if we return a panic
+	// intentionally empty: block is a placeholder resolved by SecDefaultAction;
+	// the actual disruptive action is determined at rule compilation time.
 }
 
 func (a *blockFn) Type() plugintypes.ActionType {

@@ -81,7 +81,7 @@ type AuditLogMessage interface {
 	Actionset() string
 	Message() string
 	Data() AuditLogMessageData
-	// TODO(4.x): Add Log() ErrorMessage() string
+	// Future: Consider adding Log() and ErrorMessage() methods for richer audit output.
 }
 
 // AuditLogMessageData contains information about the triggered rules

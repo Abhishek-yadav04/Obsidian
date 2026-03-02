@@ -27,11 +27,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 # Final stage
 FROM alpine:3.23
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
-
-# Create non-root user
-RUN addgroup -g 1000 obsidian && \
+# Install runtime dependencies and create non-root user
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -g 1000 obsidian && \
     adduser -u 1000 -G obsidian -s /bin/sh -D obsidian
 
 WORKDIR /app

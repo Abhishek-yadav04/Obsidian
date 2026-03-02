@@ -54,7 +54,9 @@ func (a *chainFn) Init(r plugintypes.RuleMetadata, data string) error {
 	return nil
 }
 
-func (a *chainFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {}
+func (a *chainFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {
+	// intentionally empty: chain action is handled at Init time by setting Rule.HasChain
+}
 
 func (a *chainFn) Type() plugintypes.ActionType {
 	return plugintypes.ActionTypeFlow

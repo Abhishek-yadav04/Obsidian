@@ -4,9 +4,7 @@ on:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
-  packages: write
+permissions: {}
 
 env:
   REGISTRY: ghcr.io
@@ -14,6 +12,8 @@ env:
 jobs:
   build:
     name: Build Binaries
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -69,6 +69,9 @@ jobs:
     name: Build Docker Image
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -109,6 +112,8 @@ jobs:
   android-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -132,6 +137,9 @@ jobs:
     name: Create GitHub Release
     needs: [build, docker, android-apk]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v6

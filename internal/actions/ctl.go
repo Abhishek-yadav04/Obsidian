@@ -21,6 +21,14 @@ import (
 type ctlFunctionType int
 
 const (
+	// errMsgUnknownToggle is the log message for unrecognized on/off values.
+	errMsgUnknownToggle = "Unknown toggle"
+	// errMsgResponseBodyAccessAfterPhase is the log message when response body access
+	// is modified too late in the request lifecycle.
+	errMsgResponseBodyAccessAfterPhase = "Cannot change response body access after response headers phase"
+)
+
+const (
 	ctlUnknown                   ctlFunctionType = iota
 	ctlRuleRemoveTargetByID      ctlFunctionType = iota
 	ctlRuleRemoveTargetByTag     ctlFunctionType = iota
@@ -183,7 +191,7 @@ func (a *ctlFn) Evaluate(_ plugintypes.RuleMetadata, txS plugintypes.Transaction
 			tx.DebugLogger().Error().
 				Str("ctl", "ForceRequestBodyVariable").
 				Str("value", a.value).
-				Msg("Unknown toggle")
+				Msg(errMsgUnknownToggle)
 			return
 		}
 		tx.ForceRequestBodyVariable = val
@@ -199,7 +207,7 @@ func (a *ctlFn) Evaluate(_ plugintypes.RuleMetadata, txS plugintypes.Transaction
 				tx.DebugLogger().Error().
 					Str("ctl", "RequestBodyAccess").
 					Str("value", a.value).
-					Msg("Unknown toggle")
+					Msg(errMsgUnknownToggle)
 				return
 			}
 			tx.RequestBodyAccess = val
@@ -294,14 +302,14 @@ func (a *ctlFn) Evaluate(_ plugintypes.RuleMetadata, txS plugintypes.Transaction
 				tx.DebugLogger().Error().
 					Str("ctl", "ResponseBodyAccess").
 					Str("value", a.value).
-					Msg("Unknown toggle")
+					Msg(errMsgUnknownToggle)
 				return
 			}
 			tx.ResponseBodyAccess = val
 		} else {
 			tx.DebugLogger().Warn().
 				Str("ctl", "ResponseBodyAccess").
-				Msg("Cannot change response body access after response headers phase")
+				Msg(errMsgResponseBodyAccessAfterPhase)
 			return
 		}
 
@@ -320,7 +328,7 @@ func (a *ctlFn) Evaluate(_ plugintypes.RuleMetadata, txS plugintypes.Transaction
 		} else {
 			tx.DebugLogger().Warn().
 				Str("ctl", "ResponseBodyLimit").
-				Msg("Cannot change response body access after response headers phase")
+				Msg(errMsgResponseBodyAccessAfterPhase)
 			return
 		}
 
@@ -330,7 +338,7 @@ func (a *ctlFn) Evaluate(_ plugintypes.RuleMetadata, txS plugintypes.Transaction
 			tx.DebugLogger().Error().
 				Str("ctl", "ForceResponseBodyVariable").
 				Str("value", a.value).
-				Msg("Unknown toggle")
+				Msg(errMsgUnknownToggle)
 			return
 		}
 		tx.ForceResponseBodyVariable = val
@@ -340,16 +348,14 @@ func (a *ctlFn) Evaluate(_ plugintypes.RuleMetadata, txS plugintypes.Transaction
 			Msg("Forcing response body var")
 	case ctlResponseBodyProcessor:
 		if tx.LastPhase() <= types.PhaseResponseHeaders {
-			// We are still in time to set the response body processor
-			// TODO(jcchavezs): Who should hold this knowledge?
-			// TODO(jcchavezs): Shall we validate such body processor exists or is it
-			// too ambitious as plugins might register their own at some point in the
-			// lifecycle which does not have to happen before this.
+			// Body processor ownership: the transaction holds the processor setting;
+			// validation of processor existence is deferred to processing time because
+			// plugins may register processors later in the lifecycle.
 			tx.Variables().ResponseBodyProcessor().(*collections.Single).Set(strings.ToUpper(a.value))
 		} else {
 			tx.DebugLogger().Warn().
 				Str("ctl", "ResponseBodyLimit").
-				Msg("Cannot change response body access after response headers phase")
+				Msg(errMsgResponseBodyAccessAfterPhase)
 			return
 		}
 	case ctlHashEngine:

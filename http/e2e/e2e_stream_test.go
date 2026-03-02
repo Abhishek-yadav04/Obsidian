@@ -82,7 +82,7 @@ func (e *errorReader) Read(p []byte) (int, error) {
 
 func (e *errorReader) Close() error { return nil }
 
-func TestVerifySSEStreamResponse_InvalidContentType(t *testing.T) {
+func TestVerifySSEStreamResponseInvalidContentType(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
 		map[string]string{"Content-Type": "application/json"},
@@ -94,7 +94,7 @@ func TestVerifySSEStreamResponse_InvalidContentType(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_ContentLengthPresent(t *testing.T) {
+func TestVerifySSEStreamResponseContentLengthPresent(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
 		map[string]string{
@@ -109,7 +109,7 @@ func TestVerifySSEStreamResponse_ContentLengthPresent(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_NegativeTotalDeadline(t *testing.T) {
+func TestVerifySSEStreamResponseNegativeTotalDeadline(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
 		map[string]string{"Content-Type": "text/event-stream"},
@@ -121,7 +121,7 @@ func TestVerifySSEStreamResponse_NegativeTotalDeadline(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_ZeroTotalDeadline(t *testing.T) {
+func TestVerifySSEStreamResponseZeroTotalDeadline(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
 		map[string]string{"Content-Type": "text/event-stream"},
@@ -133,7 +133,7 @@ func TestVerifySSEStreamResponse_ZeroTotalDeadline(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_NegativeFirstChunkDeadline(t *testing.T) {
+func TestVerifySSEStreamResponseNegativeFirstChunkDeadline(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
 		map[string]string{"Content-Type": "text/event-stream"},
@@ -145,7 +145,7 @@ func TestVerifySSEStreamResponse_NegativeFirstChunkDeadline(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_TotalDeadlineTooSmall(t *testing.T) {
+func TestVerifySSEStreamResponseTotalDeadlineTooSmall(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
 		map[string]string{"Content-Type": "text/event-stream"},
@@ -158,7 +158,7 @@ func TestVerifySSEStreamResponse_TotalDeadlineTooSmall(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_ReadError(t *testing.T) {
+func TestVerifySSEStreamResponseReadError(t *testing.T) {
 	resp := makeTestResponse(
 		&errorReader{},
 		map[string]string{"Content-Type": "text/event-stream"},
@@ -170,7 +170,7 @@ func TestVerifySSEStreamResponse_ReadError(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_FirstChunkTooLate(t *testing.T) {
+func TestVerifySSEStreamResponseFirstChunkTooLate(t *testing.T) {
 	// First event arrives after 150ms, but firstChunkDeadline is 100ms
 	resp := makeTestResponse(
 		sseStreamPipe(1, 150*time.Millisecond, 0),
@@ -183,7 +183,7 @@ func TestVerifySSEStreamResponse_FirstChunkTooLate(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_NoEvents(t *testing.T) {
+func TestVerifySSEStreamResponseNoEvents(t *testing.T) {
 	// Stream closes immediately without any events
 	pr, pw := io.Pipe()
 	pw.Close()
@@ -199,7 +199,7 @@ func TestVerifySSEStreamResponse_NoEvents(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_EventCountMismatch(t *testing.T) {
+func TestVerifySSEStreamResponseEventCountMismatch(t *testing.T) {
 	// Stream produces 2 events but we expect 3
 	resp := makeTestResponse(
 		sseStreamPipe(2, 10*time.Millisecond, 10*time.Millisecond),
@@ -212,7 +212,7 @@ func TestVerifySSEStreamResponse_EventCountMismatch(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_StreamEndedTooQuickly(t *testing.T) {
+func TestVerifySSEStreamResponseStreamEndedTooQuickly(t *testing.T) {
 	// All events arrive very quickly (within firstChunkDeadline)
 	// This indicates the response was buffered, not streamed
 	resp := makeTestResponse(
@@ -226,7 +226,7 @@ func TestVerifySSEStreamResponse_StreamEndedTooQuickly(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_TotalDeadlineExceeded(t *testing.T) {
+func TestVerifySSEStreamResponseTotalDeadlineExceeded(t *testing.T) {
 	// Stream keeps sending data but never completes the expected event count
 	resp := makeTestResponse(
 		noEventPipe(10*time.Millisecond),
@@ -239,7 +239,7 @@ func TestVerifySSEStreamResponse_TotalDeadlineExceeded(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_Success(t *testing.T) {
+func TestVerifySSEStreamResponseSuccess(t *testing.T) {
 	// Proper streaming: first event arrives quickly (10ms < 50ms)
 	// Events are spaced out (30ms each) so total time ~130ms > 50ms firstChunkDeadline
 	// All 5 events arrive within 1 second
@@ -254,7 +254,7 @@ func TestVerifySSEStreamResponse_Success(t *testing.T) {
 	}
 }
 
-func TestVerifySSEStreamResponse_SuccessWithVariousHeaders(t *testing.T) {
+func TestVerifySSEStreamResponseSuccessWithVariousHeaders(t *testing.T) {
 	// Test that Content-Type matching is case-insensitive and flexible
 	// Need sufficient delay so total time exceeds firstChunkDeadline
 	resp := makeTestResponse(

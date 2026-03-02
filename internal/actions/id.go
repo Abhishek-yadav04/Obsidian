@@ -42,7 +42,9 @@ func (a *idFn) Init(r plugintypes.RuleMetadata, data string) error {
 	return nil
 }
 
-func (a *idFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {}
+func (a *idFn) Evaluate(_ plugintypes.RuleMetadata, _ plugintypes.TransactionState) {
+	// intentionally empty: id action is handled at Init time by setting Rule.ID_
+}
 
 func (a *idFn) Type() plugintypes.ActionType {
 	return plugintypes.ActionTypeMetadata

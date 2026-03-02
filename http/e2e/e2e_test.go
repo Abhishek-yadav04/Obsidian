@@ -36,7 +36,7 @@ func TestSetHTTPSchemeIfMissing(t *testing.T) {
 	}
 }
 
-func Test_expectStatusCode(t *testing.T) {
+func TestExpectStatusCode(t *testing.T) {
 	ok := expectStatusCode(http.StatusOK)
 	if err := ok(http.StatusOK); err != nil {
 		t.Fatalf("unexpected err: %v", err)
@@ -46,7 +46,7 @@ func Test_expectStatusCode(t *testing.T) {
 	}
 }
 
-func Test_expectNulledBodyStatusCode(t *testing.T) {
+func TestExpectNulledBodyStatusCode(t *testing.T) {
 	// nulledBody=true → expect expectedNulledBodyCode
 	nulled := expectNulledBodyStatusCode(true, 403, 200)
 	if err := nulled(200); err != nil {
@@ -66,7 +66,7 @@ func Test_expectNulledBodyStatusCode(t *testing.T) {
 	}
 }
 
-func Test_expectEmptyOrNulledBody(t *testing.T) {
+func TestExpectEmptyOrNulledBody(t *testing.T) {
 	// nulled body: non-empty, all zeros
 	zeros := make([]byte, 8)
 	if err := expectEmptyOrNulledBody(true)(len(zeros), zeros); err != nil {
@@ -96,7 +96,7 @@ func Test_expectEmptyOrNulledBody(t *testing.T) {
 	}
 }
 
-func Test_expectEmptyBody(t *testing.T) {
+func TestExpectEmptyBody(t *testing.T) {
 	if err := expectEmptyBody()(0, nil); err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -108,7 +108,7 @@ func Test_expectEmptyBody(t *testing.T) {
 	}
 }
 
-func Test_runHealthChecks(t *testing.T) {
+func TestRunHealthChecks(t *testing.T) {
 	// The function polls once per second; keep test count small to avoid long runtime.
 	// Server returns 200 for any path; but for the "config check" path we want 424.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +130,7 @@ func Test_runHealthChecks(t *testing.T) {
 	}
 }
 
-func Test_runTests(t *testing.T) {
+func TestRunTests(t *testing.T) {
 	// Server that returns depending on URL/method/body
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

@@ -11,7 +11,7 @@ import (
 type Options = corazawaf.Options
 
 // WAFWithOptions is an interface that allows to create transactions
-// with options
+// with options. Named for domain clarity rather than single-method convention.
 type WAFWithOptions interface {
 	NewTransactionWithOptions(Options) types.Transaction
 }

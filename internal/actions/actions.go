@@ -21,7 +21,8 @@ var (
 // and recreated on each call
 type ruleActionWrapper = func() plugintypes.Action
 
-// TODO maybe change it to sync.Map
+// actionmap stores registered rule actions. A sync.Map is not used here because
+// writes only happen during init() and reads are concurrent-safe on a frozen map.
 var actionmap = map[string]ruleActionWrapper{}
 
 // Register registers a new RuleAction

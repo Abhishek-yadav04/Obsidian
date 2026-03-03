@@ -86,7 +86,8 @@ func readJSON(s string) (map[string]string, error) {
 // Example output: map[string]string{"json.data.name": "John", "json.data.age": "30", "json.items.0": "1", "json.items.1": "2", "json.items.2": "3"}
 // Example input: [{"data": {"name": "John", "age": 30}, "items": [1,2,3]}]
 // Example output: map[string]string{"json.0.data.name": "John", "json.0.data.age": "30", "json.0.items.0": "1", "json.0.items.1": "2", "json.0.items.2": "3"}
-// TODO add some anti DOS protection
+// Anti-DOS protection (e.g. max depth/key count) is not yet implemented;
+// callers should enforce request body size limits via SecRequestBodyLimit.
 func readItems(json gjson.Result, objKey []byte, res map[string]string) {
 	arrayLen := 0
 	json.ForEach(func(key, value gjson.Result) bool {

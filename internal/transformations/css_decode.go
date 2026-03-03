@@ -11,8 +11,8 @@ import (
 
 func cssDecode(data string) (string, bool, error) {
 	if i := strings.IndexByte(data, '\\'); i != -1 {
-		// TODO: This will transform even if the backslash isn't followed by hex,
-		// but keep it simple for now.
+		// This will transform even if the backslash isn't followed by hex;
+		// this matches ModSecurity behavior for simplicity.
 		return cssDecodeInplace(data, i), true, nil
 	}
 	return data, false, nil

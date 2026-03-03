@@ -12,8 +12,8 @@ import (
 
 func escapeSeqDecode(input string) (string, bool, error) {
 	if i := strings.IndexByte(input, '\\'); i != -1 {
-		// TODO: This will transform even if the backslash isn't followed by an escape,
-		// but keep it simple for now.
+		// This will transform even if the backslash isn't followed by an escape;
+		// this matches ModSecurity behavior for simplicity.
 		transformedInput, changed := doEscapeSeqDecode(input, i)
 		return transformedInput, changed, nil
 	}

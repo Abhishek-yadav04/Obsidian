@@ -31,9 +31,8 @@ func newRX(options plugintypes.OperatorOptions) (plugintypes.Operator, error) {
 		// - Flag usage: https://groups.google.com/g/golang-nuts/c/jiVdamGFU9E
 		data = fmt.Sprintf("(?s)%s", options.Arguments)
 	} else {
-		// TODO: deprecate multiline modifier set by default in Coraza v4
-		// CRS rules will explicitly set the multiline modifier when needed
-		// Having it enabled by default can lead to false positives and less performance
+		// Multiline modifier is set by default for backward compatibility with ModSecurity.
+		// CRS rules explicitly set multiline when needed; consider removing this default in v4.
 		// See https://github.com/corazawaf/coraza/pull/876
 		data = fmt.Sprintf("(?sm)%s", options.Arguments)
 	}

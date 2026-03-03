@@ -307,7 +307,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID int, currentPasswor
 
 	// Validate new password using security manager
 	if err := s.security.ValidatePassword(newPassword); err != nil {
-		return fmt.Errorf("%w: %v", ErrWeakPassword, err)
+		return fmt.Errorf("%w: %w", ErrWeakPassword, err)
 	}
 
 	// Hash new password
@@ -334,7 +334,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID int, currentPasswor
 func (s *Service) CreateUser(ctx context.Context, username, password, email, role string, creatorID int, clientIP string) (*model.User, error) {
 	// Validate password
 	if err := s.security.ValidatePassword(password); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrWeakPassword, err)
+		return nil, fmt.Errorf("%w: %w", ErrWeakPassword, err)
 	}
 
 	// Hash password

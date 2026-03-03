@@ -229,10 +229,9 @@ func minPhase(v variables.RuleVariable) types.RulePhase {
 	return types.PhaseUnknown
 }
 
-// TODO(anuraaga): This is effectively lazily computing the min phase of a rule with chain the first
-// time we evaluate the rule. Instead, we should do this at parse time, but this will require a
-// large-ish refactoring of the parser, which adds parent rules to a rule group before preparing
-// the child rules. In the meantime, only evaluating this once should allow performance to be fine.
+// This lazily computes the min phase of a rule with chain on first evaluation.
+// Ideally this should be done at parse time, but the parser currently adds parent rules
+// to a rule group before preparing child rules. Computing it once keeps performance acceptable.
 //
 // chainMinPhase is the minimum phase among all the rules in which the chained rule may match.
 // We evaluate the min possible phase for each rule in the chain and we take the minimum in common

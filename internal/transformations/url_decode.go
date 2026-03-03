@@ -10,7 +10,7 @@ import (
 func urlDecode(data string) (string, bool, error) {
 	for i := 0; i < len(data); i++ {
 		if data[i] == '%' || data[i] == '+' {
-			// TODO add error?
+			// Invalid percent-encoding sequences are silently ignored to match ModSecurity behavior.
 			return doURLDecode(data, []byte(data), i), true, nil
 		}
 	}

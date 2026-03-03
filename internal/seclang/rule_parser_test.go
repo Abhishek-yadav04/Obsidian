@@ -347,8 +347,8 @@ func TestParseActions(t *testing.T) {
 		{
 			name:         "unclosed quotes",
 			inputActions: "id:1,phase:2,log,deny,msg:'message not closed",
-			// TODO(4.x): returning an error in Coraza 3.x would break all the installations with coraza.conf-recommended that comes
-			// with an unclosed message in rule id 200003.
+			// Returning an error in Coraza 3.x would break installations with coraza.conf-recommended
+			// that has an unclosed message in rule id 200003.
 			expectError:     false,
 			expectedLogLine: "[WARN] unclosed quotes",
 		},

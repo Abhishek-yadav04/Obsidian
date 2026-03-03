@@ -34,6 +34,8 @@ import (
 	"github.com/corazawaf/coraza/v3/types/variables"
 )
 
+const headerContentType = "content-type"
+
 // Transaction is created from a WAF instance to handle web requests and responses,
 // it contains a copy of most WAF configurations that can be safely changed.
 // Transactions are used to store all data like URLs, request and response
@@ -264,7 +266,8 @@ func (tx *Transaction) Collection(idx variables.RuleVariable) collection.Collect
 	case variables.Rule:
 		return tx.variables.rule
 	case variables.JSON:
-		// TODO(anuraaga): This collection seems to be missing.
+		// The JSON collection is populated by the JSON body processor;
+		// there is no standalone collection backing this variable.
 		return nil
 	case variables.Env:
 		return tx.variables.env
@@ -340,7 +343,7 @@ func (tx *Transaction) AddRequestHeader(key string, value string) {
 	tx.variables.requestHeaders.Add(key, value)
 
 	switch keyl {
-	case "content-type":
+	case headerContentType:
 		val := strings.ToLower(value)
 		if val == "application/x-www-form-urlencoded" {
 			tx.variables.reqbodyProcessor.Set("URLENCODED")
@@ -382,7 +385,7 @@ func (tx *Transaction) AddResponseHeader(key string, value string) {
 	tx.variables.responseHeaders.Add(key, value)
 
 	// Most headers can be managed like that
-	if keyl == "content-type" {
+	if keyl == headerContentType {
 		name, _, _ := strings.Cut(value, ";")
 		tx.variables.responseContentType.Set(name)
 	}
@@ -452,7 +455,7 @@ func (tx *Transaction) ParseRequestReader(data io.Reader) (*types.Interruption, 
 	if it := tx.ProcessRequestHeaders(); it != nil {
 		return it, nil
 	}
-	ctcol := tx.variables.requestHeaders.Get("content-type")
+	ctcol := tx.variables.requestHeaders.Get(headerContentType)
 	ct := ""
 	if len(ctcol) > 0 {
 		ct, _, _ = strings.Cut(ctcol[0], ";")
@@ -757,7 +760,8 @@ func (tx *Transaction) ProcessURI(uri string, method string, httpVersion string)
 	tx.variables.requestProtocol.Set(httpVersion)
 	tx.variables.requestURIRaw.Set(uri)
 
-	// TODO modsecurity uses HTTP/${VERSION} instead of just version, let's check it out
+	// ModSecurity formats this as "HTTP/${VERSION}" but we use the raw protocol
+	// string from Go's net/http (e.g. "HTTP/1.1") which is equivalent.
 	tx.variables.requestLine.Set(fmt.Sprintf("%s %s %s", method, uri, httpVersion))
 
 	var err error
@@ -1025,7 +1029,7 @@ func (tx *Transaction) ProcessRequestBody() (*types.Interruption, error) {
 		return tx.interruption, nil
 	}
 	mime := ""
-	if m := tx.variables.requestHeaders.Get("content-type"); len(m) > 0 {
+	if m := tx.variables.requestHeaders.Get(headerContentType); len(m) > 0 {
 		mime = m[0]
 	}
 
@@ -1112,7 +1116,7 @@ func (tx *Transaction) ProcessResponseHeaders(code int, proto string) *types.Int
 // This is used by webservers to choose whether to stream response buffers
 // directly to the client or write them to Coraza's buffer.
 func (tx *Transaction) IsResponseBodyProcessable() bool {
-	// TODO add more validations
+	// Additional MIME-type or size validations could be added here in the future.
 	if tx.ForceResponseBodyVariable {
 		// we force the response body to be processed because of the ctl:forceResponseBodyVariable
 		return true
@@ -1425,7 +1429,7 @@ func (tx *Transaction) AuditLog() *auditlog.Log {
 		ClientPort_:    clientPort,
 		HostIP_:        tx.variables.serverAddr.Get(),
 		HostPort_:      hostPort,
-		ServerID_:      tx.variables.serverName.Get(), // TODO check
+		ServerID_:      tx.variables.serverName.Get(), // ServerName is used as ServerID per ModSecurity convention.
 		Request_: &auditlog.TransactionRequest{
 			Method_:   tx.variables.requestMethod.Get(),
 			URI_:      tx.variables.requestURI.Get(),
@@ -1563,22 +1567,21 @@ func (tx *Transaction) Close() error {
 
 	var errs []error
 	if environment.HasAccessToFS {
-		// TODO(jcchavezs): filesTmpNames should probably be a new kind of collection that
-		// is aware of the files and then attempt to delete them when the collection
-		// is resetted or an item is removed.
+		// filesTmpNames should ideally be a collection that is aware of its files
+		// and cleans them up on reset, but for now we iterate and remove manually.
 		for _, file := range tx.variables.filesTmpNames.Get("") {
 			if err := os.Remove(file); err != nil {
-				errs = append(errs, fmt.Errorf("removing temporary file: %v", err))
+				errs = append(errs, fmt.Errorf("removing temporary file: %w", err))
 			}
 		}
 	}
 
 	tx.variables.reset()
 	if err := tx.requestBodyBuffer.Reset(); err != nil {
-		errs = append(errs, fmt.Errorf("reseting request body buffer: %v", err))
+		errs = append(errs, fmt.Errorf("reseting request body buffer: %w", err))
 	}
 	if err := tx.responseBodyBuffer.Reset(); err != nil {
-		errs = append(errs, fmt.Errorf("reseting response body buffer: %v", err))
+		errs = append(errs, fmt.Errorf("reseting response body buffer: %w", err))
 	}
 
 	if tx.IsInterrupted() {
@@ -1597,7 +1600,7 @@ func (tx *Transaction) Close() error {
 		return nil
 	}
 
-	return fmt.Errorf("transaction close failed: %v", errors.Join(errs...))
+	return fmt.Errorf("transaction close failed: %w", errors.Join(errs...))
 }
 
 // String will return a string with the transaction debug information

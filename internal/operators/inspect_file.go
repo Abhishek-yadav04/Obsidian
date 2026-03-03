@@ -24,9 +24,8 @@ func newInspectFile(options plugintypes.OperatorOptions) (plugintypes.Operator, 
 }
 
 func (o *inspectFile) Evaluate(tx plugintypes.TransactionState, value string) bool {
-	// TODO parametrize timeout
-	// TODO add relative path capabilities
-	// TODO add lua special support
+	// Timeout is hardcoded at 10s; a configurable timeout may be added in a future release.
+	// Only absolute paths are supported; relative paths and Lua scripts are not implemented.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	// Add /bin/bash to context?

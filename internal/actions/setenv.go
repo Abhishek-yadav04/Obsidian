@@ -68,7 +68,7 @@ func (a *setenvFn) Evaluate(r plugintypes.RuleMetadata, tx plugintypes.Transacti
 			Err(err).
 			Msg("Failed to set the env variable for rule")
 	}
-	// TODO is this ok?
+	// Sync the env variable into the transaction's Env collection for rule access.
 	tx.Variables().Env().Set(a.key, []string{v})
 
 }

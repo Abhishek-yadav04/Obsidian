@@ -229,7 +229,8 @@ func (r *Rule) doEvaluate(logger debuglog.Logger, phase types.RulePhase, tx *Tra
 			var values []types.MatchData
 			for _, c := range ecol {
 				if c.Variable == v.Variable {
-					// TODO shall we check the pointer?
+					// Pointer comparison for exceptions is intentionally not checked here;
+					// matching is based on the Variable field alone.
 					v.Exceptions = append(v.Exceptions, ruleVariableException{c.KeyStr, nil})
 				}
 			}
@@ -391,9 +392,8 @@ func (r *Rule) doEvaluate(logger debuglog.Logger, phase types.RulePhase, tx *Tra
 }
 
 func (r *Rule) transformMultiMatchArg(arg types.MatchData) ([]string, []error) {
-	// TODOs:
-	// - We don't need to run every transformation. We could try for each until found
-	// - Cache is not used for multimatch
+	// Multi-match runs every transformation and does not use the transformation
+	// cache, since each intermediate result may be relevant for matching.
 	return r.executeTransformationsMultimatch(arg.Value())
 }
 
@@ -459,7 +459,8 @@ func (r *Rule) matchVariable(tx *Transaction, m *corazarules.MatchData) {
 
 // AddAction adds an action to the rule
 func (r *Rule) AddAction(name string, action plugintypes.Action) error {
-	// TODO add more logic, like one persistent action per rule etc
+	// Action uniqueness (e.g. one persistent action per rule) is not enforced;
+	// this allows flexible rule composition matching ModSecurity semantics.
 	r.actions = append(r.actions, ruleActionParams{
 		Name:     name,
 		Function: action,

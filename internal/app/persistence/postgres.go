@@ -151,13 +151,13 @@ func NewPostgresStore(ctx context.Context, cfg PostgresConfig) (*PostgresStore, 
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrConnectionFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrConnectionFailed, err)
 	}
 
 	// Verify connection
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("%w: %v", ErrConnectionFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrConnectionFailed, err)
 	}
 
 	store := &PostgresStore{pool: pool}

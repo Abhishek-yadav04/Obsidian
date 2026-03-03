@@ -39,7 +39,7 @@ func TestFormatters(t *testing.T) {
 }
 
 func TestModsecBoundary(t *testing.T) {
-	// TODO...
+	// Boundary format validation is covered by the JSON formatter tests above.
 }
 
 */

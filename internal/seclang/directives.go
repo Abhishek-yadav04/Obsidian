@@ -24,7 +24,8 @@ import (
 
 // DirectiveOptions contains the parsed options for a directive. It is mutable and propagated
 // across multiple directives, to support collecting the options for audit logs for example.
-// TODO(anuraaga): Propagation of config probably should be separated from a directive's options.
+// Separating config propagation from directive options would improve clarity but requires
+// a broader refactoring of the parser pipeline.
 type DirectiveOptions struct {
 	WAF      *corazawaf.WAF
 	Raw      string

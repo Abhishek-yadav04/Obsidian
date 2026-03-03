@@ -225,8 +225,8 @@ RulesLoop:
 		case corazatypes.AllowTypeAll:
 			break RulesLoop
 		}
-		// TODO these lines are SUPER SLOW
-		// we reset matched_vars, matched_vars_names, etc
+		// Performance note: resetting matched_vars on every rule is expensive
+		// but required for correct CRS behavior.
 		tx.variables.matchedVars.Reset()
 
 		r.Evaluate(phase, tx, transformationCache)
@@ -259,13 +259,10 @@ func NewRuleGroup() RuleGroup {
 }
 
 type transformationKey struct {
-	// TODO(anuraaga): This is a big hack to support performance on TinyGo. TinyGo
-	// cannot efficiently compute a hashcode for a struct if it has embedded non-fixed
-	// size fields, for example string as we'd prefer to use here. A pointer is usable,
-	// and it works for us since we know that the arg key string is populated once per
-	// transaction phase and we would never have different string pointers with the same
-	// content, or more problematically same pointer for different content, as the strings
-	// will be alive throughout the phase.
+	// TinyGo cannot efficiently compute a hashcode for structs with non-fixed-size
+	// fields (e.g. string). Using a *byte pointer works because arg key strings are
+	// populated once per transaction phase, guaranteeing pointer stability.
+	// See: https://github.com/tinygo-org/tinygo performance considerations.
 	argKey            *byte
 	argIndex          int
 	argVariable       variables.RuleVariable

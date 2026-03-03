@@ -35,7 +35,7 @@ func newRBL(options plugintypes.OperatorOptions) (plugintypes.Operator, error) {
 // https://github.com/mrichman/godnsbl
 // https://github.com/SpiderLabs/ModSecurity/blob/b66224853b4e9d30e0a44d16b29d5ed3842a6b11/src/operators/rbl.cc
 func (o *rbl) Evaluate(tx plugintypes.TransactionState, ipAddr string) bool {
-	// TODO validate address
+	// Address validation is deferred to the DNS resolver; invalid addresses will simply fail lookup.
 	resC := make(chan bool)
 	ctx, cancel := context.WithCancel(context.Background())
 

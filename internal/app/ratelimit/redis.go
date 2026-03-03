@@ -152,7 +152,7 @@ func NewRedisRateLimiter(client RedisClient, cfg RedisRateLimiterConfig) (*Redis
 
 	if err := client.Ping(ctx); err != nil {
 		if !cfg.EnableFallback {
-			return nil, fmt.Errorf("%w: %v", ErrRedisConnection, err)
+			return nil, fmt.Errorf("%w: %w", ErrRedisConnection, err)
 		}
 		// Log warning but continue with fallback
 		fmt.Println("WARNING: Redis unavailable, using local rate limiter fallback")
@@ -363,12 +363,12 @@ func (rl *RedisRateLimiter) Reset(ip string) error {
 		for {
 			keys, nextCursor, err := rl.client.Scan(ctx, cursor, rl.config.Redis.KeyPrefix+"*", 100)
 			if err != nil {
-				return fmt.Errorf("%w: %v", ErrRedisCommand, err)
+				return fmt.Errorf("%w: %w", ErrRedisCommand, err)
 			}
 
 			if len(keys) > 0 {
 				if err := rl.client.Del(ctx, keys...); err != nil {
-					return fmt.Errorf("%w: %v", ErrRedisCommand, err)
+					return fmt.Errorf("%w: %w", ErrRedisCommand, err)
 				}
 			}
 
@@ -421,12 +421,12 @@ func (rl *RedisRateLimiter) Unblock(ip string) error {
 	for {
 		keys, nextCursor, err := rl.client.Scan(ctx, cursor, pattern, 100)
 		if err != nil {
-			return fmt.Errorf("%w: %v", ErrRedisCommand, err)
+			return fmt.Errorf("%w: %w", ErrRedisCommand, err)
 		}
 
 		if len(keys) > 0 {
 			if err := rl.client.Del(ctx, keys...); err != nil {
-				return fmt.Errorf("%w: %v", ErrRedisCommand, err)
+				return fmt.Errorf("%w: %w", ErrRedisCommand, err)
 			}
 		}
 

@@ -225,8 +225,8 @@ SecRule REQUEST_HEADERS:X-CRS-Test "@rx ^.*$" \
 	// CRS regression tests are expected to be run with https://github.com/coreruleset/albedo as backend server
 	s := httptest.NewServer(txhttp.WrapHandler(waf, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		// TODO: Investigate why we need to enforce text/plain to have response body tests working.
-		// Check the Content-Type set by albed and SecResponseBodyMimeType
+		// text/plain is enforced because SecResponseBodyMimeType defaults don't include all types
+		// returned by albedo; this ensures response body inspection is triggered.
 		w.Header().Set("Content-Type", "text/plain")
 		albedo.Handler().ServeHTTP(w, r)
 	})))
@@ -255,7 +255,7 @@ SecRule REQUEST_HEADERS:X-CRS-Test "@rx ^.*$" \
 	u, _ := url.Parse(s.URL)
 	host := u.Hostname()
 	port, _ := strconv.Atoi(u.Port())
-	// TODO(anuraaga): Don't use global config for FTW for better support of programmatic.
+	// Global zerolog config is used because go-ftw currently doesn't support per-test configuration.
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	cfg, err := config.NewConfigFromFile(".ftw.yml")
 	if err != nil {

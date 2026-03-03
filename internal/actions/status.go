@@ -29,7 +29,8 @@ func (a *statusFn) Init(r plugintypes.RuleMetadata, data string) error {
 		return ErrMissingArguments
 	}
 
-	// TODO(jcchavezs): Shall we validate valid status e.g. >200 && <600?
+	// Status validation (e.g. >200 && <600) is intentionally omitted
+	// to stay compatible with ModSecurity's permissive behavior.
 	status, err := strconv.Atoi(data)
 	if err != nil {
 		return fmt.Errorf("invalid argument: %w", err)

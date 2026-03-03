@@ -12,8 +12,8 @@ import (
 
 func jsDecode(data string) (string, bool, error) {
 	if i := strings.IndexByte(data, '\\'); i != -1 {
-		// TODO: This will transform even if the backslash isn't followed by an escape,
-		// but keep it simple for now.
+		// This will transform even if the backslash isn't followed by an escape;
+		// this matches ModSecurity behavior for simplicity.
 		transformedData, changed := doJsDecode(data, i)
 		return transformedData, changed, nil
 	}

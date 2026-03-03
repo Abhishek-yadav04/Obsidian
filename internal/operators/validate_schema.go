@@ -55,7 +55,7 @@ func NewValidateSchema(options plugintypes.OperatorOptions) (plugintypes.Operato
 	// Handle file from provided filesystem root
 	schemaData, err = fs.ReadFile(options.Root, schemaPath)
 	if err != nil {
-		return nil, fmt.Errorf("reading schema from root FS: %v", err)
+		return nil, fmt.Errorf("reading schema from root FS: %w", err)
 	}
 
 	key := md5Hash(schemaData)
@@ -63,14 +63,14 @@ func NewValidateSchema(options plugintypes.OperatorOptions) (plugintypes.Operato
 		// Preliminarily validate that the schema is valid JSON
 		var jsonSchema any
 		if err := json.Unmarshal(schemaData, &jsonSchema); err != nil {
-			return nil, fmt.Errorf("validating schema as JSON: %v", err)
+			return nil, fmt.Errorf("validating schema as JSON: %w", err)
 		}
 
 		// Compile JSON Schema at creation time
 		compiler := jsonschema.NewCompiler()
 		schema, err := compiler.Compile(schemaData)
 		if err != nil {
-			return nil, fmt.Errorf("compiling JSON schema: %v", err)
+			return nil, fmt.Errorf("compiling JSON schema: %w", err)
 		}
 		return schema, nil
 	})

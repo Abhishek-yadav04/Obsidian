@@ -98,8 +98,8 @@ func TestVerifySSEStreamResponseContentLengthPresent(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
 		map[string]string{
-			headerContentType:   mimeEventStream,
-			"Content-Length": "100",
+			headerContentType: mimeEventStream,
+			"Content-Length":  "100",
 		},
 	)
 

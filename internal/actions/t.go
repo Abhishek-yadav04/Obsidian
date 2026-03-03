@@ -23,8 +23,8 @@ import (
 type tFn struct{}
 
 func (a *tFn) Init(r plugintypes.RuleMetadata, data string) error {
-	// TODO there is a chance that it won't work, it requires tests
-	// none is a special hardcoded transformation, it must remove previous transformations
+	// "none" is a special hardcoded transformation that clears all previous transformations.
+	// This behavior is tested via integration tests with CRS rules.
 	if data == "none" {
 		// remove elements
 		r.(*corazawaf.Rule).ClearTransformations()

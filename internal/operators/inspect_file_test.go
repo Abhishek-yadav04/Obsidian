@@ -51,7 +51,7 @@ func TestInspectFileExitCode(t *testing.T) {
 func TestInspectFileOutput(t *testing.T) {
 	existCommand := "/bin/echo"
 	if runtime.GOOS == "windows" {
-		// TODO: Add support for this platform.
+		// Windows lacks /bin/echo; skip until a cross-platform command is chosen.
 		t.Skip("Skipping test on Windows")
 	}
 

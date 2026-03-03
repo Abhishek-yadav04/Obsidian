@@ -20,7 +20,7 @@ func init() {
 	syslogDialer = SyslogDialer.Dial
 }
 
-func Test_syslogWriter_Init(t *testing.T) {
+func TestSyslogWriterInit(t *testing.T) {
 	type args struct {
 		c plugintypes.AuditLogConfig
 	}
@@ -130,7 +130,7 @@ func Test_syslogWriter_Init(t *testing.T) {
 	}
 }
 
-func Test_syslogWriter_Write(t *testing.T) {
+func TestSyslogWriterWrite(t *testing.T) {
 	type fields struct {
 		formatter plugintypes.AuditLogFormatter
 	}

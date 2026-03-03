@@ -231,7 +231,7 @@ func verifySSEStreamResponse(resp *http.Response, expectedEvents int, firstChunk
 				break
 			}
 
-			return fmt.Errorf("read error: %v", err)
+			return fmt.Errorf("read error: %w", err)
 		}
 
 		if strings.HasPrefix(line, "event:") {
@@ -338,7 +338,7 @@ func runTests(tests []testCase) error {
 
 		req, err := http.NewRequest(test.requestMethod, test.requestURL, requestBody)
 		if err != nil {
-			return fmt.Errorf("could not make http request: %v", err)
+			return fmt.Errorf("could not make http request: %w", err)
 		}
 		for k, v := range test.requestHeaders {
 			req.Header.Add(k, v)
@@ -347,7 +347,7 @@ func runTests(tests []testCase) error {
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return fmt.Errorf("could not do http request: %v", err)
+			return fmt.Errorf("could not do http request: %w", err)
 		}
 
 		// Check status code first so stream checks can still read the body
@@ -380,7 +380,7 @@ func runTests(tests []testCase) error {
 			// Some servers might abort the request before sending the body (E.g. triggering a phase 3 rule with deny action)
 			// Therefore, we check if we properly read the body only if we expect a body to be received.
 			if errReadRespBody != nil {
-				return fmt.Errorf("could not read response body: %v", err)
+				return fmt.Errorf("could not read response body: %w", err)
 			}
 
 			if err := test.expectedBody(len(respBody), respBody); err != nil {

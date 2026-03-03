@@ -227,7 +227,7 @@ func (m *Manager) ReloadAll(ctx context.Context) error {
 	m.mu.Unlock()
 
 	if len(errs) > 0 {
-		return fmt.Errorf("some secrets failed to reload: %v", errs)
+		return fmt.Errorf("some secrets failed to reload: %w", errors.Join(errs...))
 	}
 
 	return nil

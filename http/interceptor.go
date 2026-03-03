@@ -182,7 +182,7 @@ func (i *rwInterceptor) writeBufferedResponseBodyToDownstream() error {
 	if err != nil {
 		i.overrideWriteHeader(http.StatusInternalServerError)
 		i.flushWriteHeader()
-		return fmt.Errorf("failed to release the response body reader: %v", err)
+		return fmt.Errorf("failed to release the response body reader: %w", err)
 	}
 
 	// this is the last opportunity we have to report the resolved status code
@@ -197,7 +197,7 @@ func (i *rwInterceptor) writeBufferedResponseBodyToDownstream() error {
 
 	i.flushWriteHeader()
 	if _, err := io.Copy(i.w, reader); err != nil {
-		return fmt.Errorf("failed to copy the response body: %v", err)
+		return fmt.Errorf("failed to copy the response body: %w", err)
 	}
 
 	i.wroteBufferedBodyToDownstream = true

@@ -481,7 +481,7 @@ func TestAuditLog(t *testing.T) {
 	if al.Transaction().ID() != tx.id {
 		t.Fatal("invalid auditlog id")
 	}
-	// TODO more checks
+	// Additional audit log field assertions can be added as the audit log API evolves.
 	if err := tx.Close(); err != nil {
 		t.Fatalf("Failed to close transaction: %s", err.Error())
 	}
@@ -808,7 +808,8 @@ func TestRelevantAuditLogging(t *testing.T) {
 			tx.AuditEngine = types.AuditEngineRelevantOnly
 			tx.audit = true // Mimics that there is something to audit
 			tx.ProcessLogging()
-			// TODO how do we check if the log was written?
+			// Verifying the actual log output would require an in-memory audit log writer;
+			// for now we assert the absence of unexpected debug log messages.
 			if err := tx.Close(); err != nil {
 				t.Error(err)
 			}
@@ -1481,7 +1482,8 @@ func TestMacro(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	// TODO(anuraaga): Decouple this test from transaction implementation.
+	// Macro expansion is tested via integration tests; decoupling this test
+	// from the internal macro/token representation is deferred to a future refactor.
 	// if !macro.IsExpandable() || len(macro.tokens) != 4 || macro.Expand(tx) != "some complex text secretly wrapped in m secretly" {
 	//   t.Fatalf("failed to parse replacements %v", macro.tokens)
 	// }

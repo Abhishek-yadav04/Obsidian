@@ -48,5 +48,6 @@ type MatchedRule interface {
 
 	ErrorLog() string
 
-	// TODO(4.x): Add Log()
+	// Log() method may be added in a future major version (v4.x) to provide
+	// structured access to the full match log entry.
 }

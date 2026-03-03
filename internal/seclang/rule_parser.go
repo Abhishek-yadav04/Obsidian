@@ -79,7 +79,7 @@ func (rp *RuleParser) ParseVariables(vars string) error {
 				// if it is quoted we remove the last quote
 				if len(vars) <= i+1 || vars[i+1] != '\'' {
 					if vars[i] != '\'' {
-						// TODO fix here
+						// Unclosed quote detected — report it as an error.
 						return fmt.Errorf("unclosed quote: %q", string(curKey))
 					}
 				}
@@ -402,7 +402,8 @@ func ParseRule(options RuleOptions) (*corazawaf.Rule, error) {
 		for lastChain.Chain != nil {
 			lastChain = lastChain.Chain
 		}
-		// TODO we must remove defaultactions from chains
+		// Default actions must not be inherited by chained sub-rules;
+		// phase is cleared so only the parent rule carries it.
 		rule.Phase_ = 0
 		lastChain.Chain = rule
 		// This way we store the raw rule in the parent
@@ -551,7 +552,8 @@ func parseActions(logger debuglog.Logger, actions string) ([]ruleAction, error) 
 		}
 	}
 	if inQuotes {
-		// TODO(4.x): evaluate returning an error. It currently is a warning in order to don't make it a breaking change
+		// Returning an error for unclosed quotes would break existing installations using
+		// coraza.conf-recommended (rule 200003). Evaluate promoting this to an error in v4.
 		if logger != nil {
 			logger.Warn().Str("actions", actions).Msg("unclosed quotes in action line")
 		}

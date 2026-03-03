@@ -202,7 +202,7 @@ func (c *Checker) fetchHIBPRange(ctx context.Context, prefix string) (map[string
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrServiceUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", ErrServiceUnavailable, err)
 	}
 	defer resp.Body.Close()
 

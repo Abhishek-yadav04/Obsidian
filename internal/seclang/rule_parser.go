@@ -280,7 +280,7 @@ func (rp *RuleParser) ParseActions(actions string) error {
 	for _, a := range act {
 		if a.Atype == plugintypes.ActionTypeMetadata {
 			if err := a.F.Init(rp.rule, a.Value); err != nil {
-				return fmt.Errorf("failed to init action %s: %s", a.Key, err.Error())
+				return fmt.Errorf("failed to init action %s: %w", a.Key, err)
 			}
 		}
 	}

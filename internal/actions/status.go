@@ -32,7 +32,7 @@ func (a *statusFn) Init(r plugintypes.RuleMetadata, data string) error {
 	// TODO(jcchavezs): Shall we validate valid status e.g. >200 && <600?
 	status, err := strconv.Atoi(data)
 	if err != nil {
-		return fmt.Errorf("invalid argument: %s", err.Error())
+		return fmt.Errorf("invalid argument: %w", err)
 	}
 	r.(*corazawaf.Rule).DisruptiveStatus = status
 	return nil

@@ -10,6 +10,12 @@ import (
 	"github.com/corazawaf/coraza/v3/types/variables"
 )
 
+const (
+	errFmtUnexpectedError    = "unexpected error: %s"
+	errFmtUnexpectedTokens   = "unexpected number of tokens: want %d, have %d"
+	errFmtUnexpectedTokenVal = "unexpected token: want %v, have %v"
+)
+
 func TestNewMacro(t *testing.T) {
 	_, err := NewMacro("")
 	if err == nil {
@@ -18,7 +24,7 @@ func TestNewMacro(t *testing.T) {
 
 	_, err = NewMacro("some string")
 	if err != nil {
-		t.Errorf("unexpected error: %s", err.Error())
+		t.Errorf(errFmtUnexpectedError, err.Error())
 	}
 
 	_, err = NewMacro("%{}")
@@ -111,7 +117,7 @@ func TestCompile(t *testing.T) {
 		}
 
 		if want, have := 1, len(m.tokens); want != have {
-			t.Fatalf("unexpected number of tokens: want %d, have %d", want, have)
+			t.Fatalf(errFmtUnexpectedTokens, want, have)
 		}
 
 		expectedMacro := macroToken{"tx.missing_key", variables.TX, "missing_key"}
@@ -133,15 +139,15 @@ func TestCompile(t *testing.T) {
 			m := &macro{}
 			err := m.compile(tc.input)
 			if err != nil {
-				t.Fatalf("unexpected error: %s", err.Error())
+				t.Fatalf(errFmtUnexpectedError, err.Error())
 			}
 
 			if len(m.tokens) != 1 {
-				t.Fatalf("unexpected number of tokens: want %d, have %d", 1, len(m.tokens))
+				t.Fatalf(errFmtUnexpectedTokens, 1, len(m.tokens))
 			}
 
 			if m.tokens[0] != tc.expectedMacro {
-				t.Errorf("unexpected token: want %v, have %v", tc.expectedMacro, m.tokens[0])
+				t.Errorf(errFmtUnexpectedTokenVal, tc.expectedMacro, m.tokens[0])
 			}
 		}
 	})
@@ -150,36 +156,36 @@ func TestCompile(t *testing.T) {
 		m := &macro{}
 		err := m.compile("%{tx.id} got %{tx.count} in this transaction and as zero %{tx.0}")
 		if err != nil {
-			t.Errorf("unexpected error: %s", err.Error())
+			t.Errorf(errFmtUnexpectedError, err.Error())
 		}
 
 		if want, have := 5, len(m.tokens); want != have {
-			t.Fatalf("unexpected number of tokens: want %d, have %d", want, have)
+			t.Fatalf(errFmtUnexpectedTokens, want, have)
 		}
 
 		expectedMacro0 := macroToken{"tx.id", variables.TX, "id"}
 		if want, have := m.tokens[0], expectedMacro0; want != have {
-			t.Errorf("unexpected token: want %v, have %v", want, have)
+			t.Errorf(errFmtUnexpectedTokenVal, want, have)
 		}
 
 		expectedMacro1 := macroToken{" got ", variables.Unknown, ""}
 		if want, have := m.tokens[1], expectedMacro1; want != have {
-			t.Errorf("unexpected token: want %v, have %v", want, have)
+			t.Errorf(errFmtUnexpectedTokenVal, want, have)
 		}
 
 		expectedMacro2 := macroToken{"tx.count", variables.TX, "count"}
 		if want, have := m.tokens[2], expectedMacro2; want != have {
-			t.Errorf("unexpected token: want %v, have %v", want, have)
+			t.Errorf(errFmtUnexpectedTokenVal, want, have)
 		}
 
 		expectedMacro3 := macroToken{" in this transaction and as zero ", variables.Unknown, ""}
 		if want, have := m.tokens[3], expectedMacro3; want != have {
-			t.Errorf("unexpected token: want %v, have %v", want, have)
+			t.Errorf(errFmtUnexpectedTokenVal, want, have)
 		}
 
 		expectedMacro4 := macroToken{"tx.0", variables.TX, "0"}
 		if want, have := m.tokens[4], expectedMacro4; want != have {
-			t.Errorf("unexpected token: want %v, have %v", want, have)
+			t.Errorf(errFmtUnexpectedTokenVal, want, have)
 		}
 	})
 }

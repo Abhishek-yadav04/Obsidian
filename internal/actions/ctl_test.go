@@ -15,6 +15,11 @@ import (
 	"github.com/corazawaf/coraza/v3/types/variables"
 )
 
+const (
+	errFmtLogEntry = "Failed to log entry, want to contain %q, have %q"
+	testHTTPProto  = "HTTP/1.1"
+)
+
 func TestCtl(t *testing.T) {
 	tests := map[string]struct {
 		input     string
@@ -34,7 +39,7 @@ func TestCtl(t *testing.T) {
 			input: "auditEngine=X",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "Invalid status", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -58,7 +63,7 @@ func TestCtl(t *testing.T) {
 			input: "forceRequestBodyVariable=X",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "X", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -74,7 +79,7 @@ func TestCtl(t *testing.T) {
 			input: "requestBodyAccess=X",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[ERROR] Unknown toggle", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -86,7 +91,7 @@ func TestCtl(t *testing.T) {
 			input: "requestBodyAccess=On",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[WARN] Cannot change request body access after request headers phase", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -109,7 +114,7 @@ func TestCtl(t *testing.T) {
 			input: "requestBodyProcessor=JSON",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[WARN] Cannot change request body processor after request headers phase", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -128,7 +133,7 @@ func TestCtl(t *testing.T) {
 			input: "requestBodyLimit=X",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[ERROR] Invalid limit", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -140,7 +145,7 @@ func TestCtl(t *testing.T) {
 			input: "requestBodyLimit=12345",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[WARN] Cannot change request body limit after request headers phase", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -156,7 +161,7 @@ func TestCtl(t *testing.T) {
 			input: "ruleEngine=X",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "Invalid status", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -178,7 +183,7 @@ func TestCtl(t *testing.T) {
 			input: "ruleRemoveById=W",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[ERROR] Invalid rule ID", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -186,7 +191,7 @@ func TestCtl(t *testing.T) {
 			input: "ruleRemoveById=a-2",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[ERROR] Invalid range", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -208,7 +213,7 @@ func TestCtl(t *testing.T) {
 			input: "responseBodyAccess=X",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[ERROR] Unknown toggle", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -216,13 +221,13 @@ func TestCtl(t *testing.T) {
 			prepareTX: func(tx *corazawaf.Transaction) {
 				tx.ProcessRequestHeaders()
 				_, _ = tx.ProcessRequestBody()
-				tx.ProcessResponseHeaders(200, "HTTP/1.1")
+				tx.ProcessResponseHeaders(200, testHTTPProto)
 				_, _ = tx.ProcessResponseBody()
 			},
 			input: "responseBodyAccess=On",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[WARN] Cannot change response body access after response headers phase", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -255,12 +260,12 @@ func TestCtl(t *testing.T) {
 			prepareTX: func(tx *corazawaf.Transaction) {
 				tx.ProcessRequestHeaders()
 				_, _ = tx.ProcessRequestBody()
-				tx.ProcessResponseHeaders(200, "HTTP/1.1")
+				tx.ProcessResponseHeaders(200, testHTTPProto)
 				_, _ = tx.ProcessResponseBody()
 			},
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[WARN] Cannot change response body access after response headers phase", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -268,7 +273,7 @@ func TestCtl(t *testing.T) {
 			input: "responseBodyLimit=a",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[ERROR] Invalid limit", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -284,13 +289,13 @@ func TestCtl(t *testing.T) {
 			prepareTX: func(tx *corazawaf.Transaction) {
 				tx.ProcessRequestHeaders()
 				_, _ = tx.ProcessRequestBody()
-				tx.ProcessResponseHeaders(200, "HTTP/1.1")
+				tx.ProcessResponseHeaders(200, testHTTPProto)
 				_, _ = tx.ProcessResponseBody()
 			},
 			input: "responseBodyProcessor=XML",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[WARN] Cannot change response body access after response headers phase", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -298,7 +303,7 @@ func TestCtl(t *testing.T) {
 			input: "forceResponseBodyVariable=X",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "X", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -314,7 +319,7 @@ func TestCtl(t *testing.T) {
 			input: "debugLogLevel=X",
 			checkTX: func(t *testing.T, tx *corazawaf.Transaction, logEntry string) {
 				if wantToContain, have := "[ERROR] Invalid log level", logEntry; !strings.Contains(have, wantToContain) {
-					t.Errorf("Failed to log entry, want to contain %q, have %q", wantToContain, have)
+					t.Errorf(errFmtLogEntry, wantToContain, have)
 				}
 			},
 		},
@@ -354,10 +359,10 @@ func TestCtl(t *testing.T) {
 			a.Evaluate(r, tx)
 
 			if test.checkTX == nil {
-				// TODO(jcchavezs): for some tests we can't do any assertion
-				// without going too deep into the implementation details.
-				// t.SkipNow() can't be used because tinygo doesn't support it.
-				// https://github.com/tinygo-org/tinygo/blob/release/src/testing/testing.go#L246
+				// Some ctl actions (e.g. ruleRemoveTarget*) only modify internal rule
+				// state that cannot be asserted without coupling to implementation
+				// details. t.SkipNow() is also unavailable under TinyGo.
+				// See: https://github.com/tinygo-org/tinygo/blob/release/src/testing/testing.go#L246
 				return
 			} else {
 				test.checkTX(t, tx, logsBuf.String())

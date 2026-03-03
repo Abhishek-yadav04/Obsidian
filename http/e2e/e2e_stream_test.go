@@ -85,11 +85,11 @@ func (e *errorReader) Close() error { return nil }
 func TestVerifySSEStreamResponseInvalidContentType(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
-		map[string]string{"Content-Type": "application/json"},
+		map[string]string{headerContentType: "application/json"},
 	)
 
 	err := verifySSEStreamResponse(resp, 1, 100*time.Millisecond, 500*time.Millisecond)
-	if err == nil || !strings.Contains(err.Error(), "text/event-stream") {
+	if err == nil || !strings.Contains(err.Error(), mimeEventStream) {
 		t.Fatalf("expected Content-Type error, got: %v", err)
 	}
 }
@@ -98,7 +98,7 @@ func TestVerifySSEStreamResponseContentLengthPresent(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
 		map[string]string{
-			"Content-Type":   "text/event-stream",
+			headerContentType:   mimeEventStream,
 			"Content-Length": "100",
 		},
 	)
@@ -112,7 +112,7 @@ func TestVerifySSEStreamResponseContentLengthPresent(t *testing.T) {
 func TestVerifySSEStreamResponseNegativeTotalDeadline(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
-		map[string]string{"Content-Type": "text/event-stream"},
+		map[string]string{headerContentType: mimeEventStream},
 	)
 
 	err := verifySSEStreamResponse(resp, 1, 100*time.Millisecond, -100*time.Millisecond)
@@ -124,7 +124,7 @@ func TestVerifySSEStreamResponseNegativeTotalDeadline(t *testing.T) {
 func TestVerifySSEStreamResponseZeroTotalDeadline(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
-		map[string]string{"Content-Type": "text/event-stream"},
+		map[string]string{headerContentType: mimeEventStream},
 	)
 
 	err := verifySSEStreamResponse(resp, 1, 0, 0)
@@ -136,7 +136,7 @@ func TestVerifySSEStreamResponseZeroTotalDeadline(t *testing.T) {
 func TestVerifySSEStreamResponseNegativeFirstChunkDeadline(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
-		map[string]string{"Content-Type": "text/event-stream"},
+		map[string]string{headerContentType: mimeEventStream},
 	)
 
 	err := verifySSEStreamResponse(resp, 1, -100*time.Millisecond, 500*time.Millisecond)
@@ -148,7 +148,7 @@ func TestVerifySSEStreamResponseNegativeFirstChunkDeadline(t *testing.T) {
 func TestVerifySSEStreamResponseTotalDeadlineTooSmall(t *testing.T) {
 	resp := makeTestResponse(
 		http.NoBody,
-		map[string]string{"Content-Type": "text/event-stream"},
+		map[string]string{headerContentType: mimeEventStream},
 	)
 
 	// totalDeadline <= firstChunkDeadline
@@ -161,7 +161,7 @@ func TestVerifySSEStreamResponseTotalDeadlineTooSmall(t *testing.T) {
 func TestVerifySSEStreamResponseReadError(t *testing.T) {
 	resp := makeTestResponse(
 		&errorReader{},
-		map[string]string{"Content-Type": "text/event-stream"},
+		map[string]string{headerContentType: mimeEventStream},
 	)
 
 	err := verifySSEStreamResponse(resp, 1, 100*time.Millisecond, 500*time.Millisecond)
@@ -174,7 +174,7 @@ func TestVerifySSEStreamResponseFirstChunkTooLate(t *testing.T) {
 	// First event arrives after 150ms, but firstChunkDeadline is 100ms
 	resp := makeTestResponse(
 		sseStreamPipe(1, 150*time.Millisecond, 0),
-		map[string]string{"Content-Type": "text/event-stream"},
+		map[string]string{headerContentType: mimeEventStream},
 	)
 
 	err := verifySSEStreamResponse(resp, 1, 100*time.Millisecond, 500*time.Millisecond)
@@ -190,7 +190,7 @@ func TestVerifySSEStreamResponseNoEvents(t *testing.T) {
 
 	resp := makeTestResponse(
 		pr,
-		map[string]string{"Content-Type": "text/event-stream"},
+		map[string]string{headerContentType: mimeEventStream},
 	)
 
 	err := verifySSEStreamResponse(resp, 1, 100*time.Millisecond, 500*time.Millisecond)
@@ -203,7 +203,7 @@ func TestVerifySSEStreamResponseEventCountMismatch(t *testing.T) {
 	// Stream produces 2 events but we expect 3
 	resp := makeTestResponse(
 		sseStreamPipe(2, 10*time.Millisecond, 10*time.Millisecond),
-		map[string]string{"Content-Type": "text/event-stream"},
+		map[string]string{headerContentType: mimeEventStream},
 	)
 
 	err := verifySSEStreamResponse(resp, 3, 50*time.Millisecond, 500*time.Millisecond)
@@ -217,7 +217,7 @@ func TestVerifySSEStreamResponseStreamEndedTooQuickly(t *testing.T) {
 	// This indicates the response was buffered, not streamed
 	resp := makeTestResponse(
 		sseStreamPipe(3, 5*time.Millisecond, 2*time.Millisecond),
-		map[string]string{"Content-Type": "text/event-stream"},
+		map[string]string{headerContentType: mimeEventStream},
 	)
 
 	err := verifySSEStreamResponse(resp, 3, 100*time.Millisecond, 500*time.Millisecond)
@@ -230,7 +230,7 @@ func TestVerifySSEStreamResponseTotalDeadlineExceeded(t *testing.T) {
 	// Stream keeps sending data but never completes the expected event count
 	resp := makeTestResponse(
 		noEventPipe(10*time.Millisecond),
-		map[string]string{"Content-Type": "text/event-stream"},
+		map[string]string{headerContentType: mimeEventStream},
 	)
 
 	err := verifySSEStreamResponse(resp, 5, 50*time.Millisecond, 150*time.Millisecond)
@@ -245,7 +245,7 @@ func TestVerifySSEStreamResponseSuccess(t *testing.T) {
 	// All 5 events arrive within 1 second
 	resp := makeTestResponse(
 		sseStreamPipe(5, 10*time.Millisecond, 30*time.Millisecond),
-		map[string]string{"Content-Type": "text/event-stream"},
+		map[string]string{headerContentType: mimeEventStream},
 	)
 
 	err := verifySSEStreamResponse(resp, 5, 50*time.Millisecond, 1*time.Second)
@@ -259,7 +259,7 @@ func TestVerifySSEStreamResponseSuccessWithVariousHeaders(t *testing.T) {
 	// Need sufficient delay so total time exceeds firstChunkDeadline
 	resp := makeTestResponse(
 		sseStreamPipe(3, 10*time.Millisecond, 40*time.Millisecond),
-		map[string]string{"Content-Type": "TEXT/EVENT-STREAM; charset=utf-8"},
+		map[string]string{headerContentType: "TEXT/EVENT-STREAM; charset=utf-8"},
 	)
 
 	err := verifySSEStreamResponse(resp, 3, 50*time.Millisecond, 500*time.Millisecond)

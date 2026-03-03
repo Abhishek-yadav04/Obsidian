@@ -47,7 +47,7 @@ func (p *Parser) FromFile(profilePath string) error {
 		pattern := filepath.ToSlash(profilePath)
 		files, err = fs.Glob(p.root, pattern)
 		if err != nil {
-			return fmt.Errorf("failed to glob: %s", err.Error())
+			return fmt.Errorf("failed to glob: %w", err)
 		}
 
 		if len(files) == 0 {
@@ -74,7 +74,7 @@ func (p *Parser) FromFile(profilePath string) error {
 			// we don't use defer for this as tinygo does not seem to like it
 			p.currentDir = originalDir
 			p.currentFile = ""
-			return fmt.Errorf("failed to readfile: %s", err.Error())
+			return fmt.Errorf("failed to readfile: %w", err)
 		}
 
 		err = p.parseString(string(file))
@@ -82,7 +82,7 @@ func (p *Parser) FromFile(profilePath string) error {
 			// we don't use defer for this as tinygo does not seem to like it
 			p.currentDir = originalDir
 			p.currentFile = ""
-			return fmt.Errorf("failed to parse string: %s", err.Error())
+			return fmt.Errorf("failed to parse string: %w", err)
 		}
 		// restore the lastDir post processing all includes
 		p.currentDir = lastDir

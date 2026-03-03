@@ -65,34 +65,42 @@ func processRequest(tx types.Transaction, req *http.Request) (*types.Interruptio
 	}
 
 	if tx.IsRequestBodyAccessible() {
-		// We only do body buffering if the transaction requires request
-		// body inspection, otherwise we just let the request follow its
-		// regular flow.
-		if req.Body != nil && req.Body != http.NoBody {
-			it, _, err := tx.ReadRequestBodyFrom(req.Body)
-			if err != nil {
-				return nil, fmt.Errorf("failed to append request body: %s", err.Error())
-			}
-
-			if it != nil {
-				return it, nil
-			}
-
-			rbr, err := tx.RequestBodyReader()
-			if err != nil {
-				return nil, fmt.Errorf("failed to get the request body: %s", err.Error())
-			}
-
-			// Adds all remaining bytes beyond the coraza limit to its buffer
-			// It happens when the partial body has been processed and it did not trigger an interruption
-			bodyReader := io.MultiReader(rbr, req.Body)
-			// req.Body is transparently reinizialied with a new io.ReadCloser.
-			// The http handler will be able to read it.
-			req.Body = io.NopCloser(bodyReader)
+		if in, err := processRequestBody(tx, req); in != nil || err != nil {
+			return in, err
 		}
 	}
 
 	return tx.ProcessRequestBody()
+}
+
+// processRequestBody handles request body buffering and inspection.
+// Returns an interruption if the body triggers a rule, or an error if reading fails.
+func processRequestBody(tx types.Transaction, req *http.Request) (*types.Interruption, error) {
+	if req.Body == nil || req.Body == http.NoBody {
+		return nil, nil
+	}
+
+	it, _, err := tx.ReadRequestBodyFrom(req.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to append request body: %w", err)
+	}
+
+	if it != nil {
+		return it, nil
+	}
+
+	rbr, err := tx.RequestBodyReader()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get the request body: %w", err)
+	}
+
+	// Adds all remaining bytes beyond the coraza limit to its buffer
+	// It happens when the partial body has been processed and it did not trigger an interruption
+	bodyReader := io.MultiReader(rbr, req.Body)
+	// req.Body is transparently reinizialied with a new io.ReadCloser.
+	// The http handler will be able to read it.
+	req.Body = io.NopCloser(bodyReader)
+	return nil, nil
 }
 
 func WrapHandler(waf coraza.WAF, h http.Handler) http.Handler {

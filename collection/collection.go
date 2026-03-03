@@ -51,7 +51,7 @@ type Map interface {
 	Keyed
 
 	// Add a value to some key
-	Add(key string, value string)
+	Add(key, value string)
 
 	// Set will replace the key's value with this slice
 	Set(key string, values []string)

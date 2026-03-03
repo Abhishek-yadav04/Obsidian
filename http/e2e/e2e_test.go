@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+const errFmtUnexpectedErr = "unexpected err: %v"
+
 func TestSetHTTPSchemeIfMissing(t *testing.T) {
 	tests := map[string]struct {
 		rawURL      string
@@ -39,7 +41,7 @@ func TestSetHTTPSchemeIfMissing(t *testing.T) {
 func TestExpectStatusCode(t *testing.T) {
 	ok := expectStatusCode(http.StatusOK)
 	if err := ok(http.StatusOK); err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf(errFmtUnexpectedErr, err)
 	}
 	if err := ok(http.StatusForbidden); err == nil {
 		t.Fatalf("expected an error when status code mismatches")
@@ -50,7 +52,7 @@ func TestExpectNulledBodyStatusCode(t *testing.T) {
 	// nulledBody=true → expect expectedNulledBodyCode
 	nulled := expectNulledBodyStatusCode(true, 403, 200)
 	if err := nulled(200); err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf(errFmtUnexpectedErr, err)
 	}
 	if err := nulled(403); err == nil {
 		t.Fatalf("expected error when nulledBody=true and code != expectedNulledBodyCode")
@@ -59,7 +61,7 @@ func TestExpectNulledBodyStatusCode(t *testing.T) {
 	// nulledBody=false → expect expectedEmptyBodyCode
 	nonNulled := expectNulledBodyStatusCode(false, 403, 200)
 	if err := nonNulled(403); err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf(errFmtUnexpectedErr, err)
 	}
 	if err := nonNulled(200); err == nil {
 		t.Fatalf("expected error when nulledBody=false and code != expectedEmptyBodyCode")
@@ -70,7 +72,7 @@ func TestExpectEmptyOrNulledBody(t *testing.T) {
 	// nulled body: non-empty, all zeros
 	zeros := make([]byte, 8)
 	if err := expectEmptyOrNulledBody(true)(len(zeros), zeros); err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf(errFmtUnexpectedErr, err)
 	}
 	// failures for nulled body case
 	if err := expectEmptyOrNulledBody(true)(0, nil); err == nil {
@@ -86,10 +88,10 @@ func TestExpectEmptyOrNulledBody(t *testing.T) {
 
 	// empty body case
 	if err := expectEmptyOrNulledBody(false)(0, nil); err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf(errFmtUnexpectedErr, err)
 	}
 	if err := expectEmptyOrNulledBody(false)(0, []byte{}); err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf(errFmtUnexpectedErr, err)
 	}
 	if err := expectEmptyOrNulledBody(false)(1, []byte{'a'}); err == nil {
 		t.Fatalf("expected error (non-empty)")
@@ -98,10 +100,10 @@ func TestExpectEmptyOrNulledBody(t *testing.T) {
 
 func TestExpectEmptyBody(t *testing.T) {
 	if err := expectEmptyBody()(0, nil); err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf(errFmtUnexpectedErr, err)
 	}
 	if err := expectEmptyBody()(0, []byte{}); err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf(errFmtUnexpectedErr, err)
 	}
 	if err := expectEmptyBody()(1, []byte{'a'}); err == nil {
 		t.Fatalf("expected error (non-empty)")
@@ -146,7 +148,7 @@ func TestRunTests(t *testing.T) {
 			}
 		case "/sse":
 			// Stream 2 events
-			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set(headerContentType, mimeEventStream)
 			w.WriteHeader(http.StatusOK)
 			if wf, ok := w.(http.Flusher); ok {
 				fmt.Fprint(w, "event: message\n")

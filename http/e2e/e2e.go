@@ -165,13 +165,8 @@ func expectEmptyBody() bodyExpectation {
 // resp.Body as needed and return an error on validation failure.
 type StreamCheck func(resp *http.Response) error
 
-// verifySSEStreamResponse ensures that response is streamed incrementally:
-// - first event arrives within firstChunkDeadline
-// - exactly expectedEvents events are received
-// - streaming headers are sane for SSE
-// - events arrive within totalDeadline
-func verifySSEStreamResponse(resp *http.Response, expectedEvents int, firstChunkDeadline, totalDeadline time.Duration) error {
-	// Basic header checks
+// validateSSEHeaders checks that the response has proper SSE headers.
+func validateSSEHeaders(resp *http.Response) error {
 	ct := strings.ToLower(resp.Header.Get(headerContentType))
 	if !strings.Contains(ct, mimeEventStream) {
 		return fmt.Errorf("expected Content-Type text/event-stream, got %q", resp.Header.Get(headerContentType))
@@ -181,7 +176,11 @@ func verifySSEStreamResponse(resp *http.Response, expectedEvents int, firstChunk
 		return fmt.Errorf("expected no Content-Length for streaming, got %q", cl)
 	}
 
-	// Sanitize deadlines
+	return nil
+}
+
+// validateDeadlines ensures that the deadline parameters are valid.
+func validateDeadlines(firstChunkDeadline, totalDeadline time.Duration) error {
 	if totalDeadline < 0 {
 		return errors.New("totalDeadline cannot be negative")
 	}
@@ -192,6 +191,23 @@ func verifySSEStreamResponse(resp *http.Response, expectedEvents int, firstChunk
 
 	if totalDeadline <= firstChunkDeadline {
 		return errors.New("totalDeadline must be greater than firstChunkDeadline")
+	}
+
+	return nil
+}
+
+// verifySSEStreamResponse ensures that response is streamed incrementally:
+// - first event arrives within firstChunkDeadline
+// - exactly expectedEvents events are received
+// - streaming headers are sane for SSE
+// - events arrive within totalDeadline
+func verifySSEStreamResponse(resp *http.Response, expectedEvents int, firstChunkDeadline, totalDeadline time.Duration) error {
+	if err := validateSSEHeaders(resp); err != nil {
+		return err
+	}
+
+	if err := validateDeadlines(firstChunkDeadline, totalDeadline); err != nil {
+		return err
 	}
 
 	r := bufio.NewReader(resp.Body)
@@ -259,45 +275,52 @@ func runHealthChecks(healthChecks []healthCheck) error {
 	client := http.DefaultClient
 	for currentCheckIndex, healthCheck := range healthChecks {
 		fmt.Printf("[%d/%d] Running health check: %s\n", currentCheckIndex+1, len(healthChecks), healthCheck.name)
-		timeout := healthCheckTimeout
+		if err := runSingleHealthCheck(client, healthCheck); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
+// runSingleHealthCheck polls a single health check endpoint until success or timeout.
+func runSingleHealthCheck(client *http.Client, hc healthCheck) error {
+	timeout := healthCheckTimeout
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 
-		req, _ := http.NewRequest(http.MethodGet, healthCheck.url, nil)
-		for range ticker.C {
-			if healthCheck.expectedCode != configCheckStatusCode {
-				//  The default e2e header is not added if we are checking that the expected config is loaded
-				req.Header.Add("coraza-e2e", "ok")
+	req, _ := http.NewRequest(http.MethodGet, hc.url, nil)
+	for range ticker.C {
+		if hc.expectedCode != configCheckStatusCode {
+			//  The default e2e header is not added if we are checking that the expected config is loaded
+			req.Header.Add("coraza-e2e", "ok")
+		}
+		resp, err := client.Do(req)
+		fmt.Printf("[Wait] Waiting for %s. Timeout: %ds\n", hc.url, timeout)
+		if err == nil {
+			_, err = io.Copy(io.Discard, resp.Body)
+			if err != nil {
+				return err
 			}
-			resp, err := client.Do(req)
-			fmt.Printf("[Wait] Waiting for %s. Timeout: %ds\n", healthCheck.url, timeout)
-			if err == nil {
-				_, err = io.Copy(io.Discard, resp.Body)
-				if err != nil {
-					return err
-				}
-				resp.Body.Close()
+			resp.Body.Close()
 
-				if resp.StatusCode == healthCheck.expectedCode {
-					fmt.Printf("[Ok] Check successful, got status code %d\n", resp.StatusCode)
-					break
-				}
-
-				if healthCheck.expectedCode == configCheckStatusCode {
-					return fmt.Errorf("configs check failed, got status code %d, expected %d. Please check configs used", resp.StatusCode, healthCheck.expectedCode)
-				}
-
-				fmt.Printf("[Wait] Unexpected status code %d\n", resp.StatusCode)
+			if resp.StatusCode == hc.expectedCode {
+				fmt.Printf("[Ok] Check successful, got status code %d\n", resp.StatusCode)
+				return nil
 			}
-			timeout--
-			if timeout == 0 {
-				if err != nil {
-					return fmt.Errorf("timeout waiting for response from %s, make sure the server is running. Last request error: %w", healthCheck.url, err)
-				}
 
-				return fmt.Errorf("timeout waiting for response from %s, unexpected status code", healthCheck.url)
+			if hc.expectedCode == configCheckStatusCode {
+				return fmt.Errorf("configs check failed, got status code %d, expected %d. Please check configs used", resp.StatusCode, hc.expectedCode)
 			}
+
+			fmt.Printf("[Wait] Unexpected status code %d\n", resp.StatusCode)
+		}
+		timeout--
+		if timeout == 0 {
+			if err != nil {
+				return fmt.Errorf("timeout waiting for response from %s, make sure the server is running. Last request error: %w", hc.url, err)
+			}
+
+			return fmt.Errorf("timeout waiting for response from %s, unexpected status code", hc.url)
 		}
 	}
 	return nil

@@ -460,7 +460,7 @@ func (tx *Transaction) ParseRequestReader(data io.Reader) (*types.Interruption, 
 	for scanner.Scan() {
 		it, _, err := tx.WriteRequestBody(scanner.Bytes())
 		if err != nil {
-			return nil, fmt.Errorf("cannot write to request body to buffer: %s", err.Error())
+			return nil, fmt.Errorf("cannot write to request body to buffer: %w", err)
 		}
 
 		if it != nil {
@@ -471,7 +471,7 @@ func (tx *Transaction) ParseRequestReader(data io.Reader) (*types.Interruption, 
 		if ct != "application/x-www-form-urlencoded" {
 			it, _, err := tx.WriteRequestBody([]byte{'\r', '\n'})
 			if err != nil {
-				return nil, fmt.Errorf("cannot write to request body to buffer: %s", err.Error())
+				return nil, fmt.Errorf("cannot write to request body to buffer: %w", err)
 			}
 
 			if it != nil {

@@ -47,6 +47,8 @@ func ExampleRegisterAuditLogWriter() {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
+		// The body content is the transaction ID ("xyz456"), controlled by the test.
+		// In production code, user-controlled data must be sanitized before logging.
 		fmt.Println(string(b))
 	}))
 	defer srv.Close()

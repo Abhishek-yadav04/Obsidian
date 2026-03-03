@@ -144,6 +144,10 @@ const ObsidianApp = {
         this.loadView('dashboard');
         this.startAutoRefresh();
         this.setupEventListeners();
+        this.registerServiceWorker();
+        this.setupKeyboardShortcuts();
+        this.setupSessionTimeout();
+        this.requestNotificationPermission();
     },
 
     // Setup navigation event listeners
@@ -179,6 +183,16 @@ const ObsidianApp = {
         document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
         const activeLink = document.querySelector(`[data-view="${view}"]`);
         if (activeLink) activeLink.classList.add('active');
+
+        // Sync mobile bottom nav
+        this.syncBottomNav(view);
+
+        // Close mobile sidebar on navigation
+        if (window.innerWidth <= 992) {
+            document.getElementById('sidebar')?.classList.remove('active');
+            document.querySelector('.overlay')?.classList.remove('active');
+            document.body.classList.remove('sidebar-open');
+        }
 
         // Update page title
         const titles = {
@@ -1510,7 +1524,10 @@ const ObsidianApp = {
                 if (msg.type === 'stats_update' && this.currentView === 'dashboard') {
                     this.fetchDashboardData();
                 } else if (msg.type === 'alert') {
-                    this.showToast('⚠️ Attack Blocked!', msg.data?.details || 'Security Event Detected', true);
+                    const detail = msg.data?.details || 'Security Event Detected';
+                    const severity = msg.data?.severity || 'warning';
+                    this.showToast('⚠️ Attack Blocked!', detail, true);
+                    this.sendBrowserNotification('Attack Blocked', detail, severity);
                 }
             } catch (parseError) {
                 console.error('WebSocket message parse error:', parseError.message);
@@ -2596,21 +2613,6 @@ const ObsidianApp = {
     // ============================================
     // CACHE & RATE LIMIT ADMIN
     // ============================================
-    async fetchCacheStats() {
-        try {
-            const stats = await this.api('/api/cache/stats');
-            if (stats) {
-                const hitRate = (stats.hits && stats.misses) 
-                    ? ((stats.hits / (stats.hits + stats.misses)) * 100).toFixed(1) + '%' 
-                    : '-';
-                document.getElementById('cache-hit-rate').textContent = hitRate;
-                document.getElementById('cache-total-keys').textContent = stats.total_keys || '-';
-                document.getElementById('cache-memory').textContent = stats.memory_used || '-';
-            }
-        } catch (e) {
-            console.log('Cache stats not available');
-        }
-    },
 
     async resetRateLimits() {
         if (!confirm('Reset all rate limit counters? This will allow previously rate-limited IPs to access the system again.')) return;
@@ -2623,6 +2625,243 @@ const ObsidianApp = {
             this.showToast('Error', res?.error || 'Failed to reset rate limits', true);
             if (resultDiv) resultDiv.innerHTML = '<div class="alert alert-danger mt-2">Reset failed.</div>';
         }
+    },
+
+    // ============================================
+    // SERVICE WORKER (PWA)
+    // ============================================
+    registerServiceWorker() {
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                .then(reg => console.log('[SW] Registered:', reg.scope))
+                .catch(err => console.warn('[SW] Registration failed:', err));
+        }
+    },
+
+    // ============================================
+    // BROWSER NOTIFICATIONS
+    // ============================================
+    _notifCount: 0,
+
+    requestNotificationPermission() {
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'default') {
+            // Ask after first interaction to avoid annoying popup
+            const askOnce = () => {
+                Notification.requestPermission();
+                document.removeEventListener('click', askOnce);
+            };
+            document.addEventListener('click', askOnce, { once: true });
+        }
+    },
+
+    sendBrowserNotification(title, body, severity) {
+        if (!('Notification' in window) || Notification.permission !== 'granted') return;
+        try {
+            const n = new Notification(title, {
+                body: body,
+                icon: '/assets/logo.svg',
+                badge: '/assets/logo.svg',
+                tag: 'obsidian-' + Date.now(),
+                requireInteraction: severity === 'critical',
+                silent: false
+            });
+            n.onclick = () => { window.focus(); n.close(); };
+            // Update bell badge
+            this._notifCount++;
+            const badge = document.getElementById('notif-count');
+            if (badge) {
+                badge.textContent = this._notifCount > 99 ? '99+' : this._notifCount;
+                badge.classList.remove('d-none');
+            }
+        } catch (e) {
+            console.warn('Notification failed:', e);
+        }
+    },
+
+    toggleNotifications() {
+        if (!('Notification' in window)) {
+            this.showToast('Info', 'Browser notifications are not supported', true);
+            return;
+        }
+        if (Notification.permission === 'granted') {
+            this._notifCount = 0;
+            const badge = document.getElementById('notif-count');
+            if (badge) badge.classList.add('d-none');
+            this.showToast('Notifications', 'Notification counter cleared');
+        } else {
+            Notification.requestPermission().then(p => {
+                this.showToast('Notifications', p === 'granted' ? 'Notifications enabled' : 'Notifications blocked');
+            });
+        }
+    },
+
+    // ============================================
+    // KEYBOARD SHORTCUTS (vim-inspired G+key nav)
+    // ============================================
+    _pendingG: false,
+
+    setupKeyboardShortcuts() {
+        document.addEventListener('keydown', (e) => {
+            // Ignore when typing in inputs
+            const tag = (e.target.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+            // Ignore with modifier keys (except Shift for ?)
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+            const key = e.key;
+
+            // Show shortcuts overlay
+            if (key === '?') {
+                e.preventDefault();
+                const overlay = document.getElementById('shortcut-overlay');
+                overlay?.classList.toggle('d-none');
+                return;
+            }
+
+            // Close overlay/modal on Escape
+            if (key === 'Escape') {
+                document.getElementById('shortcut-overlay')?.classList.add('d-none');
+                document.getElementById('log-detail-overlay')?.classList.add('d-none');
+                this._pendingG = false;
+                return;
+            }
+
+            // G + key navigation
+            if (key === 'g' || key === 'G') {
+                this._pendingG = true;
+                setTimeout(() => { this._pendingG = false; }, 1500);
+                return;
+            }
+
+            if (this._pendingG) {
+                this._pendingG = false;
+                const navMap = {
+                    d: 'dashboard', a: 'analytics', l: 'logs', r: 'rules',
+                    t: 'threats', h: 'health', s: 'security', i: 'geoip',
+                    m: 'ratelimit', w: 'alerts', p: 'admin'
+                };
+                const view = navMap[key.toLowerCase()];
+                if (view) { e.preventDefault(); this.loadView(view); }
+                return;
+            }
+
+            // Single-key shortcuts
+            if (key === '/') {
+                e.preventDefault();
+                const searchInput = document.getElementById('logs-search');
+                if (searchInput) { searchInput.focus(); searchInput.select(); }
+            } else if (key === 'n' || key === 'N') {
+                e.preventDefault();
+                this.openRuleModal();
+            } else if (key === 'e' || key === 'E') {
+                e.preventDefault();
+                this.exportReport('pdf');
+            } else if (key === 'r') {
+                e.preventDefault();
+                this.loadView(this.currentView);
+            }
+        });
+    },
+
+    // ============================================
+    // SESSION TIMEOUT WARNING
+    // ============================================
+    _sessionTimer: null,
+    _countdownTimer: null,
+    _sessionDuration: 30 * 60 * 1000, // 30 minutes
+    _warningBefore: 60 * 1000, // warn 60s before
+
+    setupSessionTimeout() {
+        this.resetSessionTimer();
+        // Reset timer on user activity
+        const resetFn = () => this.resetSessionTimer();
+        document.addEventListener('click', resetFn, { passive: true });
+        document.addEventListener('keydown', resetFn, { passive: true });
+        document.addEventListener('scroll', resetFn, { passive: true });
+    },
+
+    resetSessionTimer() {
+        clearTimeout(this._sessionTimer);
+        clearInterval(this._countdownTimer);
+        const banner = document.getElementById('session-timeout-banner');
+        if (banner) banner.classList.add('d-none');
+
+        this._sessionTimer = setTimeout(() => {
+            this.showSessionWarning();
+        }, this._sessionDuration - this._warningBefore);
+    },
+
+    showSessionWarning() {
+        const banner = document.getElementById('session-timeout-banner');
+        const countdown = document.getElementById('session-countdown');
+        if (!banner || !countdown) return;
+        banner.classList.remove('d-none');
+        let remaining = Math.floor(this._warningBefore / 1000);
+        countdown.textContent = remaining;
+        this._countdownTimer = setInterval(() => {
+            remaining--;
+            countdown.textContent = remaining;
+            if (remaining <= 0) {
+                clearInterval(this._countdownTimer);
+                this.logout();
+            }
+        }, 1000);
+    },
+
+    extendSession() {
+        // Re-validate token by hitting a lightweight endpoint
+        this.api('/api/stats').then(() => {
+            this.resetSessionTimer();
+            this.showToast('Session Extended', 'Your session has been extended for 30 more minutes');
+        }).catch(() => {
+            this.showToast('Session Expired', 'Please log in again', true);
+            this.logout();
+        });
+    },
+
+    // ============================================
+    // LOG DETAIL MODAL (click-to-expand rows)
+    // ============================================
+    showLogDetail(log) {
+        const overlay = document.getElementById('log-detail-overlay');
+        const body = document.getElementById('log-detail-body');
+        if (!overlay || !body) return;
+
+        const fields = [
+            { label: 'Timestamp', value: log.timestamp || log.time || '-' },
+            { label: 'Client IP', value: log.client_ip || log.clientIP || '-' },
+            { label: 'Method', value: log.method || '-' },
+            { label: 'URI', value: log.uri || log.path || '-' },
+            { label: 'Status Code', value: log.status_code || log.statusCode || '-' },
+            { label: 'Rule ID', value: log.rule_id || log.ruleID || '-' },
+            { label: 'Rule Description', value: log.rule_description || log.message || '-' },
+            { label: 'Action', value: log.action || '-' },
+            { label: 'Severity', value: log.severity || '-' },
+            { label: 'Category', value: log.category || '-' },
+            { label: 'User Agent', value: log.user_agent || log.userAgent || '-' },
+            { label: 'Referer', value: log.referer || '-' },
+            { label: 'Request Headers', value: log.request_headers ? JSON.stringify(log.request_headers, null, 2) : '-' },
+            { label: 'Matched Data', value: log.matched_data || log.matchedData || '-' }
+        ];
+
+        body.innerHTML = fields.map(f =>
+            `<div class="detail-row">
+                <span class="label">${safeText(f.label)}</span>
+                <span class="value">${safeText(String(f.value))}</span>
+            </div>`
+        ).join('');
+
+        overlay.classList.remove('d-none');
+    },
+
+    // ============================================
+    // BOTTOM NAV SYNC
+    // ============================================
+    syncBottomNav(view) {
+        document.querySelectorAll('.bottom-nav-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.bottomView === view);
+        });
     },
 
     // Fetch cache statistics from Redis

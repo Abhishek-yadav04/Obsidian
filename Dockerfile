@@ -27,6 +27,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 # Final stage
 FROM alpine:3.23
 
+# OCI Image Labels (enterprise metadata)
+LABEL org.opencontainers.image.title="Obsidian WAF" \
+      org.opencontainers.image.description="Enterprise Web Application Firewall based on Coraza engine" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.source="https://github.com/corazawaf/obsidian" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.vendor="Project OBSIDIAN"
+
 # Install runtime dependencies and create non-root user
 RUN apk add --no-cache ca-certificates tzdata && \
     addgroup -g 1000 obsidian && \
@@ -34,12 +42,12 @@ RUN apk add --no-cache ca-certificates tzdata && \
 
 WORKDIR /app
 
-# Copy binary from builder
-COPY --from=builder /obsidian /app/obsidian
+# Copy binary from builder with explicit ownership
+COPY --from=builder --chown=obsidian:obsidian /obsidian /app/obsidian
 
-# Copy configuration files
-COPY coraza.conf-recommended /app/coraza.conf
-COPY default.conf /app/default.conf
+# Copy configuration files with explicit ownership
+COPY --chown=obsidian:obsidian coraza.conf-recommended /app/coraza.conf
+COPY --chown=obsidian:obsidian default.conf /app/default.conf
 
 # Create directories for data
 RUN mkdir -p /app/data /app/logs && \
@@ -59,6 +67,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 ENV OBSIDIAN_PORT=8082 \
     OBSIDIAN_LOG_LEVEL=info \
     OBSIDIAN_LOG_FORMAT=json
+
+# Graceful shutdown signal
+STOPSIGNAL SIGTERM
 
 # Run the application
 ENTRYPOINT ["/app/obsidian"]

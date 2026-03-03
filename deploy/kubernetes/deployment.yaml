@@ -6,6 +6,10 @@ metadata:
   labels:
     app.kubernetes.io/name: obsidian-waf
     app.kubernetes.io/part-of: obsidian
+    # Pod Security Standards - enforce restricted profile
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -66,11 +70,21 @@ spec:
         prometheus.io/port: "8082"
         prometheus.io/path: "/metrics"
     spec:
+      priorityClassName: obsidian-waf-critical
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: obsidian-waf
       containers:
         - name: obsidian
           image: ghcr.io/corazawaf/obsidian-waf:2.2.4
@@ -109,6 +123,14 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 8082
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 10
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -218,3 +240,76 @@ spec:
   selector:
     matchLabels:
       app: obsidian-waf
+---
+# NetworkPolicy: restrict ingress to only the Ingress controller and inter-pod traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: obsidian-waf-netpol
+  namespace: obsidian-waf
+spec:
+  podSelector:
+    matchLabels:
+      app: obsidian-waf
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app: obsidian-waf
+      ports:
+        - protocol: TCP
+          port: 8082
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow connections to PostgreSQL and Redis (in-namespace)
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+    # Allow HTTPS outbound (threat feeds, GeoIP updates)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# ServiceMonitor for Prometheus Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: obsidian-waf
+  namespace: obsidian-waf
+  labels:
+    app.kubernetes.io/name: obsidian-waf
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: obsidian-waf
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+---
+# PriorityClass for WAF pods (security-critical workload)
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: obsidian-waf-critical
+value: 1000000
+globalDefault: false
+description: "Priority class for Obsidian WAF pods - security-critical workload"

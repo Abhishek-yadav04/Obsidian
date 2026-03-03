@@ -25,6 +25,25 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64M
+      - /app/logs:size=128M
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/api/health"]
       interval: 30s
@@ -35,7 +54,6 @@ services:
       - obsidian-network
     volumes:
       - obsidian-data:/app/data
-      - obsidian-logs:/app/logs
       - ./rules:/app/rules:ro
       - ${OBSIDIAN_CRS_HOST_PATH:-./crs}:/app/crs:ro
     command:
@@ -60,6 +78,25 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64M
+      - /run/postgresql:size=16M
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     networks:
       - obsidian-network
   redis:
@@ -67,9 +104,9 @@ services:
     container_name: obsidian-redis
     command: >-
       sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then
-        redis-server --requirepass "$$REDIS_PASSWORD";
+        redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 128mb --maxmemory-policy allkeys-lru;
       else
-        redis-server;
+        redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru;
       fi'
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
@@ -81,6 +118,24 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=32M
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - obsidian-network
   # Nginx reverse proxy for production
@@ -107,4 +162,3 @@ volumes:
   postgres-data:
   redis-data:
   obsidian-data:
-  obsidian-logs:

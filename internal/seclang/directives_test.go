@@ -14,7 +14,7 @@ import (
 	"github.com/corazawaf/coraza/v3/types"
 )
 
-func Test_NonImplementedDirective(t *testing.T) {
+func TestNonImplementedDirective(t *testing.T) {
 	rules := []string{
 		`SecSensorId WAFSensor01`,
 		`SecConnReadStateLimit 50 "!@ipMatch 127.0.0.1"`,

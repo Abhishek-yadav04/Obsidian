@@ -472,6 +472,9 @@ func main() {
 	// Rate limiting middleware
 	finalHandler = rateLimiter.Middleware(finalHandler)
 
+	// Request body size limit middleware (10 MB max)
+	finalHandler = maxBodySizeMiddleware(10<<20, finalHandler)
+
 	// IP Allowlist middleware (enforces admin endpoint restrictions)
 	finalHandler = ipAllowlistMiddleware(finalHandler)
 
@@ -636,7 +639,7 @@ func ipAllowlistMiddleware(next http.Handler) http.Handler {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		
+
 		// Allow configured origins or localhost variants
 		allowedOrigins := strings.Split(envString("OBSIDIAN_CORS_ORIGINS", "http://localhost:8082,http://127.0.0.1:8082,capacitor://localhost,ionic://localhost"), ",")
 		allowed := false
@@ -646,7 +649,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 				break
 			}
 		}
-		
+
 		if allowed || origin == "" {
 			if origin != "" {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
@@ -656,12 +659,23 @@ func corsMiddleware(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Max-Age", "3600")
 		}
-		
+
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// maxBodySizeMiddleware limits the size of incoming request bodies to prevent
+// resource exhaustion attacks. Returns 413 Payload Too Large if exceeded.
+func maxBodySizeMiddleware(maxBytes int64, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+		}
 		next.ServeHTTP(w, r)
 	})
 }

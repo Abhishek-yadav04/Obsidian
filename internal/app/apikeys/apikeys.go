@@ -340,9 +340,7 @@ func (m *Manager) ListKeys() []*APIKey {
 
 // builtinCopy is a type-safe copy wrapper for Scope slices
 func builtinCopy(dst, src []Scope) {
-	for i, s := range src {
-		dst[i] = s
-	}
+	copy(dst, src)
 }
 
 // GetKeyByID returns a specific API key by ID

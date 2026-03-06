@@ -1316,8 +1316,8 @@ const ObsidianApp = {
         }
     },
 
-    async blacklistIP() {
-        const ip = document.getElementById('blacklist-ip-input').value;
+    async blacklistIP(ipArg) {
+        const ip = ipArg || document.getElementById('blacklist-ip-input')?.value;
         if (!ip) {
             this.showToast('Error', 'Please enter an IP address', true);
             return;
@@ -1556,12 +1556,6 @@ const ObsidianApp = {
             document.querySelectorAll('#full-logs-table tr').forEach(row => {
                 row.style.display = row.innerText.toLowerCase().includes(filter) ? '' : 'none';
             });
-        });
-
-        // Export button
-        document.getElementById('downloadReport')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.exportReport();
         });
 
         // Mobile toggle

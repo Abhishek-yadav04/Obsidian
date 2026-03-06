@@ -87,7 +87,7 @@ func TestCompile(t *testing.T) {
 				}
 
 				expectedErr := "malformed variable"
-				if err != nil && !strings.Contains(err.Error(), expectedErr) {
+				if !strings.Contains(err.Error(), expectedErr) {
 					t.Errorf("unexpected error, expected to contain %q, got %q", expectedErr, err.Error())
 				}
 			})

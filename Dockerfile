@@ -1,5 +1,5 @@
 # Build stage
-ARG GO_VERSION=1.25
+ARG GO_VERSION=1.26
 FROM golang:${GO_VERSION}-alpine AS builder
 
 # Install build dependencies
@@ -26,6 +26,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 
 # Final stage
 FROM alpine:3.23
+
+# Re-declare build ARG for use in this stage
+ARG VERSION=dev
 
 # OCI Image Labels (enterprise metadata)
 LABEL org.opencontainers.image.title="Obsidian WAF" \

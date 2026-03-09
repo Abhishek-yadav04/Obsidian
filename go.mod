@@ -26,7 +26,7 @@ require (
 	github.com/jcchavezs/mergefs v0.1.1
 	github.com/joho/godotenv v1.5.1
 	github.com/kaptinlin/jsonschema v0.7.5
-	github.com/magefile/mage v1.15.1-0.20250615140142-78acbaf2e3ae
+	github.com/magefile/mage v1.16.0
 	github.com/mccutchen/go-httpbin/v2 v2.21.0
 	github.com/petar-dambovaliev/aho-corasick v0.0.0-20250424160509-463d218d4745
 	github.com/prometheus/client_golang v1.23.2
@@ -36,7 +36,7 @@ require (
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.48.0
 	golang.org/x/net v0.51.0
-	golang.org/x/sync v0.19.0
+	golang.org/x/sync v0.20.0
 	rsc.io/binaryregexp v0.2.0
 )
 

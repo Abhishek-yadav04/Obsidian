@@ -22,10 +22,10 @@ require (
 	github.com/corazawaf/libinjection-go v0.3.2
 	github.com/foxcpp/go-mockdns v1.2.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.1
 	github.com/jcchavezs/mergefs v0.1.1
 	github.com/joho/godotenv v1.5.1
-	github.com/kaptinlin/jsonschema v0.7.5
+	github.com/kaptinlin/jsonschema v0.7.6
 	github.com/magefile/mage v1.16.1
 	github.com/mccutchen/go-httpbin/v2 v2.21.0
 	github.com/petar-dambovaliev/aho-corasick v0.0.0-20250424160509-463d218d4745

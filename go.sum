@@ -31,8 +31,8 @@ github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsI
 github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
 github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=
 github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761/go.mod h1:5TJZWKEWniPve33vlWYSoGYefn3gLQRzjfDlhSJ9ZKM=
-github.com/jackc/pgx/v5 v5.8.0 h1:TYPDoleBBme0xGSAX3/+NujXXtpZn9HBONkQC7IEZSo=
-github.com/jackc/pgx/v5 v5.8.0/go.mod h1:QVeDInX2m9VyzvNeiCJVjCkNFqzsNb43204HshNSZKw=
+github.com/jackc/pgx/v5 v5.9.1 h1:uwrxJXBnx76nyISkhr33kQLlUqjv7et7b9FjCen/tdc=
+github.com/jackc/pgx/v5 v5.9.1/go.mod h1:mal1tBGAFfLHvZzaYh77YS/eC6IX9OWbRV1QIIM0Jn4=
 github.com/jackc/puddle/v2 v2.2.2 h1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo=
 github.com/jackc/puddle/v2 v2.2.2/go.mod h1:vriiEXHvEE654aYKXXjOvZM39qJ0q+azkZFrfEOc3H4=
 github.com/jcchavezs/mergefs v0.1.1 h1:D45R17m6dHnSVZefnhynoeZvcK2Uw0oTrRfoUOQ0S5Y=
@@ -43,8 +43,8 @@ github.com/kaptinlin/go-i18n v0.2.12 h1:ywDsvb4KDFddMC2dpI/rrIzGU2mWUSvHmWUm9BMs
 github.com/kaptinlin/go-i18n v0.2.12/go.mod h1:pVcu9qsW5pOIOoZFJXesRYmLos1vMQrby70JPAoWmJU=
 github.com/kaptinlin/jsonpointer v0.4.17 h1:mY9k8ciWncxbsECyaxKnR0MdmxamNdp2tLQkAKVrtSk=
 github.com/kaptinlin/jsonpointer v0.4.17/go.mod h1:SsfsjqnHG5zuKo1DTBzk1VknaHlL4osHw+X9kZKukpU=
-github.com/kaptinlin/jsonschema v0.7.5 h1:jkK4a3NyzNoGlvu12CsL3IcqNMVa5sL51HPVa0nWcPY=
-github.com/kaptinlin/jsonschema v0.7.5/go.mod h1:3gIWnptl+SWMyfMR2r4TXXd0xsQZ1m50AKrwmcUONSg=
+github.com/kaptinlin/jsonschema v0.7.6 h1:UUMqZGFAk7nOzQsYAxvgygm4wpDp/nwXxA4VP9mCPCs=
+github.com/kaptinlin/jsonschema v0.7.6/go.mod h1:GGk/oE+F1lWUfYrzKaCf4QWZmMdytt0LL4XdFEFB0LE=
 github.com/kaptinlin/messageformat-go v0.4.18 h1:RBlHVWgZyoxTcUgGWBsl2AcyScq/urqbLZvzgryTmSI=
 github.com/kaptinlin/messageformat-go v0.4.18/go.mod h1:ntI3154RnqJgr7GaC+vZBnIExl2V3sv9selvRNNEM24=
 github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zttxdo=

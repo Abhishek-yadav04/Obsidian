@@ -1,6 +1,6 @@
 module github.com/corazawaf/coraza/v3
 
-go 1.26
+go 1.26.2
 
 // Testing dependencies:
 // - go-mockdns
@@ -22,20 +22,20 @@ require (
 	github.com/corazawaf/libinjection-go v0.3.2
 	github.com/foxcpp/go-mockdns v1.2.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/jackc/pgx/v5 v5.9.1
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/jcchavezs/mergefs v0.1.1
 	github.com/joho/godotenv v1.5.1
-	github.com/kaptinlin/jsonschema v0.7.7
-	github.com/magefile/mage v1.17.1
-	github.com/mccutchen/go-httpbin/v2 v2.21.0
+	github.com/kaptinlin/jsonschema v0.7.11
+	github.com/magefile/mage v1.17.2
+	github.com/mccutchen/go-httpbin/v2 v2.22.1
 	github.com/petar-dambovaliev/aho-corasick v0.0.0-20250424160509-463d218d4745
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/tidwall/gjson v1.18.0
 	github.com/valllabh/ocsf-schema-golang v1.0.3
 	go.uber.org/zap v1.27.1
-	golang.org/x/crypto v0.49.0
-	golang.org/x/net v0.52.0
+	golang.org/x/crypto v0.50.0
+	golang.org/x/net v0.53.0
 	golang.org/x/sync v0.20.0
 	rsc.io/binaryregexp v0.2.0
 )
@@ -49,23 +49,22 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/kaptinlin/go-i18n v0.3.0 // indirect
-	github.com/kaptinlin/jsonpointer v0.4.17 // indirect
-	github.com/kaptinlin/messageformat-go v0.4.19 // indirect
+	github.com/kaptinlin/go-i18n v0.4.4 // indirect
+	github.com/kaptinlin/jsonpointer v0.4.19 // indirect
+	github.com/kaptinlin/messageformat-go v0.6.0 // indirect
 	github.com/miekg/dns v1.1.57 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
-	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
-	golang.org/x/mod v0.33.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
-	golang.org/x/tools v0.42.0 // indirect
+	golang.org/x/mod v0.34.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/tools v0.43.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )

@@ -5,8 +5,6 @@ package corazawaf
 
 import (
 	"testing"
-
-	"github.com/corazawaf/coraza/v3/experimental/plugins/macro"
 )
 
 func TestRuleGroupDeleteByTag(t *testing.T) {

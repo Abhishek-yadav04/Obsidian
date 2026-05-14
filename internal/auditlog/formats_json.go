@@ -5,8 +5,6 @@ package auditlog
 
 import (
 	"encoding/json"
-	"fmt"
-	"strings"
 
 	"github.com/corazawaf/coraza/v3/experimental/plugins/plugintypes"
 )

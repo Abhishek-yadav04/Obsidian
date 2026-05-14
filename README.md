@@ -639,7 +639,6 @@ WantedBy=multi-user.target
 
 | Document | Description |
 |----------|-------------|
-| [Production Audit Report](docs/PRODUCTION_AUDIT_REPORT.md) | Comprehensive security audit with 100 issues and 50 features |
 | [Contributing Guide](CONTRIBUTING.md) | How to contribute to the project |
 | [Security Policy](SECURITY.md) | How to report vulnerabilities |
 | [License](LICENSE) | Apache 2.0 License |

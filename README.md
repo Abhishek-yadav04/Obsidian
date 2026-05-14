@@ -1,4 +1,8 @@
-#      OBSIDIAN Sentinel WAF v2.2.4 Enterprise Edition
+<div align="center">
+
+#  OBSIDIAN Sentinel WAF  
+### Enterprise Edition • v2.2.4
+</div>
 
 <p align="center">
   <img src="cmd/obsidian/ui/assets/logo.svg" alt="Obsidian Sentinel WAF" width="200"/>
@@ -18,9 +22,17 @@
   <a href="#security">Security</a>
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat-square&logo=go" />
+  <img src="https://img.shields.io/github/license/Abhishek-yadav04/Obsidian?style=flat-square" />
+  <img src="https://img.shields.io/github/actions/workflow/status/Abhishek-yadav04/Obsidian/ci.yml?style=flat-square&label=build" />
+  <img src="https://img.shields.io/github/v/release/Abhishek-yadav04/Obsidian?style=flat-square" />
+  <img src="https://img.shields.io/github/stars/Abhishek-yadav04/Obsidian?style=flat-square" />
+</p>
+
 ---
 
-## 📋 Overview
+## Overview
 
 <p align="center">
   <img src="cmd/obsidian/docs/architecture.svg" alt="Obsidian architecture diagram" width="1100"/>
@@ -28,21 +40,38 @@
 
 **Obsidian Sentinel** is an enterprise-ready Web Application Firewall that provides comprehensive protection against advanced cyber threats. It combines the battle-tested Coraza WAF engine with cutting-edge enterprise features including GeoIP blocking, advanced rate limiting, threat intelligence, webhook alerting, and sophisticated analytics.
 
-### Why Obsidian?
+## Why Obsidian?
 
-- **🔒 Zero-Trust Security**: HMAC-SHA256 JWT authentication, RBAC, CSRF protection, and cryptographic token validation
-- **⚡ High Performance**: Concurrent-safe design with minimal allocation on hot paths (256-shard rate limiter)
-- **📊 Real-Time Monitoring**: WebSocket-based live dashboard with Chart.js visualizations and instant threat visibility
-- **🌐 Advanced Threat Intelligence**: Integrates with Spamhaus, Emerging Threats, Firehol, and custom feeds (2000+ threats)
-- **🗺️ GeoIP Protection**: Country-based blocking with MaxMind database support and risk assessment
-- **🚨 Smart Alerting**: Webhook integrations for Slack, Teams, Discord, PagerDuty with severity filtering
-- **📈 Enterprise Analytics**: PostgreSQL integration, comprehensive audit logging, and executive reporting
-- **📱 Modern UI**: Responsive Bootstrap 5 dark theme dashboard with mobile support
-- **📦 Single Binary**: All assets embedded - Redis/PostgreSQL optional for enterprise features
+- **Zero-Trust Security**  
+  Implements HMAC-SHA256 JWT authentication, role-based access control (RBAC), CSRF protection, and cryptographic token validation.
+
+- **High-Performance Architecture**  
+  Designed with concurrency-safe components, optimized memory allocation, and a 256-shard rate limiting engine for low-latency request handling.
+
+- **Real-Time Monitoring & Visibility**  
+  Provides a live WebSocket-powered dashboard with real-time analytics, attack telemetry, and threat visualization.
+
+- **Advanced Threat Intelligence**  
+  Integrates with Spamhaus, Emerging Threats, FireHOL, and custom intelligence feeds to detect and block over 2000 known threats.
+
+- **GeoIP Access Control**  
+  Supports country-based filtering and risk-aware request evaluation through MaxMind GeoIP integration.
+
+- **Enterprise Alerting System**  
+  Includes webhook integrations for Slack, Microsoft Teams, Discord, and PagerDuty with configurable severity-based alert routing.
+
+- **Comprehensive Analytics & Auditing**  
+  Features PostgreSQL-backed audit logging, security event tracking, compliance visibility, and executive reporting capabilities.
+
+- **Modern Administrative Interface**  
+  Responsive Bootstrap 5 dashboard with dark-theme support and cross-device compatibility for operational management.
+
+- **Single Binary Deployment**  
+  Ships as a self-contained binary with embedded assets, while optionally supporting Redis and PostgreSQL for enterprise-scale deployments.
 
 ---
 
-## ✨ Features
+## Features
 
 ### Core Security Features
 | Feature | Description |
@@ -92,7 +121,7 @@
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Go 1.23+ (or TinyGo for WASM builds)
@@ -157,7 +186,7 @@ Open your browser and navigate to: **http://localhost:8082**
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -232,7 +261,7 @@ obsidian/
 
 ---
 
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -326,7 +355,7 @@ OBSIDIAN_WAF_CUSTOM_RULES=rules/obsidian-custom.conf
 
 ---
 
-## 📡 API Reference
+## API Reference
 
 ### Authentication
 
@@ -398,7 +427,7 @@ Returns comprehensive system health status.
 
 ---
 
-## 🧩 CI / Release
+## CI / Release
 
 Releases are performed by the repository GitHub Actions workflows. Key points:
 
@@ -446,7 +475,7 @@ If you run into problems with releases or CI, check `.github/workflows/ci.yml` a
 
 ---
 
-## 🔐 Security
+## Security
 
 ### JWT Token Security
 - Tokens signed with HMAC-SHA256
@@ -494,7 +523,7 @@ Content-Security-Policy: default-src 'self'; ...
 
 ---
 
-## 📦 Deployment
+## Deployment
 
 ### Docker (Recommended)
 
@@ -635,7 +664,7 @@ WantedBy=multi-user.target
 
 ---
 
-## 📊 Documentation
+## Documentation
 
 | Document | Description |
 |----------|-------------|
@@ -645,7 +674,7 @@ WantedBy=multi-user.target
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ### Run Tests
 ```bash
@@ -669,7 +698,7 @@ curl -X GET "http://localhost:8082/api/test?id=1' OR '1'='1"
 
 ---
 
-## 📊 Monitoring
+## Monitoring
 
 ### Metrics Endpoint
 
@@ -719,7 +748,7 @@ Connect to `ws://localhost:8082/api/ws?token=<jwt>` for live stats updates.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
@@ -731,28 +760,31 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ---
 
-## 📜 License
+## License
 
 This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- [Coraza WAF](https://coraza.io) - The core WAF engine
-- [OWASP CRS](https://coreruleset.org) - Core Rule Set inspiration
-- [ModSecurity](https://modsecurity.org) - SecLang rule language
+Obsidian Sentinel WAF is built on top of the Coraza WAF engine and draws inspiration from the OWASP Core Rule Set ecosystem.
 
+Special thanks to the Coraza maintainers and contributors for their work on modern open-source web application security.
+
+- [Coraza WAF](https://coraza.io) — Core WAF engine
+- [OWASP Core Rule Set](https://coreruleset.org) — Rule set methodology and security coverage inspiration
+- [ModSecurity](https://modsecurity.org) — SecLang rule language foundation
 ---
 
-## 📞 Support
+## Support
 
 - **Issues**: [GitHub Issues](https://github.com/Abhishek-yadav04/Obsidian/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Abhishek-yadav04/Obsidian/discussions)
 - **Security**: See [SECURITY.md](SECURITY.md) for reporting vulnerabilities
 
 ---
-## 👨‍💻 Author
+## Author
 
 <p align="center">
   <img src="https://github.com/Abhishek-yadav04.png" width="100px" style="border-radius: 50%;" alt="Abhishek Yadav" />
@@ -776,17 +808,9 @@ This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENS
 </p>
 
 <p align="center">
-  Made with ❤️ for the cybersecurity community
+  Designed and developed by Abhishek Yadav
 </p>
 
 
 
 First and foremost, huge thanks to [Juan Pablo Tosso](https://twitter.com/jptosso) for starting this project, and building an amazing community around Coraza!
-
-Today we have lots of amazing contributors, we could not have done this without you!
-
-<a href="https://github.com/corazawaf/coraza/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=corazawaf/coraza" />
-</a>
-
-Made with [contrib.rocks](https://contrib.rocks).

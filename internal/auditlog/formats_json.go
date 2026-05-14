@@ -39,29 +39,16 @@ func (legacyJSONFormatter) Format(al plugintypes.AuditLog) ([]byte, error) {
 		},
 	}
 	if al.Transaction().Request() != nil {
-		reqHeaders := map[string]string{}
-		for k, v := range al.Transaction().Request().Headers() {
-			reqHeaders[k] = strings.Join(v, ", ")
-		}
 		al2.Request = &logLegacyRequest{
-			RequestLine: fmt.Sprintf(
-				"%s %s %s",
-				al.Transaction().Request().Method(),
-				al.Transaction().Request().URI(),
-				al.Transaction().Request().HTTPVersion(),
-			),
-			Headers: reqHeaders,
+			RequestLine: getRequestLine(al),
+			Headers:     getRequestHeaders(al),
 		}
 	}
 	if al.Transaction().Response() != nil {
-		resHeaders := map[string]string{}
-		for k, v := range al.Transaction().Response().Headers() {
-			resHeaders[k] = strings.Join(v, ", ")
-		}
 		al2.Response = &logLegacyResponse{
 			Status:   al.Transaction().Response().Status(),
 			Protocol: al.Transaction().Response().Protocol(),
-			Headers:  resHeaders,
+			Headers:  getResponseHeaders(al),
 		}
 	}
 

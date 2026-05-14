@@ -38,3 +38,11 @@ func TestRuleIDDuplicate(t *testing.T) {
 		t.Error("Expected error - duplicate rule id should not be allowed")
 	}
 }
+
+func newTestRule(id int) *Rule {
+	r := NewRule()
+	r.ID_ = id
+	r.Phase_ = types.PhaseRequestHeaders
+	r.Msg, _ = macro.NewMacro("test")
+	return r
+}

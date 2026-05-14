@@ -42,26 +42,22 @@ func (f ocsfFormatter) getRequestArguments(al plugintypes.AuditLog) string {
 
 func (f ocsfFormatter) getRequestHeaders(al plugintypes.AuditLog) []*objects.HttpHeader {
 	requestHeaders := []*objects.HttpHeader{}
-	for key, values := range al.Transaction().Request().Headers() {
-		for _, value := range values {
-			requestHeaders = append(requestHeaders, &objects.HttpHeader{
-				Name:  key,
-				Value: value,
-			})
-		}
+	for key, value := range getRequestHeaders(al) {
+		requestHeaders = append(requestHeaders, &objects.HttpHeader{
+			Name:  key,
+			Value: value,
+		})
 	}
 	return requestHeaders
 }
 
 func (f ocsfFormatter) getResponseHeaders(al plugintypes.AuditLog) []*objects.HttpHeader {
 	responseHeaders := []*objects.HttpHeader{}
-	for key, values := range al.Transaction().Response().Headers() {
-		for _, value := range values {
-			responseHeaders = append(responseHeaders, &objects.HttpHeader{
-				Name:  key,
-				Value: value,
-			})
-		}
+	for key, value := range getResponseHeaders(al) {
+		responseHeaders = append(responseHeaders, &objects.HttpHeader{
+			Name:  key,
+			Value: value,
+		})
 	}
 	return responseHeaders
 }

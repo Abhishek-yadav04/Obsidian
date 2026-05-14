@@ -9,18 +9,11 @@ import (
 	"github.com/corazawaf/coraza/v3/experimental/plugins/macro"
 )
 
-func newTestRule(id int) *Rule {
-	r := NewRule()
-	r.ID_ = id
-	r.Msg, _ = macro.NewMacro("test")
+func TestRuleGroupDeleteByTag(t *testing.T) {
+	r := newTestRule(1)
 	r.Tags_ = []string{
 		"test",
 	}
-	return r
-}
-
-func TestRuleGroupDeleteByTag(t *testing.T) {
-	r := newTestRule(1)
 
 	rg := NewRuleGroup()
 	if err := rg.Add(r); err != nil {

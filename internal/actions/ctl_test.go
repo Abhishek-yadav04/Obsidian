@@ -20,12 +20,55 @@ const (
 	testHTTPProto  = "HTTP/1.1"
 )
 
+type ctlTest struct {
+	t         *testing.T
+	input     string
+	prepareTX func(tx *corazawaf.Transaction)
+	checkTX   func(t *testing.T, tx *corazawaf.Transaction, logEntry string)
+}
+
+func (ct *ctlTest) run() {
+	logsBuf := &bytes.Buffer{}
+	defer logsBuf.Reset()
+
+	logger := debuglog.Default().
+		WithLevel(debuglog.LevelWarn).
+		WithOutput(logsBuf)
+
+	waf := corazawaf.NewWAF()
+	waf.Logger = logger
+	r := corazawaf.NewRule()
+	r.ID_ = 1
+	r.LogID_ = "1"
+	err := waf.Rules.Add(r)
+	if err != nil {
+		ct.t.Fatalf("failed to add rule: %s", err.Error())
+	}
+
+	a := ctl()
+	if err := a.Init(r, ct.input); err != nil {
+		ct.t.Fatalf("failed to init ctl: %s", err.Error())
+	}
+
+	tx := waf.NewTransaction()
+	if ct.prepareTX != nil {
+		ct.prepareTX(tx)
+	}
+	a.Evaluate(r, tx)
+
+	if ct.checkTX == nil {
+		// Some ctl actions (e.g. ruleRemoveTarget*) only modify internal rule
+		// state that cannot be asserted without coupling to implementation
+		// details. t.SkipNow() is also unavailable under TinyGo.
+		// See: https://github.com/tinygo-org/tinygo/blob/release/src/testing/testing.go#L246
+		return
+	} else {
+		ct.checkTX(ct.t, tx, logsBuf.String())
+	}
+}
+
 func TestCtl(t *testing.T) {
-	tests := map[string]struct {
-		input     string
-		prepareTX func(tx *corazawaf.Transaction)
-		checkTX   func(t *testing.T, tx *corazawaf.Transaction, logEntry string)
-	}{
+	tests := map[string]ctlTest{
 		"ruleRemoveTargetById": {
 			input: "ruleRemoveTargetById=123",
 		},
@@ -330,43 +373,8 @@ func TestCtl(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			logsBuf := &bytes.Buffer{}
-			defer logsBuf.Reset()
-
-			logger := debuglog.Default().
-				WithLevel(debuglog.LevelWarn).
-				WithOutput(logsBuf)
-
-			waf := corazawaf.NewWAF()
-			waf.Logger = logger
-			r := corazawaf.NewRule()
-			r.ID_ = 1
-			r.LogID_ = "1"
-			err := waf.Rules.Add(r)
-			if err != nil {
-				t.Fatalf("failed to add rule: %s", err.Error())
-			}
-
-			a := ctl()
-			if err := a.Init(r, test.input); err != nil {
-				t.Fatalf("failed to init ctl: %s", err.Error())
-			}
-
-			tx := waf.NewTransaction()
-			if test.prepareTX != nil {
-				test.prepareTX(tx)
-			}
-			a.Evaluate(r, tx)
-
-			if test.checkTX == nil {
-				// Some ctl actions (e.g. ruleRemoveTarget*) only modify internal rule
-				// state that cannot be asserted without coupling to implementation
-				// details. t.SkipNow() is also unavailable under TinyGo.
-				// See: https://github.com/tinygo-org/tinygo/blob/release/src/testing/testing.go#L246
-				return
-			} else {
-				test.checkTX(t, tx, logsBuf.String())
-			}
+			test.t = t
+			test.run()
 		})
 	}
 }

@@ -106,9 +106,7 @@ func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Validate input
 	if req.Username == "" || req.Password == "" {
-		w.Header().Set(contentTypeHeader, contentTypeJSON)
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Username and password required"})
+		respondWithError(w, http.StatusBadRequest, "Username and password required")
 		return
 	}
 
@@ -128,9 +126,7 @@ func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		if hashErr == nil {
 			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))
 		}
-		w.Header().Set(contentTypeHeader, contentTypeJSON)
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid credentials"})
+		respondWithError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
 
@@ -181,9 +177,7 @@ func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: user.CreatedAt,
 	}
 
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(model.LoginResponse{
+	respondWithJSON(w, http.StatusOK, model.LoginResponse{
 		Token:        token,
 		RefreshToken: refreshToken,
 		User:         safeUser,
@@ -210,14 +204,12 @@ func extractClientIP(r *http.Request) string {
 
 func (a *API) HandleStats(w http.ResponseWriter, r *http.Request) {
 	stats := a.Store.GetStats()
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	json.NewEncoder(w).Encode(stats)
+	respondWithJSON(w, http.StatusOK, stats)
 }
 
 func (a *API) HandleLogs(w http.ResponseWriter, r *http.Request) {
 	logs := a.Store.GetLogs()
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	json.NewEncoder(w).Encode(logs)
+	respondWithJSON(w, http.StatusOK, logs)
 }
 
 func (a *API) HandleRules(w http.ResponseWriter, r *http.Request) {
@@ -225,13 +217,11 @@ func (a *API) HandleRules(w http.ResponseWriter, r *http.Request) {
 	switch source {
 	case "custom", "crs":
 		rules := a.Store.GetRulesBySource(source)
-		w.Header().Set(contentTypeHeader, contentTypeJSON)
-		json.NewEncoder(w).Encode(rules)
+		respondWithJSON(w, http.StatusOK, rules)
 		return
 	default:
 		rules := a.Store.GetRules()
-		w.Header().Set(contentTypeHeader, contentTypeJSON)
-		json.NewEncoder(w).Encode(rules)
+		respondWithJSON(w, http.StatusOK, rules)
 		return
 	}
 }
@@ -283,9 +273,7 @@ func (a *API) HandleCreateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	respondWithJSON(w, http.StatusCreated, map[string]interface{}{
 		"success": true,
 		"message": "Rule created successfully",
 		"rule":    rule,
@@ -313,8 +301,7 @@ func (a *API) HandleUpdateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "Rule updated successfully",
 	})
@@ -341,8 +328,7 @@ func (a *API) HandleDeleteRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "Rule deleted successfully",
 	})
@@ -365,8 +351,7 @@ func (a *API) HandleTestRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Simplified rule testing - in production would compile and test against Coraza
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"success":     true,
 		"message":     "Rule syntax is valid",
 		"would_match": false,
@@ -390,8 +375,7 @@ func (a *API) HandleUsers(w http.ResponseWriter, r *http.Request) {
 				"enabled":  u.Enabled,
 			})
 		}
-		w.Header().Set(contentTypeHeader, contentTypeJSON)
-		json.NewEncoder(w).Encode(safeUsers)
+		respondWithJSON(w, http.StatusOK, safeUsers)
 
 	case http.MethodPut:
 		// Update user
@@ -416,9 +400,7 @@ func (a *API) HandleUsers(w http.ResponseWriter, r *http.Request) {
 				// Log the error and continue (fail-open by default)
 				fmt.Printf("[WARN] HIBP password check failed: %v\n", err)
 			} else if breached {
-				w.Header().Set(contentTypeHeader, contentTypeJSON)
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{
+				respondWithJSON(w, http.StatusBadRequest, map[string]interface{}{
 					"success":      false,
 					"message":      "Password has been found in data breaches. Please choose a different password.",
 					"breach_count": count,
@@ -430,17 +412,14 @@ func (a *API) HandleUsers(w http.ResponseWriter, r *http.Request) {
 
 		// Update user in the store
 		if err := a.Store.UpdateUser(req.Username, req.Role, req.Enabled, req.Password); err != nil {
-			w.Header().Set(contentTypeHeader, contentTypeJSON)
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			respondWithJSON(w, http.StatusBadRequest, map[string]interface{}{
 				"success": false,
 				"message": err.Error(),
 			})
 			return
 		}
 
-		w.Header().Set(contentTypeHeader, contentTypeJSON)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		respondWithJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true,
 			"message": fmt.Sprintf("User %s updated successfully", req.Username),
 		})
@@ -479,8 +458,7 @@ func (a *API) HandleAuditLogs(w http.ResponseWriter, r *http.Request) {
 		logs = []map[string]interface{}{}
 	}
 
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	json.NewEncoder(w).Encode(logs)
+	respondWithJSON(w, http.StatusOK, logs)
 }
 
 // HandleRuleAuditLogs returns rule audit trail (Admin only)
@@ -510,8 +488,7 @@ func (a *API) HandleRuleAuditLogs(w http.ResponseWriter, r *http.Request) {
 		logs = []model.RuleAuditLog{}
 	}
 
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	json.NewEncoder(w).Encode(logs)
+	respondWithJSON(w, http.StatusOK, logs)
 }
 
 // HandleCRSStatus returns CRS status (Admin only)

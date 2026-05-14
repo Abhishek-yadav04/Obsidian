@@ -1,4 +1,4 @@
-# 🛡️ OBSIDIAN Sentinel WAF v2.2.4 Enterprise Edition
+#  OBSIDIAN Sentinel WAF v2.2.4 Enterprise Edition
 
 <p align="center">
   <img src="cmd/obsidian/ui/assets/logo.svg" alt="Obsidian Sentinel WAF" width="200"/>

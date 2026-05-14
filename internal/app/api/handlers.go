@@ -1,8 +1,8 @@
 package api
 
 import (
-	"context"
 	"crypto/rand"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"

@@ -5,9 +5,11 @@ package database
 
 import (
 	"context"
-	"crypto/tls"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"strconv"
@@ -16,8 +18,7 @@ import (
 
 	"github.com/corazawaf/coraza/v3/internal/app/model"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
-	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Errors for database operations
@@ -525,44 +526,67 @@ func (m *Manager) RunMigrations(ctx context.Context) error {
 	return nil
 }
 
-// InsertDefaultUsers inserts default users if they don't exist
-// SECURITY: Each user has a UNIQUE password hash. Change passwords immediately in production!
-// Default passwords: admin="ObsidianAdmin#2024", analyst="ObsidianAnalyst#2024", viewer="ObsidianViewer#2024"
+// InsertDefaultUsers creates the initial admin, analyst, and viewer users with
+// secure, randomly generated one-time passwords. These passwords are printed to
+// the console on first startup and MUST be changed by the users upon first login.
+// This function is safe to run on every startup, as it will only insert users
+// that do not already exist.
 func (m *Manager) InsertDefaultUsers(ctx context.Context) error {
 	if m.pgPool == nil {
-		return nil
+		return nil // Database is not configured, skip.
 	}
 
-	// SECURITY: Each user has a unique bcrypt hash (cost=12)
-	// These hashes are for INITIAL SETUP ONLY - users MUST change passwords after first login
 	defaultUsers := []struct {
-		username     string
-		email        string
-		passwordHash string // Unique hash per user - bcrypt cost 12
-		role         string
-	}{
-		// Password: ObsidianAdmin#2024
-		{"admin", "admin@obsidian.local", "$2a$12$2xXI1FJm/E7ShS.99UBp9OHSznLgbdzTPrjnh6dopp5YS.y7Fovt2", "Admin"},
-		// Password: ObsidianAnalyst#2024
-		{"analyst", "analyst@obsidian.local", "$2a$12$lV4oLgU..jCLVqFYFqwZ9um0cEyKqf5eUWlehYBLan5JVbEPLxKfu", "Analyst"},
-		// Password: ObsidianViewer#2024
-		{"viewer", "viewer@obsidian.local", "$2a$12$vWaIVdKEfvkodk9sxY2zne.mFqyjqtoNi914.K.lNk4uFiVR6vYZC", "Viewer"},
+		username string
+		email    string
+		role     string
+	}{{
+		"admin", "admin@obsidian.local", "Admin"},
+		{"analyst", "analyst@obsidian.local", "Analyst"},
+		{"viewer", "viewer@obsidian.local", "Viewer"},
 	}
+
+	log.Println("INFO: Checking for and creating default users. One-time passwords will be printed if a user is created.")
 
 	for _, u := range defaultUsers {
-		_, err := m.pgPool.Exec(ctx, `
+		// Check if user already exists
+		var exists bool
+		err := m.pgPool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE username=$1)", u.username).Scan(&exists)
+		if err != nil {
+			return fmt.Errorf("failed to check for default user %s: %w", u.username, err)
+		}
+
+		if exists {
+			continue // User already exists, do nothing.
+		}
+
+		// User does not exist, create them with a random password.
+		randomPasswordBytes := make([]byte, 16)
+		if _, err := rand.Read(randomPasswordBytes); err != nil {
+			return fmt.Errorf("failed to generate random password for user %s: %w", u.username, err)
+		}
+		oneTimePassword := hex.EncodeToString(randomPasswordBytes)
+
+		passwordHash, err := bcrypt.GenerateFromPassword([]byte(oneTimePassword), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("failed to hash generated password for user %s: %w", u.username, err)
+		}
+
+		_, err = m.pgPool.Exec(ctx, `
 			INSERT INTO users (username, email, password_hash, role, enabled)
 			VALUES ($1, $2, $3, $4, true)
-			ON CONFLICT (username) DO UPDATE SET 
-				password_hash = EXCLUDED.password_hash,
-				updated_at = NOW()
-			WHERE users.password_hash != EXCLUDED.password_hash
-		`, u.username, u.email, u.passwordHash, u.role)
+			ON CONFLICT (username) DO NOTHING
+		`, u.username, u.email, string(passwordHash), u.role)
 		if err != nil {
 			return fmt.Errorf("failed to insert default user %s: %w", u.username, err)
 		}
+
+		// SECURITY: Log the one-time password to the console for the administrator.
+		// This is only done on the very first creation of the user.
+		log.Printf("IMPORTANT: Default user '%s' created. One-time password: %s", u.username, oneTimePassword)
 	}
 
+	log.Println("INFO: Default user check complete.")
 	return nil
 }
 

@@ -31,8 +31,7 @@ const (
 var testdata embed.FS
 
 func TestInterruption(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	waf, p := setup(t)
 	if err := p.FromString(`SecAction "id:1,deny,log,phase:1"`); err != nil {
 		t.Errorf("Could not create from string: %s", err.Error())
 	}
@@ -43,8 +42,7 @@ func TestInterruption(t *testing.T) {
 }
 
 func TestDirectivesCaseInsensitive(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	err := p.FromString("seCwEbAppid 15")
 	if err != nil {
 		t.Error(err)
@@ -52,8 +50,7 @@ func TestDirectivesCaseInsensitive(t *testing.T) {
 }
 
 func TestInvalidDirective(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	err := p.FromString("Unknown Rule")
 	if err == nil {
 		t.Error("expected error")
@@ -66,8 +63,7 @@ func TestInvalidDirective(t *testing.T) {
 }
 
 func TestCommentsWithBackticks(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	tCases := map[string]string{
 		"two backticks in comment": "# This comment has a trailing backtick `here`" + `
 		SecAction "id:1,deny,log,phase:1"
@@ -85,8 +81,7 @@ func TestCommentsWithBackticks(t *testing.T) {
 }
 
 func TestErrorWithBackticks(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	err := p.FromString("SecDataset test `")
 	if err == nil {
 		t.Error(err)
@@ -94,8 +89,7 @@ func TestErrorWithBackticks(t *testing.T) {
 }
 
 func TestLoadConfigurationFile(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 
 	t.Run("existing recommended file", func(t *testing.T) {
 		logsBuf := &bytes.Buffer{}
@@ -136,8 +130,7 @@ func TestLoadConfigurationFile(t *testing.T) {
 // mergefs.Merge is used to combine both CRS and local files. This test is to ensure that the parser
 // is able to load configuration files from both filesystems.
 func TestLoadConfigurationFileWithMultiFs(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	p.SetRoot(mergefs.Merge(coreruleset.FS, io.OSFS))
 
 	err := p.FromFile("../../coraza.conf-recommended")
@@ -173,8 +166,7 @@ func TestLoadConfigurationFileWithMultiFs(t *testing.T) {
 }
 
 func TestHardcodedIncludeDirective(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	waf, p := setup(t)
 	if err := p.FromString("Include ../../coraza.conf-recommended"); err != nil {
 		t.Error(err)
 	}
@@ -187,8 +179,7 @@ func TestHardcodedIncludeDirective(t *testing.T) {
 }
 
 func TestHardcodedSubIncludeDirective(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	waf, p := setup(t)
 	if err := p.FromString("Include ./testdata/includes/parent.conf"); err != nil {
 		t.Error(err)
 	}
@@ -198,8 +189,7 @@ func TestHardcodedSubIncludeDirective(t *testing.T) {
 }
 
 func TestHardcodedSubIncludeDirectiveAbsolutePath(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	waf, p := setup(t)
 	currentDir, _ := filepath.Abs("./")
 	ruleFile := filepath.Join(currentDir, "./testdata/includes/parent.conf")
 	if err := p.FromString("Include " + ruleFile); err != nil {
@@ -211,8 +201,7 @@ func TestHardcodedSubIncludeDirectiveAbsolutePath(t *testing.T) {
 }
 
 func TestHardcodedIncludeDirectiveDDOS(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	tmpFile, err := os.Create(filepath.Join(t.TempDir(), "rand.conf"))
 	if err != nil {
 		t.Fatal(err)
@@ -231,8 +220,7 @@ func TestHardcodedIncludeDirectiveDDOS(t *testing.T) {
 }
 
 func TestHardcodedIncludeDirectiveDDOS2(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	tmpFile, err := os.Create(filepath.Join(t.TempDir(), "rand1.conf"))
 	if err != nil {
 		t.Fatal(err)
@@ -282,8 +270,7 @@ func TestChains(t *testing.T) {
 }
 
 func TestEmbedFS(t *testing.T) {
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	waf, p := setup(t)
 	root, err := fs.Sub(testdata, "testdata")
 	if err != nil {
 		t.Error(err)
@@ -842,8 +829,7 @@ func TestSelect(t *testing.T) {
 		},
 	}
 
-	waf := coraza.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

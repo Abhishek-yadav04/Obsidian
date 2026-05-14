@@ -499,8 +499,7 @@ func (a *API) HandleCRSStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := a.Store.CRSStatus()
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	json.NewEncoder(w).Encode(status)
+	respondWithJSON(w, http.StatusOK, status)
 }
 
 // HandleCRSEnable enables CRS visibility (Admin only)
@@ -524,8 +523,7 @@ func (a *API) HandleCRSEnable(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now(),
 	})
 
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "CRS enabled",
 	})
@@ -552,8 +550,7 @@ func (a *API) HandleCRSDisable(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now(),
 	})
 
-	w.Header().Set(contentTypeHeader, contentTypeJSON)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "CRS disabled",
 	})

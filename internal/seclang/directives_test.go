@@ -27,8 +27,7 @@ func TestNonImplementedDirective(t *testing.T) {
 		`SecHashKey "this_is_my_key" KeyOnly`,
 		`SecHashEngine On`,
 	}
-	w := corazawaf.NewWAF()
-	p := NewParser(w)
+	_, p := setup(t)
 	for _, rule := range rules {
 		err := p.FromString(rule)
 		if err != nil {
@@ -88,8 +87,7 @@ func TestSecRuleUpdateTargetByID(t *testing.T) {
 }
 
 func TestInvalidBooleanForDirectives(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	if err := p.FromString("SecIgnoreRuleCompilationErrors sure"); err == nil {
 		t.Error("failed to error on invalid boolean")
 	}
@@ -101,8 +99,7 @@ func TestInvalidRulesWithIgnoredErrors(t *testing.T) {
 	SecRule REQUEST_URI "@no_op ^/test" "id:200,tag:test,invalid:5"
 	SecRule REQUEST_URI "@rx ^/test" "id:181,tag:repeated-id"
 	`
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	waf, p := setup(t)
 	if err := p.FromString("secignorerulecompilationerrors On\n" + directives); err != nil {
 		t.Error(err)
 	}
@@ -114,8 +111,7 @@ func TestInvalidRulesWithIgnoredErrors(t *testing.T) {
 }
 
 func TestSecDataset(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	if err := p.FromString("" +
 		"SecDataset test `\n123\n456\n`\n"); err != nil {
 		t.Error(err)

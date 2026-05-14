@@ -366,8 +366,7 @@ func TestStatusFromInterruptions(t *testing.T) {
 }
 
 func TestChainWithUnconditionalMatch(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	waf, p := setup(t)
 	if err := p.FromString(`
 	SecAction "id:7, pass, phase:1, log, chain, skip:2"
     SecRule REMOTE_ADDR "@unconditionalMatch" ""

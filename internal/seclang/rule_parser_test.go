@@ -16,8 +16,7 @@ import (
 )
 
 func TestInvalidRule(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 
 	err := p.FromString("")
 	if err != nil {
@@ -31,8 +30,7 @@ func TestInvalidRule(t *testing.T) {
 }
 
 func TestVariables(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 
 	// single variable with key
 	err := p.FromString(`SecRule REQUEST_HEADERS:test "" "id:1"`)
@@ -74,8 +72,7 @@ func TestVariables(t *testing.T) {
 }
 
 func TestVariableCases(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	err := p.FromString(`SecRule REQUEST_COOKIES|!REQUEST_COOKIES:/__utm/|!REQUEST_COOKIES:/_pk_ref/|REQUEST_COOKIES_NAMES|ARGS_NAMES|ARGS|XML:/* "" "id:7,pass"`)
 	if err != nil {
 		t.Error(err)
@@ -83,8 +80,7 @@ func TestVariableCases(t *testing.T) {
 }
 
 func TestSecRuleInlineVariableNegation(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	err := p.FromString(`
 		SecRule REQUEST_URI|!REQUEST_COOKIES "abc" "id:7,phase:2"
 	`)
@@ -109,8 +105,7 @@ func TestSecRuleInlineVariableNegation(t *testing.T) {
 }
 
 func TestSecRuleUpdateTargetVariableNegation(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	err := p.FromString(`
 		SecRule REQUEST_URI|REQUEST_COOKIES "abc" "id:7,phase:2"
 		SecRuleUpdateTargetById 7 "!REQUEST_HEADERS:/xyz/"
@@ -174,8 +169,7 @@ func TestDefaultActionsErrors(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dummySecAction := `
 			SecAction "id:1,phase:1" `
-			waf := corazawaf.NewWAF()
-			p := NewParser(waf)
+			_, p := setup(t)
 			// SecDefaultActions are parsed only when a rule is parsed, thus we add a dummy SecAction
 			err := p.FromString(tCase.rules + dummySecAction)
 			if err == nil {
@@ -186,8 +180,7 @@ func TestDefaultActionsErrors(t *testing.T) {
 }
 
 func TestDefaultActionsForPhase2Overridable(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	waf, p := setup(t)
 	// A SecDefaultAction at phase:2 defined by the user has to override the hardcoded defaultActionsPhase2
 	err := p.FromString(`
 	SecDefaultAction "phase:2,nolog,noauditlog,pass"
@@ -211,8 +204,7 @@ func TestDefaultActionsForPhase2Overridable(t *testing.T) {
 }
 
 func TestDefaultActionsForPhase2(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	waf, p := setup(t)
 	// Via defaultActionsPhase2 variable, the default actions for phase 2 are hardcoded in Coraza.
 	// Only a SecDefaultAction of the same phase should override it.
 	err := p.FromString(`
@@ -235,8 +227,7 @@ func TestDefaultActionsForPhase2(t *testing.T) {
 }
 
 func TestArgumentsLimit(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 
 	// single variable with key
 	err := p.FromString(`SecArgumentsLimit 100`)
@@ -266,8 +257,7 @@ func TestInvalidOperatorRuleData(t *testing.T) {
 }
 
 func TestRawChainedRules(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	waf, p := setup(t)
 	if err := p.FromString(`
 	SecRule REQUEST_URI "abc" "id:7,phase:2,chain"
 	SecRule REQUEST_URI "def" "chain"
@@ -317,8 +307,7 @@ func TestParseRule(t *testing.T) {
 }
 
 func TestNonSelectableCollection(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	p := NewParser(waf)
+	_, p := setup(t)
 	err := p.FromString(`
 	SecRule REQUEST_URI:foo "bar" "id:1,phase:1"
 	`)

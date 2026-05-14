@@ -7,28 +7,42 @@ import (
 	"testing"
 
 	"github.com/corazawaf/coraza/v3/internal/app/store"
+	coraza "github.com/corazawaf/coraza/v3/internal/corazawaf"
 )
+
+// createTestWAF initializes a WAF for testing.
+func createTestWAF(t *testing.T, s *store.Store, crsEnabled bool, crsPath, crsMode, customRulesPath string) *WAF {
+	t.Helper()
+	w, err := NewWAF(s, Config{
+		CRSEnabled:      crsEnabled,
+		CRSPath:         crsPath,
+		CRSMode:         crsMode,
+		CustomRulesPath: customRulesPath,
+	})
+	if err != nil {
+		t.Fatalf("WAF initialization failed: %v", err)
+	}
+	return w
+}
+
+// testProcessURI simulates a basic HTTP request through the WAF.
+func testProcessURI(w *WAF, uri string) *coraza.Transaction {
+	tx := w.NewTransaction()
+	tx.ProcessConnection("127.0.0.1", 12345, "127.0.0.1", 8082)
+	tx.ProcessURI(uri, "GET", "HTTP/1.1")
+	tx.AddRequestHeader("Host", "localhost")
+	_ = tx.ProcessRequestHeaders()
+	return tx
+}
 
 // TestWAFStartsWithoutCRS verifies the WAF starts normally when CRS is disabled.
 func TestWAFStartsWithoutCRS(t *testing.T) {
 	s := store.NewStore("")
-	w, err := NewWAF(s, Config{
-		CRSEnabled:      false,
-		CRSPath:         "",
-		CRSMode:         "",
-		CustomRulesPath: filepath.Join("..", "..", "..", "rules", "obsidian-custom.conf"),
-	})
-	if err != nil {
-		t.Fatalf("WAF should start without CRS: %v", err)
-	}
+	w := createTestWAF(t, s, false, "", "", filepath.Join("..", "..", "..", "rules", "obsidian-custom.conf"))
 
 	// Verify custom rules are active
-	tx := w.NewTransaction()
+	tx := testProcessURI(w, "/?attack=test")
 	defer tx.Close()
-	tx.ProcessConnection("127.0.0.1", 12345, "127.0.0.1", 8082)
-	tx.ProcessURI("/?attack=test", "GET", "HTTP/1.1")
-	tx.AddRequestHeader("Host", "localhost")
-	_ = tx.ProcessRequestHeaders()
 	if !tx.IsInterrupted() {
 		t.Fatal("custom rule 900001 should block ?attack=test even without CRS")
 	}
@@ -37,20 +51,9 @@ func TestWAFStartsWithoutCRS(t *testing.T) {
 // TestWAFStartsWithCRSDisabledNoPath verifies no crash when CRS is off and path is empty.
 func TestWAFStartsWithCRSDisabledNoPath(t *testing.T) {
 	s := store.NewStore("")
-	w, err := NewWAF(s, Config{
-		CRSEnabled:      false,
-		CRSPath:         "",
-		CustomRulesPath: filepath.Join("..", "..", "..", "rules", "obsidian-custom.conf"),
-	})
-	if err != nil {
-		t.Fatalf("WAF should start with CRS disabled and empty path: %v", err)
-	}
-	tx := w.NewTransaction()
+	w := createTestWAF(t, s, false, "", "", filepath.Join("..", "..", "..", "rules", "obsidian-custom.conf"))
+	tx := testProcessURI(w, "/api/health")
 	defer tx.Close()
-	tx.ProcessConnection("127.0.0.1", 12345, "127.0.0.1", 8082)
-	tx.ProcessURI("/api/health", "GET", "HTTP/1.1")
-	tx.AddRequestHeader("Host", "localhost")
-	_ = tx.ProcessRequestHeaders()
 	if tx.IsInterrupted() {
 		t.Fatal("normal request should not be blocked")
 	}
@@ -60,22 +63,11 @@ func TestWAFStartsWithCRSDisabledNoPath(t *testing.T) {
 // when CRS is enabled but the path doesn't exist.
 func TestWAFStartsWithCRSEnabledButMissingPath(t *testing.T) {
 	s := store.NewStore("")
-	w, err := NewWAF(s, Config{
-		CRSEnabled:      true,
-		CRSPath:         "/nonexistent/crs/path",
-		CustomRulesPath: filepath.Join("..", "..", "..", "rules", "obsidian-custom.conf"),
-	})
-	if err != nil {
-		t.Fatalf("WAF should start even when CRS path is missing: %v", err)
-	}
+	w := createTestWAF(t, s, true, "/nonexistent/crs/path", "", filepath.Join("..", "..", "..", "rules", "obsidian-custom.conf"))
 
 	// Custom rules should still work
-	tx := w.NewTransaction()
+	tx := testProcessURI(w, "/?attack=test")
 	defer tx.Close()
-	tx.ProcessConnection("127.0.0.1", 12345, "127.0.0.1", 8082)
-	tx.ProcessURI("/?attack=test", "GET", "HTTP/1.1")
-	tx.AddRequestHeader("Host", "localhost")
-	_ = tx.ProcessRequestHeaders()
 	if !tx.IsInterrupted() {
 		t.Fatal("custom rules should work even when CRS path is missing")
 	}
@@ -85,22 +77,11 @@ func TestWAFStartsWithCRSEnabledButMissingPath(t *testing.T) {
 // when CRS is enabled but the path is empty string.
 func TestWAFStartsWithCRSEnabledButEmptyPath(t *testing.T) {
 	s := store.NewStore("")
-	w, err := NewWAF(s, Config{
-		CRSEnabled:      true,
-		CRSPath:         "",
-		CustomRulesPath: filepath.Join("..", "..", "..", "rules", "obsidian-custom.conf"),
-	})
-	if err != nil {
-		t.Fatalf("WAF should start even when CRS path is empty: %v", err)
-	}
+	w := createTestWAF(t, s, true, "", "", filepath.Join("..", "..", "..", "rules", "obsidian-custom.conf"))
 
 	// Custom rules should still work
-	tx := w.NewTransaction()
+	tx := testProcessURI(w, "/?attack=test")
 	defer tx.Close()
-	tx.ProcessConnection("127.0.0.1", 12345, "127.0.0.1", 8082)
-	tx.ProcessURI("/?attack=test", "GET", "HTTP/1.1")
-	tx.AddRequestHeader("Host", "localhost")
-	_ = tx.ProcessRequestHeaders()
 	if !tx.IsInterrupted() {
 		t.Fatal("custom rules should work even when CRS path is empty")
 	}
@@ -110,21 +91,11 @@ func TestWAFStartsWithCRSEnabledButEmptyPath(t *testing.T) {
 // the custom rules file doesn't exist.
 func TestWAFStartsWithMissingCustomRulesFile(t *testing.T) {
 	s := store.NewStore("")
-	w, err := NewWAF(s, Config{
-		CRSEnabled:      false,
-		CustomRulesPath: "/nonexistent/custom-rules.conf",
-	})
-	if err != nil {
-		t.Fatalf("WAF should start even when custom rules file is missing: %v", err)
-	}
+	w := createTestWAF(t, s, false, "", "", "/nonexistent/custom-rules.conf")
 
 	// Base WAF should still work (no custom rules to block, but engine runs)
-	tx := w.NewTransaction()
+	tx := testProcessURI(w, "/api/health")
 	defer tx.Close()
-	tx.ProcessConnection("127.0.0.1", 12345, "127.0.0.1", 8082)
-	tx.ProcessURI("/api/health", "GET", "HTTP/1.1")
-	tx.AddRequestHeader("Host", "localhost")
-	_ = tx.ProcessRequestHeaders()
 	if tx.IsInterrupted() {
 		t.Fatal("normal request should not be blocked with missing custom rules")
 	}
@@ -136,14 +107,8 @@ func TestWAFStartsWithEmptyCustomRulesPath(t *testing.T) {
 	s := store.NewStore("")
 	// Even with empty path, the default "rules/obsidian-custom.conf" kicks in.
 	// If that also doesn't exist, it should still not crash.
-	w, err := NewWAF(s, Config{
-		CRSEnabled:      false,
-		CustomRulesPath: "", // will default to rules/obsidian-custom.conf
-	})
-	// This might or might not find the file depending on cwd, but should never crash.
-	if err != nil {
-		t.Fatalf("WAF should start even with empty custom rules path: %v", err)
-	}
+	w := createTestWAF(t, s, false, "", "", "")
+
 	if w == nil {
 		t.Fatal("WAF instance should not be nil")
 	}
@@ -156,15 +121,7 @@ func TestWAFWithCRSBlocksSQLi(t *testing.T) {
 		t.Skipf("CRS not installed at %s", crsPath)
 	}
 	s := store.NewStore("")
-	w, err := NewWAF(s, Config{
-		CRSEnabled:      true,
-		CRSPath:         crsPath,
-		CRSMode:         "On",
-		CustomRulesPath: filepath.Join("..", "..", "..", "rules", "obsidian-custom.conf"),
-	})
-	if err != nil {
-		t.Fatalf("WAF should start with CRS: %v", err)
-	}
+	w := createTestWAF(t, s, true, crsPath, "On", filepath.Join("..", "..", "..", "rules", "obsidian-custom.conf"))
 
 	tests := []struct {
 		name    string
@@ -229,17 +186,10 @@ func TestWAFNormalTrafficAlwaysPasses(t *testing.T) {
 	for _, cc := range configs {
 		t.Run(cc.name, func(t *testing.T) {
 			s := store.NewStore("")
-			w, err := NewWAF(s, cc.cfg)
-			if err != nil {
-				t.Fatalf("WAF should start in config %s: %v", cc.name, err)
-			}
+			w := createTestWAF(t, s, cc.cfg.CRSEnabled, cc.cfg.CRSPath, "", cc.cfg.CustomRulesPath)
+
 			for _, path := range normalPaths {
-				tx := w.NewTransaction()
-				tx.ProcessConnection("127.0.0.1", 12345, "127.0.0.1", 8082)
-				tx.ProcessURI(path, "GET", "HTTP/1.1")
-				tx.AddRequestHeader("Host", "localhost")
-				tx.AddRequestHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-				_ = tx.ProcessRequestHeaders()
+				tx := testProcessURI(w, path)
 				if tx.IsInterrupted() {
 					t.Errorf("[%s] normal request to %s was blocked", cc.name, path)
 				}

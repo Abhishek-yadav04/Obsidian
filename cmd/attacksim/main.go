@@ -269,7 +269,7 @@ var attacks = []attackCase{
 
 	// ── 950xxx DATA LEAKAGE ─────────────────────────────────────────────────
 	{id: "LEAK-PasswordURL", ruleIDs: []int{950100}, category: "DataLeak",
-		path: "/api?password=secret123", wantBlocked: false}, // log only
+		path: "/api?password=secret123", wantBlocked: false}, // nosec G101 - This is a test case for a data leak, not a real credential.
 
 	// ── 951xxx SSRF ──────────────────────────────────────────────────────────
 	{id: "SSRF-Localhost", ruleIDs: []int{951100}, category: "SSRF",

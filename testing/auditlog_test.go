@@ -25,6 +25,49 @@ const (
 	msgUnconditionalMatch = "unconditional match"
 )
 
+type auditTest struct {
+	t      *testing.T
+	waf    *corazawaf.WAF
+	parser *seclang.Parser
+	log    string
+}
+
+func (at *auditTest) newTransaction() *corazawaf.Transaction {
+	tx := at.waf.NewTransaction()
+	// On Windows, the logger keeps the file locked. We must switch the log to release the lock.
+	at.t.Cleanup(func() {
+		at.parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
+		at.waf.AuditLogWriter().Close()
+	})
+	return tx
+}
+
+func (at *auditTest) openLog() *os.File {
+	file, err := os.Open(at.log)
+	if err != nil {
+		at.t.Fatal(err)
+	}
+	at.t.Cleanup(func() { file.Close() })
+	return file
+}
+
+func setupAuditTest(t *testing.T, rules string) *auditTest {
+	t.Helper()
+	at := &auditTest{
+		t:   t,
+		waf: corazawaf.NewWAF(),
+	}
+	at.parser = seclang.NewParser(at.waf)
+	at.log = newTempLogFile(t)
+	if err := at.parser.FromString(fmt.Sprintf(secAuditLogFormat, at.log)); err != nil {
+		t.Fatal(err)
+	}
+	if err := at.parser.FromString(rules); err != nil {
+		t.Fatal(err)
+	}
+	return at
+}
+
 func newTempLogFile(t *testing.T) string {
 	t.Helper()
 	file, err := os.CreateTemp("", "auditlog-*.log")
@@ -42,27 +85,15 @@ func newTempLogFile(t *testing.T) string {
 }
 
 func TestAuditLogMessages(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	parser := seclang.NewParser(waf)
-	logPath := newTempLogFile(t)
-	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
-		t.Fatal(err)
-	}
-	if err := parser.FromString(`
+	at := setupAuditTest(t, `
 		SecRuleEngine DetectionOnly
 		SecAuditEngine On
 		SecAuditLogFormat json
 		SecAuditLogType serial
 		SecAuditLogParts ABCDEFGHIJKZ
 		SecRule ARGS "@unconditionalMatch" "id:1,phase:1,log,msg:'unconditional match'"
-	`); err != nil {
-		t.Fatal(err)
-	}
-	// On Windows, the logger keeps the file locked. We must switch the log to release the lock.
-	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
-	defer func() { _ = waf.AuditLogWriter().Close() }()
-
-	tx := waf.NewTransaction()
+	`)
+	tx := at.newTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	al := tx.AuditLog()
@@ -74,11 +105,7 @@ func TestAuditLogMessages(t *testing.T) {
 	}
 	tx.ProcessLogging()
 	// now we read file
-	file, err := os.Open(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
+	file := at.openLog()
 	var al2 auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al2); err != nil {
 		t.Error(err)
@@ -92,36 +119,21 @@ func TestAuditLogMessages(t *testing.T) {
 }
 
 func TestAuditLogRelevantOnly(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	parser := seclang.NewParser(waf)
-	if err := parser.FromString(`
+	at := setupAuditTest(t, `
 		SecRuleEngine DetectionOnly
 		SecAuditEngine RelevantOnly
 		SecAuditLogFormat json
 		SecAuditLogType serial
 		SecAuditLogRelevantStatus 401
 		SecRule ARGS "@unconditionalMatch" "id:1,phase:1,log,msg:'unconditional match'"
-	`); err != nil {
-		t.Fatal(err)
-	}
-	logPath := newTempLogFile(t)
-	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
-		t.Fatal(err)
-	}
-	// Release log file on Windows after test
-	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
-	defer func() { _ = waf.AuditLogWriter().Close() }()
-	tx := waf.NewTransaction()
+	`)
+	tx := at.newTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	tx.ProcessLogging()
 	// now we read file
 	// We re-open the file to ensure we can read what WAF wrote (and handle Windows locking)
-	file, err := os.Open(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
+	file := at.openLog()
 	var al2 auditlog.Log
 	// this should fail, there should be no log
 	if err := json.NewDecoder(file).Decode(&al2); err == nil {
@@ -130,36 +142,20 @@ func TestAuditLogRelevantOnly(t *testing.T) {
 }
 
 func TestAuditLogRelevantOnlyOk(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	parser := seclang.NewParser(waf)
-	logPath := newTempLogFile(t)
-	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
-		t.Fatal(err)
-	}
-	// Release log file on Windows after test
-	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
-	defer func() { _ = waf.AuditLogWriter().Close() }()
-	if err := parser.FromString(`
+	at := setupAuditTest(t, `
 		SecRuleEngine DetectionOnly
 		SecAuditEngine RelevantOnly
 		SecAuditLogFormat json
 		SecAuditLogType serial
 		SecAuditLogRelevantStatus ".*"
 		SecRule ARGS "@unconditionalMatch" "id:1,phase:1,log,msg:'unconditional match'"
-	`); err != nil {
-		t.Fatal(err)
-	}
-
-	tx := waf.NewTransaction()
+	`)
+	tx := at.newTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	tx.ProcessLogging()
 	// now we read file
-	file, err := os.Open(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
+	file := at.openLog()
 	var al2 auditlog.Log
 	// this should pass as it matches any status
 	if err := json.NewDecoder(file).Decode(&al2); err != nil {
@@ -168,35 +164,20 @@ func TestAuditLogRelevantOnlyOk(t *testing.T) {
 }
 
 func TestAuditLogRelevantOnlyNoAuditlog(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	parser := seclang.NewParser(waf)
-	if err := parser.FromString(`
+	at := setupAuditTest(t, `
 		SecRuleEngine DetectionOnly
 		SecAuditEngine RelevantOnly
 		SecAuditLogFormat json
 		SecAuditLogType serial
 		SecAuditLogRelevantStatus ".*"
 		SecRule ARGS "@unconditionalMatch" "id:1,phase:1,noauditlog,msg:'unconditional match'"
-	`); err != nil {
-		t.Fatal(err)
-	}
-	logPath := newTempLogFile(t)
-	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
-		t.Fatal(err)
-	}
-	// Release log file on Windows after test
-	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
-	defer func() { _ = waf.AuditLogWriter().Close() }()
-	tx := waf.NewTransaction()
+	`)
+	tx := at.newTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	tx.ProcessLogging()
 	// now we read file
-	file, err := os.Open(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
+	file := at.openLog()
 	var al2 auditlog.Log
 	// there should be no audit log because of noauditlog
 	if err := json.NewDecoder(file).Decode(&al2); err == nil {
@@ -205,9 +186,7 @@ func TestAuditLogRelevantOnlyNoAuditlog(t *testing.T) {
 }
 
 func TestAuditLogOnWithNoLog(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	parser := seclang.NewParser(waf)
-	if err := parser.FromString(`
+	at := setupAuditTest(t, `
 		SecRuleEngine DetectionOnly
 		SecAuditEngine On
 		SecAuditLogFormat json
@@ -216,26 +195,13 @@ func TestAuditLogOnWithNoLog(t *testing.T) {
 		SecAuditLogRelevantStatus ".*"
 		# auditlog tells that the transaction will have to log matches meant to be logged (not the ones with nolog)
 		SecRule ARGS "@unconditionalMatch" "id:1,phase:1,nolog,msg:'nolog message'"
-	`); err != nil {
-		t.Fatal(err)
-	}
-	logPath := newTempLogFile(t)
-	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
-		t.Fatal(err)
-	}
-	// Release log file on Windows after test
-	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
-	defer func() { _ = waf.AuditLogWriter().Close() }()
-	tx := waf.NewTransaction()
+	`)
+	tx := at.newTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	tx.ProcessLogging()
 	// now we read file
-	file, err := os.Open(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
+	file := at.openLog()
 	var al2 auditlog.Log
 	// there should be no audit log because of nolog
 	if err := json.NewDecoder(file).Decode(&al2); err == nil {
@@ -248,37 +214,20 @@ func TestAuditLogOnWithNoLog(t *testing.T) {
 }
 
 func TestAuditLogRequestMethodURIProtocol(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	parser := seclang.NewParser(waf)
-	if err := parser.FromString(`
+	at := setupAuditTest(t, `
 		SecRuleEngine DetectionOnly
 		SecAuditEngine On
 		SecAuditLogFormat json
 		SecAuditLogType serial
-	`); err != nil {
-		t.Fatal(err)
-	}
-	logPath := newTempLogFile(t)
-	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
-		t.Fatal(err)
-	}
-	// Release log file on Windows after test
-	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
-	defer func() { _ = waf.AuditLogWriter().Close() }()
-	tx := waf.NewTransaction()
-
+	`)
+	tx := at.newTransaction()
 	uri := "/some-url"
 	method := "POST"
 	proto := "HTTP/1.1"
-
 	tx.ProcessURI(uri, method, proto)
 	tx.ProcessLogging()
 	// now we read file
-	file, err := os.Open(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
+	file := at.openLog()
 	var al2 auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al2); err != nil {
 		t.Error(err)
@@ -303,25 +252,14 @@ func TestAuditLogRequestMethodURIProtocol(t *testing.T) {
 }
 
 func TestAuditLogRequestBody(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	parser := seclang.NewParser(waf)
-	if err := parser.FromString(`
+	at := setupAuditTest(t, `
 		SecRuleEngine DetectionOnly
 		SecAuditEngine On
 		SecAuditLogFormat json
 		SecAuditLogType serial
 		SecRequestBodyAccess On
-	`); err != nil {
-		t.Fatal(err)
-	}
-	logPath := newTempLogFile(t)
-	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", logPath)); err != nil {
-		t.Fatal(err)
-	}
-	// Release log file on Windows after test
-	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
-	defer func() { _ = waf.AuditLogWriter().Close() }()
-	tx := waf.NewTransaction()
+	`)
+	tx := at.newTransaction()
 	params := "somepost=data"
 	var err error
 	_, _, err = tx.ReadRequestBodyFrom(strings.NewReader(params))
@@ -334,11 +272,7 @@ func TestAuditLogRequestBody(t *testing.T) {
 	}
 	tx.ProcessLogging()
 	// now we read file
-	file, err := os.Open(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
+	file := at.openLog()
 	var al2 auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al2); err != nil {
 		t.Error(err)
@@ -359,9 +293,7 @@ func TestAuditLogRequestBody(t *testing.T) {
 // Arule expected to be logged (log and auditlog flags enabled) should
 // print the error message in the audit log as part of the H section.
 func TestAuditLogHFlag(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	parser := seclang.NewParser(waf)
-	if err := parser.FromString(`
+	at := setupAuditTest(t, `
 		SecRuleEngine DetectionOnly
 		SecAuditEngine On
 		SecAuditLogFormat json
@@ -370,26 +302,13 @@ func TestAuditLogHFlag(t *testing.T) {
 		SecAuditLogRelevantStatus ".*"
 		# An audit log should contain messages section on H flag included
 		SecRule ARGS "@unconditionalMatch" "id:1,phase:1,log,auditlog,msg:'expected rule message'"
-	`); err != nil {
-		t.Fatal(err)
-	}
-	logPath := newTempLogFile(t)
-	if err := parser.FromString(fmt.Sprintf("SecAuditLog %s", logPath)); err != nil {
-		t.Fatal(err)
-	}
-	// Release log file on Windows after test
-	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
-	defer func() { _ = waf.AuditLogWriter().Close() }()
-	tx := waf.NewTransaction()
+	`)
+	tx := at.newTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	tx.ProcessLogging()
 	// now we read file
-	file, err := os.Open(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
+	file := at.openLog()
 	var al auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al); err != nil {
 		t.Error(err)
@@ -409,9 +328,7 @@ func TestAuditLogHFlag(t *testing.T) {
 }
 
 func TestAuditLogWithKFlagWithoutHFlag(t *testing.T) {
-	waf := corazawaf.NewWAF()
-	parser := seclang.NewParser(waf)
-	if err := parser.FromString(`
+	at := setupAuditTest(t, `
 		SecRuleEngine DetectionOnly
 		SecAuditEngine On
 		SecAuditLogFormat json
@@ -420,26 +337,13 @@ func TestAuditLogWithKFlagWithoutHFlag(t *testing.T) {
 		SecAuditLogRelevantStatus ".*"
 		# auditlog should not contain error logs without H flag included
 		SecRule ARGS "@unconditionalMatch" "id:1,phase:1,log,auditlog,msg:'unexpected logged message'"
-	`); err != nil {
-		t.Fatal(err)
-	}
-	logPath := newTempLogFile(t)
-	if err := parser.FromString(fmt.Sprintf(secAuditLogFormat, logPath)); err != nil {
-		t.Fatal(err)
-	}
-	// Release log file on Windows after test
-	defer parser.FromString(fmt.Sprintf(secAuditLogFormat, os.DevNull))
-	defer func() { _ = waf.AuditLogWriter().Close() }()
-	tx := waf.NewTransaction()
+	`)
+	tx := at.newTransaction()
 	tx.AddGetRequestArgument("test", "test")
 	tx.ProcessRequestHeaders()
 	tx.ProcessLogging()
 	// now we read file
-	file, err := os.Open(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
+	file := at.openLog()
 	var al auditlog.Log
 	if err := json.NewDecoder(file).Decode(&al); err != nil {
 		t.Error(err)

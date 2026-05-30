@@ -36,9 +36,9 @@ jobs:
             --title "[fuzz] Failure in $GITHUB_WORKFLOW #$GITHUB_RUN_NUMBER" \
             --body "The scheduled fuzz test failed.
 
-Run details:
-https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          Run details:
+          https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
 
-Please investigate potential crashers or newly discovered failing inputs." \
+          Please investigate potential crashers or newly discovered failing inputs." \
             --label "bug" \
             --label "security"

@@ -6,6 +6,7 @@ package database
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -15,6 +16,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/corazawaf/coraza/v3/internal/app/model"
 	"github.com/jackc/pgx/v5/pgxpool"

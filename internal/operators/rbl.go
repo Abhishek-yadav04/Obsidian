@@ -39,9 +39,7 @@ func (o *rbl) Evaluate(tx plugintypes.TransactionState, ipAddr string) bool {
 	resC := make(chan bool)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	defer func() {
-		cancel()
-	}()
+	defer cancel()
 
 	addr := fmt.Sprintf("%s.%s", ipAddr, o.service)
 	var captures []string

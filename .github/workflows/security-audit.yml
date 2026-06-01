@@ -59,8 +59,8 @@ jobs:
         with:
           fetch-depth: 0
       - name: TruffleHog Scan
-        uses: trufflesecurity/trufflehog@v3.93.4
         continue-on-error: true
+        uses: trufflesecurity/trufflehog@main
         with:
           extra_args: --only-verified
   container-scan:

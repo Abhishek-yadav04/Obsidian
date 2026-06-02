@@ -32,7 +32,7 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
       - name: Setup TinyGo
-        uses: acifani/setup-tinygo@v2
+        uses: acifani/setup-tinygo@v3
         with:
           tinygo-version: ${{ matrix.tinygo-version }}
       - name: Cache TinyGo build artifacts

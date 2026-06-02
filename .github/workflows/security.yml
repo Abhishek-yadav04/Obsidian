@@ -43,7 +43,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
       - name: Run Gosec
-        uses: securego/gosec@v2.23.0
+        uses: securego/gosec@v2.26.1
         with:
           args: '-fmt sarif -out gosec.sarif ./...'
       - name: Upload Gosec results
@@ -78,7 +78,7 @@ jobs:
       - name: Build container (no cache)
         run: docker build --no-cache -t obsidian-waf:scan .
       - name: Run Trivy
-        uses: aquasecurity/trivy-action@0.34.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: obsidian-waf:scan
           format: sarif

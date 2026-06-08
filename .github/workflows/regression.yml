@@ -64,7 +64,7 @@ jobs:
           go run mage.go coverage
       - name: Upload Codecov (General)
         if: matrix.go-version == env.GOLANG_BASE_VERSION
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: build/coverage.txt
           flags: default, ${{ matrix.build-flag }}
@@ -72,7 +72,7 @@ jobs:
           fail_ci_if_error: false
       - name: Upload Codecov (Examples)
         if: matrix.go-version == env.GOLANG_BASE_VERSION
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: build/coverage-examples.txt
           flags: examples, ${{ matrix.build-flag }}
@@ -80,7 +80,7 @@ jobs:
           fail_ci_if_error: false
       - name: Upload Codecov (FTW)
         if: matrix.go-version == env.GOLANG_BASE_VERSION
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: build/coverage-ftw.txt
           flags: ftw, ${{ matrix.build-flag }}
@@ -88,7 +88,7 @@ jobs:
           fail_ci_if_error: false
       - name: Upload Codecov (TinyGo)
         if: matrix.go-version == env.GOLANG_BASE_VERSION && hashFiles('build/coverage-tinygo.txt') != ''
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: build/coverage-tinygo.txt
           flags: tinygo, ${{ matrix.build-flag }}

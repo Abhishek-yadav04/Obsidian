@@ -25,7 +25,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -o /obsidian ./cmd/obsidian
 
 # Final stage
-FROM alpine:3.23
+FROM alpine:3.24
 
 # Re-declare build ARG for use in this stage
 ARG VERSION=dev

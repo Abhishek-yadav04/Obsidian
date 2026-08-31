@@ -53,7 +53,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
       - name: Gosec
-        uses: securego/gosec@v2.28.0
+        uses: securego/gosec@v2.29.0
         with:
           args: '-fmt sarif -out gosec.sarif ./...'
       - uses: github/codeql-action/upload-sarif@v4
@@ -123,7 +123,7 @@ jobs:
       contents: read # Required for actions/checkout
     steps:
       - uses: actions/checkout@v7
-      - uses: anchore/sbom-action@v0.24.0
+      - uses: anchore/sbom-action@v0.24.2
         with:
           path: .
           format: cyclonedx-json
